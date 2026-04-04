@@ -5,7 +5,6 @@
 (function () {
     const loginForm = document.getElementById('login-form');
     const signupForm = document.getElementById('signup-form');
-    const toggleAuth = document.getElementById('toggle-auth');
     const authToggleText = document.getElementById('auth-toggle-text');
     const googleBtn = document.getElementById('google-signin');
     const msgBox = document.getElementById('auth-message');
@@ -19,22 +18,22 @@
         }
     });
 
-    // Toggle login / signup
-    toggleAuth.addEventListener('click', e => {
-        e.preventDefault();
-        isLogin = !isLogin;
-        if (isLogin) {
-            loginForm.classList.remove('hidden');
-            signupForm.classList.add('hidden');
-            authToggleText.innerHTML = 'Don\'t have an account? <a href="#" id="toggle-auth">Sign up</a>';
-        } else {
-            loginForm.classList.add('hidden');
-            signupForm.classList.remove('hidden');
-            authToggleText.innerHTML = 'Already have an account? <a href="#" id="toggle-auth">Sign in</a>';
+    // Toggle login / signup — use event delegation so it survives innerHTML changes
+    authToggleText.addEventListener('click', function (e) {
+        if (e.target.id === 'toggle-auth' || e.target.closest('#toggle-auth')) {
+            e.preventDefault();
+            isLogin = !isLogin;
+            if (isLogin) {
+                loginForm.classList.remove('hidden');
+                signupForm.classList.add('hidden');
+                authToggleText.innerHTML = 'Don\'t have an account? <a href="#" id="toggle-auth">Sign up</a>';
+            } else {
+                loginForm.classList.add('hidden');
+                signupForm.classList.remove('hidden');
+                authToggleText.innerHTML = 'Already have an account? <a href="#" id="toggle-auth">Sign in</a>';
+            }
+            hideMessage();
         }
-        // Re-bind the click since we replaced innerHTML
-        document.getElementById('toggle-auth').addEventListener('click', arguments.callee.bind(null, { preventDefault: () => {} }));
-        hideMessage();
     });
 
     // Email/Password Login
@@ -46,7 +45,6 @@
         try {
             disableButtons(true);
             await auth.signInWithEmailAndPassword(email, password);
-            // onAuthStateChanged will redirect
         } catch (err) {
             showMessage(friendlyError(err.code), 'error');
             disableButtons(false);
@@ -64,14 +62,12 @@
             disableButtons(true);
             const cred = await auth.createUserWithEmailAndPassword(email, password);
             await cred.user.updateProfile({ displayName: name });
-            // Save user doc in Firestore
             await db.collection('users').doc(cred.user.uid).set({
                 displayName: name,
                 email: email,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 avatarUrl: ''
             });
-            // onAuthStateChanged will redirect
         } catch (err) {
             showMessage(friendlyError(err.code), 'error');
             disableButtons(false);
@@ -79,12 +75,12 @@
     });
 
     // Google Sign-In
-    googleBtn.addEventListener('click', async () => {
+    googleBtn.addEventListener('click', async function () {
         const provider = new firebase.auth.GoogleAuthProvider();
         try {
             disableButtons(true);
+            showMessage('Opening Google sign-in...', 'success');
             const result = await auth.signInWithPopup(provider);
-            // Save/update user doc
             const user = result.user;
             await db.collection('users').doc(user.uid).set({
                 displayName: user.displayName || '',
@@ -95,6 +91,8 @@
         } catch (err) {
             if (err.code !== 'auth/popup-closed-by-user') {
                 showMessage(friendlyError(err.code), 'error');
+            } else {
+                hideMessage();
             }
             disableButtons(false);
         }
