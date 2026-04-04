@@ -1,0 +1,5 @@
+# Never commit these
+SETUP FILES/
+*.json
+*.txt
+All the keys.txt

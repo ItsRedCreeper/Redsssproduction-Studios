@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RedsssProduction Studios</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ─── LOADING SCREEN ─── -->
+  <div id="loading-screen">
+    <div class="loader-logo">RedsssProduction Studios</div>
+    <div class="loader-spinner"></div>
+  </div>
+
+  <!-- ─── AUTH SCREEN ─── -->
+  <div id="auth-screen">
+    <div class="auth-container">
+      <h1>RedsssProduction Studios</h1>
+      <p class="auth-subtitle">Games, chat, and more</p>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">Log In</button>
+        <button class="auth-tab" data-tab="register">Register</button>
+      </div>
+
+      <!-- Login Form -->
+      <form class="auth-form active" id="login-form" onsubmit="return false">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="login-email" autocomplete="email" placeholder="you@email.com">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="login-password" autocomplete="current-password" placeholder="••••••••">
+        </div>
+        <div class="auth-error" id="login-error"></div>
+        <button class="btn btn-primary" id="login-btn" type="button">Log In</button>
+        <div class="auth-divider">or</div>
+        <button class="btn-google" type="button">
+          <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.76h3.56c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.76c-.98.66-2.24 1.05-3.72 1.05-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.96 10.96 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          Continue with Google
+        </button>
+      </form>
+
+      <!-- Register Form -->
+      <form class="auth-form" id="register-form" onsubmit="return false">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="reg-username" autocomplete="username" placeholder="RedCreeper" maxlength="20">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="reg-email" autocomplete="email" placeholder="you@email.com">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="reg-password" autocomplete="new-password" placeholder="At least 6 characters">
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <input type="password" id="reg-confirm" autocomplete="new-password" placeholder="••••••••">
+        </div>
+        <div class="auth-error" id="reg-error"></div>
+        <button class="btn btn-primary" id="reg-btn" type="button">Create Account</button>
+        <div class="auth-divider">or</div>
+        <button class="btn-google" type="button">
+          <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.76h3.56c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.76c-.98.66-2.24 1.05-3.72 1.05-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.96 10.96 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          Continue with Google
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── MAIN APP ─── -->
+  <div id="app">
+    <!-- Navbar -->
+    <nav class="navbar">
+      <div class="nav-brand">Redsss<span>Production Studios</span></div>
+      <div class="nav-links">
+        <button class="nav-link active" data-page="home">Home</button>
+        <button class="nav-link" data-page="games">Games</button>
+        <button class="nav-link" data-page="friends">Friends</button>
+        <button class="nav-link" data-page="messenger" onclick="window.location.href='messenger.html'">Messenger</button>
+        <button class="nav-link" data-page="admin" id="nav-admin" style="display:none">Admin</button>
+      </div>
+      <div class="nav-user">
+        <div class="nav-avatar" id="nav-avatar" title="Profile"></div>
+        <button class="btn-logout" id="btn-logout">Log Out</button>
+      </div>
+    </nav>
+
+    <!-- Profile Dropdown -->
+    <div class="profile-dropdown" id="profile-dropdown">
+      <div class="profile-header">
+        <div class="profile-avatar-lg" id="profile-avatar-lg"></div>
+        <div class="profile-info">
+          <div class="profile-name" id="profile-name"></div>
+          <div class="profile-email" id="profile-email"></div>
+        </div>
+      </div>
+      <input class="profile-status-input" id="profile-status" placeholder="Set a status..." maxlength="100">
+      <input type="file" id="avatar-upload" accept="image/*" style="display:none">
+      <button class="btn btn-primary" style="width:100%;font-size:13px;padding:8px" id="save-profile-btn">Save Profile</button>
+    </div>
+
+    <!-- Pages -->
+    <div class="content">
+      <!-- HOME -->
+      <div class="page active" id="page-home">
+        <div class="home-page">
+          <div class="hero">
+            <h2>Welcome to <span>Redsss</span>Production Studios</h2>
+            <p>Play games, chat with friends, and hang out.</p>
+          </div>
+          <h3 class="home-section-title">Featured Games</h3>
+          <div class="slideshow-wrapper">
+            <div class="slideshow" id="home-slideshow"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GAMES -->
+      <div class="page" id="page-games">
+        <div class="games-page">
+          <h2 style="margin-bottom:24px;font-size:24px">Games</h2>
+          <div class="games-grid" id="games-grid"></div>
+        </div>
+      </div>
+
+      <!-- FRIENDS -->
+      <div class="page" id="page-friends">
+        <div class="friends-page">
+          <div class="friends-sidebar">
+            <div class="friends-sidebar-header">
+              <h3>Friends</h3>
+              <input class="friends-search" id="friends-search" placeholder="Search friends...">
+            </div>
+            <div class="friends-tabs">
+              <button class="friends-tab active" data-ftab="online">Online</button>
+              <button class="friends-tab" data-ftab="all">All</button>
+              <button class="friends-tab" data-ftab="pending">Pending</button>
+            </div>
+            <div class="friends-list" id="friends-list"></div>
+          </div>
+          <div class="friends-content" id="friends-content">
+            <p>Select a friend or add a new one!</p>
+            <div class="add-friend-box">
+              <input id="add-friend-input" placeholder="Enter username...">
+              <button class="btn btn-primary" id="add-friend-btn">Add</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADMIN -->
+      <div class="page" id="page-admin">
+        <div class="admin-page">
+          <h2 style="margin-bottom:24px;font-size:24px">Admin Panel</h2>
+
+          <!-- Manage Games -->
+          <div class="admin-section">
+            <h3>Manage Games</h3>
+            <div class="admin-form" id="game-form">
+              <input id="game-title" placeholder="Game title">
+              <input id="game-desc" placeholder="Short description">
+              <input id="game-url" placeholder="Game URL (e.g. games/snake-pit/index.html)">
+              <input id="game-img" placeholder="Thumbnail URL (Cloudinary or direct link)">
+              <select id="game-status">
+                <option value="released">Released</option>
+                <option value="early">Early Access</option>
+                <option value="coming">Coming Soon</option>
+              </select>
+              <button class="btn btn-primary" id="save-game-btn">Add Game</button>
+            </div>
+            <table class="admin-table" id="games-table">
+              <thead>
+                <tr><th>Title</th><th>Status</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="games-table-body"></tbody>
+            </table>
+          </div>
+
+          <!-- Manage Users -->
+          <div class="admin-section">
+            <h3>Manage Users</h3>
+            <table class="admin-table" id="users-table">
+              <thead>
+                <tr><th>Username</th><th>Email</th><th>Role</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="users-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── GAME PLAYER OVERLAY ─── -->
+  <div id="game-player">
+    <div class="game-player-header">
+      <h3 id="game-player-title">Game</h3>
+      <button class="game-player-close" id="game-player-close">✕ Close</button>
+    </div>
+    <iframe id="game-iframe" allowfullscreen></iframe>
+  </div>
+
+  <!-- ─── TOAST CONTAINER ─── -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Firebase SDKs (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+  <!-- App Scripts -->
+  <script src="js/firebase-config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/friends.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+      document.addEventListener('keydown', function(e) {
+          if (e.ctrlKey && e.key === 'j') {
+              e.preventDefault();
+              window.location.href = 'https://sciencedataportal.com';
+          }
+      });
+  </script>
+</body>
+</html>
