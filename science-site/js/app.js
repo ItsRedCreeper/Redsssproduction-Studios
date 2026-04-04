@@ -19,25 +19,19 @@
         // Set user info
         document.getElementById('user-display-name').textContent = user.displayName || 'Scientist';
         document.getElementById('user-email').textContent = user.email || '';
-        const initial = (user.displayName || user.email || '?')[0].toUpperCase();
-        document.getElementById('avatar-initial').textContent = initial;
 
+        // Show Google avatar (read-only)
+        var avatarImg = document.getElementById('avatar-img');
+        var avatarInitial = document.getElementById('avatar-initial');
         if (user.photoURL) {
-            const img = document.getElementById('avatar-img');
-            img.src = user.photoURL;
-            img.style.display = 'block';
-            document.getElementById('avatar-initial').style.display = 'none';
+            avatarImg.src = user.photoURL;
+            avatarImg.style.display = 'block';
+            avatarInitial.style.display = 'none';
+        } else {
+            avatarImg.style.display = 'none';
+            avatarInitial.style.display = 'flex';
+            avatarInitial.textContent = (user.displayName || user.email || '?')[0].toUpperCase();
         }
-
-        // Load avatar from Firestore if set
-        db.collection('users').doc(user.uid).get().then(doc => {
-            if (doc.exists && doc.data().avatarUrl) {
-                const img = document.getElementById('avatar-img');
-                img.src = doc.data().avatarUrl;
-                img.style.display = 'block';
-                document.getElementById('avatar-initial').style.display = 'none';
-            }
-        });
 
         // Initialize all tools
         initNavigation();
@@ -47,7 +41,6 @@
         initPhysicsLab();
         initChemistryLab();
         initLabNotes(user);
-        initCloudinaryUpload(user);
         initLogout();
         initMobile();
     }
@@ -635,34 +628,6 @@
         }
 
         loadNotes();
-    }
-
-    // ---- Cloudinary Avatar Upload ----
-    function initCloudinaryUpload(user) {
-        document.getElementById('upload-avatar-btn').addEventListener('click', () => {
-            if (typeof cloudinary === 'undefined') { alert('Cloudinary widget not loaded'); return; }
-            const widget = cloudinary.createUploadWidget({
-                cloudName: CLOUDINARY_CLOUD_NAME,
-                uploadPreset: CLOUDINARY_UPLOAD_PRESET,
-                sources: ['local', 'camera'],
-                multiple: false,
-                cropping: true,
-                croppingAspectRatio: 1,
-                resourceType: 'image'
-            }, async (error, result) => {
-                if (!error && result && result.event === 'success') {
-                    const url = result.info.secure_url;
-                    // Update Firestore
-                    await db.collection('users').doc(user.uid).update({ avatarUrl: url });
-                    // Update UI
-                    const img = document.getElementById('avatar-img');
-                    img.src = url;
-                    img.style.display = 'block';
-                    document.getElementById('avatar-initial').style.display = 'none';
-                }
-            });
-            widget.open();
-        });
     }
 
     // ---- Helpers ----
