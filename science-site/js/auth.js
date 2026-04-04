@@ -77,6 +77,3 @@ document.addEventListener('DOMContentLoaded', function () {
 
     console.log('[auth.js] Listeners attached');
 });
-
-    console.log('[auth.js] All listeners attached');
-});
