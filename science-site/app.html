@@ -6,7 +6,7 @@
     <title>ScienceDataPortal — Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/styles.css">
     <link rel="icon" type="image/png" href="science_data_portal_fav_icon.png">
 </head>
@@ -14,11 +14,11 @@
     <!-- Sidebar -->
     <nav id="sidebar" class="sidebar">
         <div class="sidebar-brand">
-            <svg width="32" height="32" viewBox="0 0 56 56" fill="none">
-                <circle cx="28" cy="28" r="4" fill="#00d4ff"/>
-                <ellipse cx="28" cy="28" rx="24" ry="8" stroke="#00d4ff" stroke-width="1.5" fill="none" opacity="0.7"/>
-                <ellipse cx="28" cy="28" rx="24" ry="8" stroke="#7c4dff" stroke-width="1.5" fill="none" opacity="0.7" transform="rotate(60 28 28)"/>
-                <ellipse cx="28" cy="28" rx="24" ry="8" stroke="#00e676" stroke-width="1.5" fill="none" opacity="0.7" transform="rotate(120 28 28)"/>
+            <svg width="28" height="28" viewBox="0 0 56 56" fill="none">
+                <circle cx="28" cy="28" r="4" fill="#38bdf8"/>
+                <ellipse cx="28" cy="28" rx="24" ry="8" stroke="#38bdf8" stroke-width="1.5" fill="none" opacity="0.6"/>
+                <ellipse cx="28" cy="28" rx="24" ry="8" stroke="#818cf8" stroke-width="1.5" fill="none" opacity="0.6" transform="rotate(60 28 28)"/>
+                <ellipse cx="28" cy="28" rx="24" ry="8" stroke="#34d399" stroke-width="1.5" fill="none" opacity="0.6" transform="rotate(120 28 28)"/>
             </svg>
             <span>ScienceDataPortal</span>
         </div>
@@ -36,43 +36,43 @@
 
         <ul class="nav-links">
             <li class="nav-item active" data-page="dashboard">
-                <span class="nav-icon">🏠</span>
+                <span class="nav-icon material-symbols-outlined">home</span>
                 <span class="nav-label">Dashboard</span>
             </li>
             <li class="nav-item" data-page="periodic">
-                <span class="nav-icon">⚛️</span>
+                <span class="nav-icon material-symbols-outlined">view_module</span>
                 <span class="nav-label">Periodic Table</span>
             </li>
             <li class="nav-item" data-page="converter">
-                <span class="nav-icon">📐</span>
+                <span class="nav-icon material-symbols-outlined">straighten</span>
                 <span class="nav-label">Unit Converter</span>
             </li>
             <li class="nav-item" data-page="calculator">
-                <span class="nav-icon">🧮</span>
+                <span class="nav-icon material-symbols-outlined">calculate</span>
                 <span class="nav-label">Calculator</span>
             </li>
             <li class="nav-item" data-page="physics">
-                <span class="nav-icon">🚀</span>
+                <span class="nav-icon material-symbols-outlined">rocket_launch</span>
                 <span class="nav-label">Physics Lab</span>
             </li>
             <li class="nav-item" data-page="chemistry">
-                <span class="nav-icon">🧪</span>
+                <span class="nav-icon material-symbols-outlined">biotech</span>
                 <span class="nav-label">Chemistry Lab</span>
             </li>
             <li class="nav-item" data-page="notes">
-                <span class="nav-icon">📝</span>
+                <span class="nav-icon material-symbols-outlined">edit_note</span>
                 <span class="nav-label">Lab Notes</span>
             </li>
         </ul>
 
         <div class="sidebar-footer">
-            <button id="logout-btn" class="btn btn-sm btn-ghost" title="Sign Out">🚪 Sign Out</button>
+            <button id="logout-btn" class="btn btn-sm btn-ghost" title="Sign Out"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">logout</span> Sign Out</button>
         </div>
     </nav>
 
     <!-- Mobile header -->
     <header class="mobile-header">
-        <button id="menu-toggle" class="menu-toggle">☰</button>
+        <button id="menu-toggle" class="menu-toggle"><span class="material-symbols-outlined" style="font-size:22px;vertical-align:-5px">menu</span></button>
         <span class="mobile-title">ScienceDataPortal</span>
     </header>
 
@@ -82,43 +82,42 @@
         <!-- ===== DASHBOARD ===== -->
         <section id="page-dashboard" class="page active">
             <div class="page-header">
-                <h2>Science Tools Dashboard</h2>
-                <p class="page-subtitle">Choose a tool to start exploring</p>
+                <h2>What do you want to work on?</h2>
             </div>
             <div class="tools-grid">
                 <div class="tool-card" data-goto="periodic">
-                    <div class="tool-card-icon" style="--card-color:#00d4ff">⚛️</div>
+                    <div class="tool-card-icon" style="--card-color:#38bdf8"><span class="material-symbols-outlined">view_module</span></div>
                     <h3>Periodic Table</h3>
-                    <p>Explore all 118 elements with detailed properties, electron configurations, and categories.</p>
+                    <p>Click any element to see its atomic number, mass, electron config, and more. All 118 elements, color-coded by category.</p>
                 </div>
                 <div class="tool-card" data-goto="converter">
-                    <div class="tool-card-icon" style="--card-color:#7c4dff">📐</div>
+                    <div class="tool-card-icon" style="--card-color:#818cf8"><span class="material-symbols-outlined">straighten</span></div>
                     <h3>Unit Converter</h3>
-                    <p>Convert between units of length, mass, temperature, volume, energy, pressure, and more.</p>
+                    <p>Switch between length, mass, temperature, volume, and about 7 other categories. Swap the direction with one click.</p>
                 </div>
                 <div class="tool-card" data-goto="calculator">
-                    <div class="tool-card-icon" style="--card-color:#00e676">🧮</div>
+                    <div class="tool-card-icon" style="--card-color:#34d399"><span class="material-symbols-outlined">calculate</span></div>
                     <h3>Scientific Calculator</h3>
-                    <p>Full scientific calculator with trig, logarithms, exponents, and expression history.</p>
+                    <p>Handles sin, cos, logs, exponents, and factorials. Previous calculations stay in the side panel so you don't lose your work.</p>
                 </div>
                 <div class="tool-card" data-goto="physics">
-                    <div class="tool-card-icon" style="--card-color:#ff9100">🚀</div>
+                    <div class="tool-card-icon" style="--card-color:#fb923c"><span class="material-symbols-outlined">rocket_launch</span></div>
                     <h3>Physics Lab</h3>
-                    <p>Kinematics, forces, energy, momentum, waves, and electricity calculators.</p>
+                    <p>Put in what you know, get out what you need. Covers motion, forces, energy, momentum, waves, and basic circuits.</p>
                 </div>
                 <div class="tool-card" data-goto="chemistry">
-                    <div class="tool-card-icon" style="--card-color:#ff4081">🧪</div>
+                    <div class="tool-card-icon" style="--card-color:#f472b6"><span class="material-symbols-outlined">biotech</span></div>
                     <h3>Chemistry Lab</h3>
-                    <p>Molecular weight, molarity, dilution, ideal gas law, and pH calculators.</p>
+                    <p>Work through molecular weights, molarity, dilutions, gas laws, and pH — useful for most high school chem problems.</p>
                 </div>
                 <div class="tool-card" data-goto="notes">
-                    <div class="tool-card-icon" style="--card-color:#ffd740">📝</div>
+                    <div class="tool-card-icon" style="--card-color:#fbbf24"><span class="material-symbols-outlined">edit_note</span></div>
                     <h3>Lab Notes</h3>
-                    <p>Keep a digital lab notebook. Save observations, upload images, and organize your research.</p>
+                    <p>Jot down your experiment notes and save them to your account. They'll still be there the next time you log in.</p>
                 </div>
             </div>
             <div class="dashboard-quick-ref">
-                <h3>Quick Reference</h3>
+                <h3>Useful constants</h3>
                 <div class="quick-ref-grid">
                     <div class="quick-ref-card">
                         <h4>Speed of Light</h4>
