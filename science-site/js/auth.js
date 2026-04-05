@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', function () {
         console.log('[auth.js] Google sign-in clicked');
         var provider = new firebase.auth.GoogleAuthProvider();
         googleBtn.disabled = true;
-        showMessage('Opening Google sign-in\u2026', 'success');
+        googleBtn.querySelector('span').textContent = 'Signing in\u2026';
         auth.signInWithPopup(provider)
             .then(function (result) {
                 console.log('[auth.js] Google sign-in success');
@@ -77,6 +77,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     showMessage(friendlyError(err.code), 'error');
                 }
                 googleBtn.disabled = false;
+                googleBtn.querySelector('span').textContent = 'Continue with Google';
             });
     });
 

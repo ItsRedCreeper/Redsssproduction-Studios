@@ -204,18 +204,11 @@ textarea { resize: vertical; min-height: 100px; }
     display: block;
     max-width: 280px;
     margin: 0 auto 4px;
-    background: #fff;
-    border-radius: 8px;
-    padding: 12px 18px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.25);
 }
 .sidebar-logo {
     width: 28px;
     height: 28px;
-    border-radius: 5px;
-    background: #fff;
     object-fit: contain;
-    padding: 2px;
     flex-shrink: 0;
 }
 .login-brand .tagline {
@@ -1000,6 +993,9 @@ textarea { resize: vertical; min-height: 100px; }
     font-family: var(--font-heading);
     font-size: 1.1rem;
     color: var(--accent-green);
+}
+.lab-result:empty {
+    display: none;
 }
 
 /* ==========================================
