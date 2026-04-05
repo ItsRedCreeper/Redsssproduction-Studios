@@ -628,7 +628,10 @@
             notesList.innerHTML = notes.map(n => {
                 const date = n.updatedAt ? new Date(n.updatedAt.seconds * 1000).toLocaleDateString() : '';
                 return `<div class="note-card ${n.id === currentNoteId ? 'active' : ''}" data-id="${n.id}">
-                    <div class="note-card-title">${escapeHtml(n.title || 'Untitled')}</div>
+                    <div class="note-card-header">
+                        <div class="note-card-title">${escapeHtml(n.title || 'Untitled')}</div>
+                        <button class="note-delete-btn" data-id="${n.id}" title="Delete note"><span class="material-symbols-outlined" style="font-size:16px">delete</span></button>
+                    </div>
                     <div class="note-card-meta">${n.category || 'observation'} · ${date}</div>
                     <div class="note-card-preview">${escapeHtml((n.content || '').substring(0, 80))}</div>
                 </div>`;
@@ -636,6 +639,22 @@
 
             notesList.querySelectorAll('.note-card').forEach(card => {
                 card.addEventListener('click', () => openNote(card.dataset.id));
+            });
+
+            notesList.querySelectorAll('.note-delete-btn').forEach(btn => {
+                btn.addEventListener('click', async e => {
+                    e.stopPropagation();
+                    const noteId = btn.dataset.id;
+                    try {
+                        await db.collection('users').doc(user.uid).collection('labNotes').doc(noteId).delete();
+                        if (currentNoteId === noteId) {
+                            currentNoteId = null;
+                            editor.classList.add('hidden');
+                        }
+                    } catch (err) {
+                        showToast('Failed to delete note.', 'error');
+                    }
+                });
             });
         }
 
