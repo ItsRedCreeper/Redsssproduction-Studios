@@ -23,6 +23,7 @@ const Auth = (() => {
     regBtn: () => document.getElementById('reg-btn'),
     regError: () => document.getElementById('reg-error'),
     googleBtns: () => document.querySelectorAll('.btn-google'),
+    cleverBtns: () => document.querySelectorAll('.btn-clever'),
   };
 
   function init() {
@@ -47,6 +48,9 @@ const Auth = (() => {
 
     // Google sign-in
     els.googleBtns().forEach(btn => btn.addEventListener('click', handleGoogle));
+
+    // Clever sign-in
+    els.cleverBtns().forEach(btn => btn.addEventListener('click', handleClever));
   }
 
   async function handleLogin() {
@@ -120,6 +124,19 @@ const Auth = (() => {
     } catch (err) {
       showToast(friendlyError(err.code), 'error');
     }
+  }
+
+  function handleClever() {
+    // IMPORTANT — replace YOUR-REDSSS-DOMAIN with your actual site domain,
+    // then register that redirect URI in your Clever developer dashboard:
+    //   https://apps.clever.com/developer
+    // and update the WORKER_URL in site/clever-callback.html if needed.
+    const CLEVER_CLIENT_ID = '2c754c70741294238f31';
+    const redirectUri = encodeURIComponent(window.location.origin + '/clever-callback.html');
+    window.location.href =
+      'https://clever.com/oauth/authorize?response_type=code' +
+      '&client_id=' + CLEVER_CLIENT_ID +
+      '&redirect_uri=' + redirectUri;
   }
 
   async function createUserProfile(user, username) {

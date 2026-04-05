@@ -233,6 +233,24 @@ a:hover { text-decoration: underline; }
 
 .btn-google svg { width: 18px; height: 18px; }
 
+.btn-clever {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  background: rgba(66, 116, 244, 0.12);
+  border: 1px solid rgba(66, 116, 244, 0.35);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 14px;
+  transition: var(--transition);
+}
+
+.btn-clever:hover { background: rgba(66, 116, 244, 0.22); }
+
 .auth-divider {
   display: flex;
   align-items: center;

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signing in with Clever...</title>
+  <link rel="icon" type="image/png" href="science_data_portal_fav_icon.png">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', -apple-system, sans-serif;
+      background: #0a0a0a;
+      color: #f0f0f0;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 48px 40px;
+      text-align: center;
+      max-width: 380px;
+      width: 100%;
+    }
+    .logo {
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 32px;
+      color: #f0f0f0;
+    }
+    .logo span { color: #c0392b; }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #2a2a2a;
+      border-top-color: #4274f4;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #status-msg { font-size: 1rem; color: #a0a0a0; }
+    #error-detail { font-size: 0.8rem; color: #666; margin-top: 8px; display: none; }
+    #back-link {
+      display: none;
+      margin-top: 20px;
+      font-size: 0.875rem;
+      color: #4274f4;
+      text-decoration: none;
+    }
+    #back-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Redsss<span>Production Studios</span></div>
+    <div class="spinner" id="spinner"></div>
+    <p id="status-msg">Signing you in with Clever...</p>
+    <p id="error-detail"></p>
+    <a href="index.html" id="back-link">← Back to sign in</a>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script>
+    // Same Cloudflare Worker that handles the science site Clever auth.
+    // IMPORTANT: You must also register the RedsssProduction Studios
+    // redirect URI in your Clever developer dashboard:
+    //   https://apps.clever.com/developer
+    // Add: https://YOUR-REDSSS-DOMAIN/clever-callback.html
+    // Then update the Worker to accept that redirect_uri when exchanging the code.
+    var WORKER_URL = 'https://clever-auth.redcreeper1776.workers.dev';
+
+    var statusMsg   = document.getElementById('status-msg');
+    var errorDetail = document.getElementById('error-detail');
+    var spinner     = document.getElementById('spinner');
+    var backLink    = document.getElementById('back-link');
+
+    function showError(message, detail) {
+      spinner.style.display = 'none';
+      statusMsg.textContent = message;
+      statusMsg.style.color = '#e74c3c';
+      if (detail) {
+        errorDetail.textContent = detail;
+        errorDetail.style.display = 'block';
+      }
+      backLink.style.display = 'inline-block';
+    }
+
+    var params = new URLSearchParams(window.location.search);
+    var code  = params.get('code');
+    var error = params.get('error');
+
+    if (error) {
+      showError('Clever sign-in was cancelled.', error);
+    } else if (!code) {
+      showError('Sign-in failed: no authorisation code returned from Clever.');
+    } else {
+      fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.error) throw new Error(data.error);
+        statusMsg.textContent = 'Completing sign-in...';
+        return auth.signInWithCustomToken(data.firebaseToken).then(function(cred) {
+          var user = cred.user;
+          var isNew = cred.additionalUserInfo ? cred.additionalUserInfo.isNewUser : false;
+          var displayName = data.displayName || user.displayName || '';
+          var username = displayName || (data.email || '').split('@')[0] || 'CleverUser';
+
+          if (isNew) {
+            return db.collection('users').doc(user.uid).set({
+              username: username,
+              usernameLower: username.toLowerCase(),
+              email: data.email || user.email || '',
+              avatar: '',
+              status: '',
+              role: 'user',
+              friends: [],
+              createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+              lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
+              online: true
+            });
+          } else {
+            return db.collection('users').doc(user.uid).update({
+              lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
+              online: true
+            });
+          }
+        });
+      })
+      .then(function() {
+        window.location.href = 'index.html';
+      })
+      .catch(function(err) {
+        showError('Sign-in failed.', err.message);
+      });
+    }
+  </script>
+</body>
+</html>
