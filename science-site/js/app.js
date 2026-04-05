@@ -58,8 +58,10 @@
             if (target) target.classList.add('active');
             const navTarget = document.querySelector(`.nav-item[data-page="${pageId}"]`);
             if (navTarget) navTarget.classList.add('active');
-            // Close mobile sidebar
+            // Close mobile sidebar and backdrop
             document.getElementById('sidebar').classList.remove('open');
+            const bd = document.querySelector('.sidebar-backdrop');
+            if (bd) bd.classList.remove('visible');
         }
 
         navItems.forEach(item => {
@@ -81,13 +83,22 @@
     // ---- Mobile ----
     function initMobile() {
         const sidebar = document.getElementById('sidebar');
+        const backdrop = document.createElement('div');
+        backdrop.className = 'sidebar-backdrop';
+        document.body.appendChild(backdrop);
+
+        function openSidebar() { sidebar.classList.add('open'); backdrop.classList.add('visible'); }
+        function closeSidebar() { sidebar.classList.remove('open'); backdrop.classList.remove('visible'); }
+
         document.getElementById('menu-toggle').addEventListener('click', () => {
-            sidebar.classList.toggle('open');
+            sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
         });
+        backdrop.addEventListener('click', closeSidebar);
+
         // Remove open class when viewport switches to desktop so sidebar never stays stuck
         const mq = window.matchMedia('(min-width: 769px)');
         mq.addEventListener('change', e => {
-            if (e.matches) sidebar.classList.remove('open');
+            if (e.matches) closeSidebar();
         });
     }
 

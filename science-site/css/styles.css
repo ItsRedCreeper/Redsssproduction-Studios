@@ -427,7 +427,7 @@ textarea { resize: vertical; min-height: 100px; }
     height: 56px;
     background: var(--bg-sidebar);
     border-bottom: 1px solid var(--border);
-    z-index: 90;
+    z-index: 110;
     align-items: center;
     padding: 0 16px;
     gap: 12px;
@@ -579,10 +579,9 @@ textarea { resize: vertical; min-height: 100px; }
 }
 .periodic-grid {
     display: grid;
-    grid-template-columns: repeat(18, minmax(52px, 1fr));
-    grid-template-rows: repeat(7, auto) 20px repeat(2, auto);
+    grid-template-columns: repeat(18, minmax(0, 1fr));
+    grid-template-rows: repeat(7, auto) 12px repeat(2, auto);
     gap: 2px;
-    min-width: 950px;
 }
 .periodic-row-label {
     display: flex;
@@ -608,7 +607,9 @@ textarea { resize: vertical; min-height: 100px; }
     position: relative;
     border: 1px solid transparent;
     padding: 2px;
-    min-height: 52px;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
 }
 .element-cell:hover {
     transform: scale(1.25);
@@ -1124,6 +1125,16 @@ textarea { resize: vertical; min-height: 100px; }
     .sidebar.open {
         transform: translateX(0);
     }
+    .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 99;
+    }
+    .sidebar-backdrop.visible {
+        display: block;
+    }
     .mobile-header { display: flex; }
     .main-content {
         margin-left: 0;
@@ -1140,6 +1151,17 @@ textarea { resize: vertical; min-height: 100px; }
     .notes-list { max-width: 100%; }
     .lab-inputs { grid-template-columns: 1fr 1fr; }
     .tools-grid { grid-template-columns: 1fr; }
+    .periodic-grid {
+        grid-template-columns: repeat(18, minmax(0, 1fr));
+        gap: 1px;
+    }
+    .element-cell { padding: 1px; border-radius: 2px; }
+    .element-cell .el-symbol { font-size: 0.6rem; }
+    .element-cell .el-number { font-size: 0.35rem; }
+    .element-cell .el-name { display: none; }
+    .element-cell .el-mass { display: none; }
+    .element-cell.indicator { font-size: 0.4rem; }
+    .periodic-row-label { font-size: 0.35rem; padding-right: 2px; }
 }
 
 /* Scrollbar */
