@@ -108,7 +108,7 @@
         // Render elements
         if (typeof ELEMENTS === 'undefined') return;
 
-        // Add lanthanide/actinide indicators
+        // Add lanthanide/actinide indicators in main table
         const indicatorLn = document.createElement('div');
         indicatorLn.className = 'element-cell indicator';
         indicatorLn.style.cssText = `grid-row:6;grid-column:3;`;
@@ -120,6 +120,19 @@
         indicatorAc.style.cssText = `grid-row:7;grid-column:3;`;
         indicatorAc.textContent = '89-103';
         grid.appendChild(indicatorAc);
+
+        // Row labels for the lanthanide and actinide sub-table
+        const labelLn = document.createElement('div');
+        labelLn.className = 'periodic-row-label';
+        labelLn.style.cssText = `grid-row:9;grid-column:1/3;`;
+        labelLn.textContent = 'Lanthanides';
+        grid.appendChild(labelLn);
+
+        const labelAc = document.createElement('div');
+        labelAc.className = 'periodic-row-label';
+        labelAc.style.cssText = `grid-row:10;grid-column:1/3;`;
+        labelAc.textContent = 'Actinides';
+        grid.appendChild(labelAc);
 
         const cells = [];
         ELEMENTS.forEach(el => {
@@ -309,6 +322,7 @@
         const buttons = document.querySelectorAll('.calc-btn');
 
         let expression = '';
+        let lastEvaluated = null;
         let history = [];
 
         buttons.forEach(btn => {
@@ -349,6 +363,7 @@
                         break;
                     case 'clear':
                         expression = '';
+                        lastEvaluated = null;
                         display.textContent = '0';
                         exprDisplay.textContent = '';
                         break;
@@ -357,12 +372,14 @@
                         display.textContent = expression || '0';
                         break;
                     case 'equals':
+                        if (expression === lastEvaluated) break;
                         try {
                             const result = evaluateExpression(expression);
                             exprDisplay.textContent = expression + ' =';
                             display.textContent = result;
                             history.unshift({ expr: expression, result: result });
                             renderHistory();
+                            lastEvaluated = expression;
                             expression = String(result);
                         } catch (e) {
                             display.textContent = 'Error';
