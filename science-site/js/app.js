@@ -316,14 +316,17 @@
                 const action = btn.dataset.action;
                 switch (action) {
                     case 'num':
+                        if (expression.length >= 100) break;
                         expression += btn.dataset.val;
                         display.textContent = expression;
                         break;
                     case 'op':
+                        if (expression.length >= 100) break;
                         expression += btn.dataset.op;
                         display.textContent = expression;
                         break;
                     case 'func':
+                        if (expression.length >= 95) break;
                         const func = btn.dataset.func;
                         if (func === 'fact') {
                             expression += '!';
@@ -434,7 +437,7 @@
                         ${sec.inputs.map(inp => `
                             <div class="lab-input-group">
                                 <label>${inp.label} (${inp.unit})</label>
-                                <input type="number" step="any" id="phys-${tabId}-${i}-${inp.id}" placeholder="${inp.label}">
+                                <input type="number" step="any" id="phys-${tabId}-${i}-${inp.id}" placeholder="${inp.label}" min="-1e15" max="1e15">
                             </div>
                         `).join('')}
                     </div>
@@ -576,8 +579,24 @@
         });
 
         saveBtn.addEventListener('click', async () => {
+            const title = titleInput.value.trim();
+            if (title.length < 3) {
+                alert('Title must be at least 3 characters.');
+                titleInput.focus();
+                return;
+            }
+            if (title.length > 100) {
+                alert('Title cannot exceed 100 characters.');
+                titleInput.focus();
+                return;
+            }
+            if (contentInput.value.length > 5000) {
+                alert('Note content cannot exceed 5,000 characters.');
+                contentInput.focus();
+                return;
+            }
             const data = {
-                title: titleInput.value.trim() || 'Untitled Note',
+                title: title,
                 content: contentInput.value,
                 category: categoryInput.value,
                 images: noteImages,

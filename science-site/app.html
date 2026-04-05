@@ -184,7 +184,7 @@
                     <div class="converter-row">
                         <div class="converter-field">
                             <label>From</label>
-                            <input type="number" id="conv-from-val" class="conv-input" placeholder="Enter value" step="any">
+                            <input type="number" id="conv-from-val" class="conv-input" placeholder="Enter value" step="any" min="-1e15" max="1e15">
                             <select id="conv-from-unit" class="select-input" title="From unit"></select>
                         </div>
                         <div class="converter-swap">
@@ -306,7 +306,7 @@
                     <p class="empty-state">No notes yet. Click "+ New Note" to start.</p>
                 </div>
                 <div id="note-editor" class="note-editor hidden">
-                    <input type="text" id="note-title" class="note-title-input" placeholder="Note Title">
+                    <input type="text" id="note-title" class="note-title-input" placeholder="Note Title" minlength="3" maxlength="100">
                     <div class="note-meta">
                         <select id="note-category" class="select-input select-sm" title="Note category">
                             <option value="observation">Observation</option>
@@ -317,7 +317,7 @@
                         </select>
                         <span id="note-date" class="note-date"></span>
                     </div>
-                    <textarea id="note-content" class="note-content-input" placeholder="Write your observations, hypotheses, procedures, and conclusions..."></textarea>
+                    <textarea id="note-content" class="note-content-input" placeholder="Write your observations, hypotheses, procedures, and conclusions..." maxlength="5000"></textarea>
                     <div id="note-images" class="note-images"></div>
                     <div class="note-actions">
                         <button id="upload-note-img" class="btn btn-ghost">📷 Add Image</button>

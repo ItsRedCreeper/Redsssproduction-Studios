@@ -411,7 +411,7 @@ const CHEM_TABS = {
             <div class="lab-inputs">
                 <div class="lab-input-group" style="grid-column:1/-1">
                     <label>Chemical Formula</label>
-                    <input type="text" id="mw-formula" placeholder="e.g. H2O, C6H12O6, Ca(OH)2" style="font-size:1.2rem">
+                    <input type="text" id="mw-formula" placeholder="e.g. H2O, C6H12O6, Ca(OH)2" maxlength="50" style="font-size:1.2rem">
                 </div>
             </div>
             <button class="btn btn-primary btn-sm" id="mw-calc-btn">Calculate</button>
@@ -512,6 +512,11 @@ const CHEM_TABS = {
                     result.textContent = 'Leave exactly one field empty to solve for it.';
                     return;
                 }
+                // Check division by zero
+                if (vals[0] === null && vals[1] === 0) { result.textContent = 'V₁ cannot be zero.'; return; }
+                if (vals[1] === null && vals[0] === 0) { result.textContent = 'M₁ cannot be zero.'; return; }
+                if (vals[2] === null && vals[3] === 0) { result.textContent = 'V₂ cannot be zero.'; return; }
+                if (vals[3] === null && vals[2] === 0) { result.textContent = 'M₂ cannot be zero.'; return; }
                 if (vals[0] === null) {
                     result.textContent = `M₁ = (${vals[2]})(${vals[3]}) / ${vals[1]} = ${((vals[2] * vals[3]) / vals[1]).toFixed(6)} mol/L`;
                 } else if (vals[1] === null) {
@@ -563,6 +568,11 @@ const CHEM_TABS = {
                     result.textContent = 'Leave exactly one field empty to solve for it.';
                     return;
                 }
+                // Check division by zero
+                if (vals[0] === null && vals[1] === 0) { result.textContent = 'Volume cannot be zero.'; return; }
+                if (vals[1] === null && vals[0] === 0) { result.textContent = 'Pressure cannot be zero.'; return; }
+                if (vals[2] === null && vals[3] === 0) { result.textContent = 'Temperature cannot be zero (use Kelvin).'; return; }
+                if (vals[3] === null && vals[2] === 0) { result.textContent = 'Moles cannot be zero.'; return; }
                 if (vals[0] === null) {
                     const P = (vals[2] * R * vals[3]) / vals[1];
                     result.textContent = `P = nRT/V = (${vals[2]})(8.314)(${vals[3]}) / ${vals[1]} = ${P.toExponential(4)} Pa`;
