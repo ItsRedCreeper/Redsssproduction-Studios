@@ -1139,3 +1139,42 @@ textarea { resize: vertical; min-height: 100px; }
     z-index: 199;
     animation: fadeIn 0.2s ease;
 }
+
+/* ==========================================
+   TOAST NOTIFICATIONS
+   ========================================== */
+.app-toast {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%) translateY(16px);
+    background: #1e2d40;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: 12px 20px;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    max-width: min(420px, calc(100vw - 40px));
+    text-align: center;
+    pointer-events: none;
+}
+.app-toast--visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+.app-toast--error {
+    border-left: 3px solid #f87171;
+    color: #fca5a5;
+}
+.app-toast--success {
+    border-left: 3px solid var(--accent-green);
+    color: #6ee7b7;
+}
+.app-toast--info {
+    border-left: 3px solid var(--accent-blue);
+    color: #93c5fd;
+}

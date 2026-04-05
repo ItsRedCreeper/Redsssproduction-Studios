@@ -581,17 +581,17 @@
         saveBtn.addEventListener('click', async () => {
             const title = titleInput.value.trim();
             if (title.length < 3) {
-                alert('Title must be at least 3 characters.');
+                showToast('Title must be at least 3 characters.');
                 titleInput.focus();
                 return;
             }
             if (title.length > 100) {
-                alert('Title cannot exceed 100 characters.');
+                showToast('Title cannot exceed 100 characters.');
                 titleInput.focus();
                 return;
             }
             if (contentInput.value.length > 5000) {
-                alert('Note content cannot exceed 5,000 characters.');
+                showToast('Note content cannot exceed 5,000 characters.');
                 contentInput.focus();
                 return;
             }
@@ -623,7 +623,7 @@
 
         // Image upload via Cloudinary
         uploadImgBtn.addEventListener('click', () => {
-            if (typeof cloudinary === 'undefined') { alert('Cloudinary widget not loaded'); return; }
+            if (typeof cloudinary === 'undefined') { showToast('Image upload is not available right now.'); return; }
             const widget = cloudinary.createUploadWidget({
                 cloudName: CLOUDINARY_CLOUD_NAME,
                 uploadPreset: CLOUDINARY_UPLOAD_PRESET,
@@ -654,5 +654,26 @@
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    function showToast(message, type) {
+        // Remove any existing toast
+        const existing = document.getElementById('app-toast');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.id = 'app-toast';
+        toast.className = 'app-toast app-toast--' + (type || 'error');
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        // Animate in
+        requestAnimationFrame(() => toast.classList.add('app-toast--visible'));
+
+        // Auto-dismiss after 4s
+        setTimeout(() => {
+            toast.classList.remove('app-toast--visible');
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
     }
 })();
