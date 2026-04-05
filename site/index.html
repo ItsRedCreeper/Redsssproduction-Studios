@@ -91,7 +91,7 @@
         <button class="nav-link active" data-page="home">Home</button>
         <button class="nav-link" data-page="games">Games</button>
         <button class="nav-link" data-page="friends">Friends</button>
-        <button class="nav-link" data-page="messenger" onclick="window.location.href='messenger.html'">Messenger</button>
+        <button class="nav-link" data-page="messenger">Messenger</button>
         <button class="nav-link" data-page="admin" id="nav-admin" style="display:none">Admin</button>
       </div>
       <div class="nav-user">
@@ -203,6 +203,68 @@
           </div>
         </div>
       </div>
+
+      <!-- MESSENGER -->
+      <div class="page" id="page-messenger">
+        <!-- Server Strip -->
+        <div class="messenger-layout" id="messenger-app">
+          <div class="server-strip">
+            <div class="server-icon dm-icon active" id="dm-tab" title="Direct Messages">💬</div>
+            <div class="server-divider"></div>
+            <div id="server-icons"></div>
+            <button class="server-add" id="create-server-btn" title="Create Server">+</button>
+          </div>
+          <!-- Channel Sidebar -->
+          <div class="channel-sidebar">
+            <div class="channel-header">
+              <span id="sidebar-title">Direct Messages</span>
+              <span class="server-settings" id="server-settings-btn" style="display:none" title="Settings">⚙</span>
+            </div>
+            <div class="channel-list" id="channel-list"></div>
+            <div class="channel-user-area">
+              <div class="friend-avatar" id="msg-user-avatar"></div>
+              <span id="msg-user-name"></span>
+            </div>
+          </div>
+          <!-- Chat Area -->
+          <div class="chat-area">
+            <div class="chat-header" id="chat-header" style="display:none">
+              <span class="hash">#</span>
+              <span class="channel-name" id="chat-channel-name"></span>
+            </div>
+            <div class="chat-messages" id="chat-messages">
+              <div class="chat-empty">Select a conversation to start chatting</div>
+            </div>
+            <div class="chat-input-area" id="chat-input-area" style="display:none">
+              <div class="chat-input-wrapper">
+                <button class="chat-input-btn" id="attach-btn" title="Upload image">📎</button>
+                <input type="file" id="chat-file-input" accept="image/*">
+                <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
+                <button class="chat-input-btn" id="emoji-btn" title="Emoji">😀</button>
+              </div>
+            </div>
+          </div>
+          <!-- Members Sidebar -->
+          <div class="members-sidebar" id="members-sidebar" style="display:none">
+            <div class="members-title">Members</div>
+            <div id="members-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── CREATE SERVER MODAL ─── -->
+  <div class="modal-overlay" id="create-server-modal">
+    <div class="modal">
+      <h3>Create a Server</h3>
+      <div class="create-server-form">
+        <input id="server-name-input" placeholder="Server name" maxlength="50">
+      </div>
+      <div class="modal-buttons">
+        <button class="btn-cancel" onclick="document.getElementById('create-server-modal').classList.remove('active')">Cancel</button>
+        <button class="btn btn-primary" id="confirm-create-server">Create</button>
+      </div>
     </div>
   </div>
 
@@ -227,6 +289,7 @@
   <script src="js/firebase-config.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/friends.js"></script>
+  <script src="js/messenger.js"></script>
   <script src="js/app.js"></script>
   <script>
       document.addEventListener('keydown', function(e) {

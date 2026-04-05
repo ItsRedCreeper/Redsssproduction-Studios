@@ -9,36 +9,39 @@ let currentView = 'dm'; // 'dm' or server id
 let currentChannel = null; // channel id or DM conversation id
 let messageListener = null;
 
-/* ─── TOAST (standalone for messenger page) ─── */
+/* ─── TOAST (guarded: app.js defines this on main page) ─── */
 
-function showToast(message, type = 'info') {
-  const container = document.getElementById('toast-container');
-  const toast = document.createElement('div');
-  toast.className = 'toast ' + type;
-  toast.textContent = message;
-  container.appendChild(toast);
-  setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3500);
+if (typeof showToast === 'undefined') {
+  // eslint-disable-next-line no-inner-declarations
+  function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3500);
+  }
 }
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.appendChild(document.createTextNode(str || ''));
-  return div.innerHTML;
+if (typeof escapeHtml === 'undefined') {
+  // eslint-disable-next-line no-inner-declarations
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str || ''));
+    return div.innerHTML;
+  }
 }
 
 /* ─── AUTH STATE ─── */
 
 auth.onAuthStateChanged(async (user) => {
-  const loading = document.getElementById('loading-screen');
-
   if (user) {
     msgUser = user;
     const doc = await db.collection('users').doc(user.uid).get();
     if (doc.exists) {
       msgProfile = { id: doc.id, ...doc.data() };
     } else {
-      // Shouldn't happen normally, redirect to main site
-      window.location.href = 'index.html';
+      // Profile not found — stay on page, auth.js handles access control
       return;
     }
 
@@ -47,10 +50,12 @@ auth.onAuthStateChanged(async (user) => {
     loadDMs();
     document.getElementById('messenger-app').style.display = 'flex';
   } else {
-    window.location.href = 'index.html';
+    // Not authenticated — app.js handles login gating
+    return;
   }
 
-  loading.style.display = 'none';
+  const loading = document.getElementById('loading-screen');
+  if (loading) loading.style.display = 'none';
 });
 
 /* ─── USER AREA ─── */

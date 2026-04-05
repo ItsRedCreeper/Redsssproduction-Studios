@@ -117,12 +117,20 @@ function renderUserUI() {
 document.querySelectorAll('.nav-link[data-page]').forEach(link => {
   link.addEventListener('click', () => {
     const page = link.dataset.page;
-    if (page === 'messenger') return; // handled by onclick redirect
 
     document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
     link.classList.add('active');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-' + page).classList.add('active');
+
+    const titles = {
+      home: 'RedsssProduction Studios',
+      games: 'Games — RedsssProduction Studios',
+      friends: 'Friends — RedsssProduction Studios',
+      messenger: 'Messenger — RedsssProduction Studios',
+      admin: 'Admin — RedsssProduction Studios'
+    };
+    document.title = titles[page] || 'RedsssProduction Studios';
 
     if (page === 'admin' && currentProfile && currentProfile.role === 'admin') {
       loadAdminGames();
