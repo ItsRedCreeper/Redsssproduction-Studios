@@ -123,11 +123,15 @@ input[type="text"], input[type="email"], input[type="password"], input[type="num
     padding: 10px 14px;
     border-radius: var(--radius-xs);
     border: 1px solid var(--border-light);
-    background: rgba(255,255,255,0.05);
+    background: #162234;
     color: var(--text-primary);
     font-size: 0.95rem;
     transition: border-color var(--transition), box-shadow var(--transition);
     outline: none;
+}
+option, optgroup {
+    background: #1e2d40;
+    color: var(--text-primary);
 }
 input:focus, textarea:focus, .select-input:focus {
     border-color: var(--accent-blue);
@@ -196,7 +200,24 @@ textarea { resize: vertical; min-height: 100px; }
     font-weight: 700;
     color: #fff;
 }
-.login-brand .accent { color: var(--accent-blue); }
+.login-logo {
+    display: block;
+    max-width: 280px;
+    margin: 0 auto 4px;
+    background: #fff;
+    border-radius: 8px;
+    padding: 12px 18px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+}
+.sidebar-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 5px;
+    background: #fff;
+    object-fit: contain;
+    padding: 2px;
+    flex-shrink: 0;
+}
 .login-brand .tagline {
     font-size: 0.85rem;
     color: var(--text-secondary);

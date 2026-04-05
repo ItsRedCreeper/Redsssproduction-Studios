@@ -51,28 +51,33 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     googleBtn.addEventListener('click', function () {
+        if (googleBtn.disabled) return;
         console.log('[auth.js] Google sign-in clicked');
         var provider = new firebase.auth.GoogleAuthProvider();
         googleBtn.disabled = true;
-        showMessage('Opening Google sign-in...', 'success');
-        auth.signInWithPopup(provider).then(function (result) {
-            console.log('[auth.js] Google sign-in success');
-            var user = result.user;
-            return db.collection('users').doc(user.uid).set({
-                displayName: user.displayName || '',
-                email: user.email || '',
-                avatarUrl: user.photoURL || '',
-                lastLogin: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-        }).catch(function (err) {
-            console.error('[auth.js] Google error:', err.code, err.message);
-            if (err.code !== 'auth/popup-closed-by-user') {
-                showMessage(friendlyError(err.code), 'error');
-            } else {
-                hideMessage();
-            }
-            googleBtn.disabled = false;
-        });
+        showMessage('Opening Google sign-in\u2026', 'success');
+        auth.signInWithPopup(provider)
+            .then(function (result) {
+                console.log('[auth.js] Google sign-in success');
+                var user = result.user;
+                if (!user) return;
+                return db.collection('users').doc(user.uid).set({
+                    displayName: user.displayName || '',
+                    email: user.email || '',
+                    avatarUrl: user.photoURL || '',
+                    lastLogin: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            })
+            .catch(function (err) {
+                console.error('[auth.js] Google error:', err.code, err.message);
+                var silent = ['auth/popup-closed-by-user', 'auth/cancelled-popup-request'];
+                if (silent.indexOf(err.code) !== -1) {
+                    hideMessage();
+                } else {
+                    showMessage(friendlyError(err.code), 'error');
+                }
+                googleBtn.disabled = false;
+            });
     });
 
     console.log('[auth.js] Listeners attached');
