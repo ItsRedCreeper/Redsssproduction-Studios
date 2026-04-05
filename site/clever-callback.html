@@ -105,7 +105,7 @@
       fetch(WORKER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: code })
+        body: JSON.stringify({ code: code, redirectUri: window.location.origin + '/clever-callback.html' })
       })
       .then(function(r) { return r.json(); })
       .then(function(data) {
