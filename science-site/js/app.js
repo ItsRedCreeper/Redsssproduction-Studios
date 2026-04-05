@@ -80,8 +80,14 @@
 
     // ---- Mobile ----
     function initMobile() {
+        const sidebar = document.getElementById('sidebar');
         document.getElementById('menu-toggle').addEventListener('click', () => {
-            document.getElementById('sidebar').classList.toggle('open');
+            sidebar.classList.toggle('open');
+        });
+        // Remove open class when viewport switches to desktop so sidebar never stays stuck
+        const mq = window.matchMedia('(min-width: 769px)');
+        mq.addEventListener('change', e => {
+            if (e.matches) sidebar.classList.remove('open');
         });
     }
 
@@ -434,6 +440,59 @@
         clearHistoryBtn.addEventListener('click', () => {
             history = [];
             historyContainer.innerHTML = '';
+        });
+
+        // ---- Keyboard input ----
+        document.addEventListener('keydown', e => {
+            // Only handle when on calculator page and not typing in an input/textarea
+            if (!document.getElementById('page-calculator').classList.contains('active')) return;
+            const focused = document.activeElement;
+            if (focused && (focused.tagName === 'INPUT' || focused.tagName === 'TEXTAREA' || focused.tagName === 'SELECT')) return;
+
+            const key = e.key;
+            if (key >= '0' && key <= '9' || key === '.') {
+                if (expression.length >= 100) return;
+                expression += key;
+                display.textContent = expression;
+                lastEvaluated = null;
+            } else if (key === '+' || key === '-' || key === '*' || key === '/') {
+                if (expression.length >= 100) return;
+                expression += key;
+                display.textContent = expression;
+                lastEvaluated = null;
+            } else if (key === '(' || key === ')') {
+                expression += key;
+                display.textContent = expression;
+                lastEvaluated = null;
+            } else if (key === 'Enter' || key === '=') {
+                e.preventDefault();
+                if (expression === lastEvaluated) return;
+                try {
+                    const result = evaluateExpression(expression);
+                    exprDisplay.textContent = expression + ' =';
+                    display.textContent = result;
+                    history.unshift({ expr: expression, result: result });
+                    renderHistory();
+                    lastEvaluated = expression;
+                    expression = String(result);
+                } catch (err) {
+                    display.textContent = 'Error';
+                    setTimeout(() => { display.textContent = expression || '0'; }, 1500);
+                }
+            } else if (key === 'Backspace') {
+                e.preventDefault();
+                expression = expression.slice(0, -1);
+                display.textContent = expression || '0';
+                lastEvaluated = null;
+            } else if (key === 'Escape' || key === 'Delete') {
+                expression = '';
+                lastEvaluated = null;
+                display.textContent = '0';
+                exprDisplay.textContent = '';
+            } else {
+                return; // don't prevent default for unhandled keys
+            }
+            e.preventDefault();
         });
     }
 
