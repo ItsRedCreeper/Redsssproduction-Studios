@@ -5,291 +5,228 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RedsssProduction Studios</title>
   <link rel="stylesheet" href="css/style.css">
-  <link rel="icon" type="image/png" href="science_data_portal_fav_icon.png">
 </head>
 <body>
 
-  <!-- ─── LOADING SCREEN ─── -->
+  <!-- Loading Screen -->
   <div id="loading-screen">
     <div class="loader-logo">RedsssProduction Studios</div>
     <div class="loader-spinner"></div>
   </div>
 
-  <!-- ─── AUTH SCREEN ─── -->
-  <div id="auth-screen">
-    <div class="auth-container">
-      <h1>RedsssProduction Studios</h1>
-      <p class="auth-subtitle">Games, chat, and more</p>
-
-      <div class="auth-tabs">
-        <button class="auth-tab active" data-tab="login">Log In</button>
-        <button class="auth-tab" data-tab="register">Register</button>
-      </div>
-
-      <!-- Login Form -->
-      <form class="auth-form active" id="login-form" onsubmit="return false">
-        <div class="form-group">
-          <label>Email</label>
-          <input type="email" id="login-email" autocomplete="email" placeholder="you@email.com">
-        </div>
-        <div class="form-group">
-          <label>Password</label>
-          <input type="password" id="login-password" autocomplete="current-password" placeholder="••••••••">
-        </div>
-        <div class="auth-error" id="login-error"></div>
-        <button class="btn btn-primary" id="login-btn" type="button">Log In</button>
-        <div class="auth-divider">or</div>
-        <button class="btn-google" type="button">
-          <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.76h3.56c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.76c-.98.66-2.24 1.05-3.72 1.05-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.96 10.96 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-          Continue with Google
-        </button>
-      </form>
-
-      <!-- Register Form -->
-      <form class="auth-form" id="register-form" onsubmit="return false">
+  <!-- Login Page -->
+  <div class="auth-page" id="login-page">
+    <div class="auth-box">
+      <h1>Welcome Back</h1>
+      <p class="subtitle">Log in to RedsssProduction Studios</p>
+      <form id="login-form" onsubmit="return false">
         <div class="form-group">
           <label>Username</label>
-          <input type="text" id="reg-username" autocomplete="username" placeholder="RedCreeper" maxlength="20">
-        </div>
-        <div class="form-group">
-          <label>Email</label>
-          <input type="email" id="reg-email" autocomplete="email" placeholder="you@email.com">
+          <input class="form-input" type="text" id="login-username" placeholder="Your username" autocomplete="username">
         </div>
         <div class="form-group">
           <label>Password</label>
-          <input type="password" id="reg-password" autocomplete="new-password" placeholder="At least 6 characters">
+          <input class="form-input" type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
         </div>
-        <div class="form-group">
-          <label>Confirm Password</label>
-          <input type="password" id="reg-confirm" autocomplete="new-password" placeholder="••••••••">
-        </div>
-        <div class="auth-error" id="reg-error"></div>
-        <button class="btn btn-primary" id="reg-btn" type="button">Create Account</button>
+        <div class="auth-error" id="login-error"></div>
+        <button class="btn btn-primary btn-full" id="login-btn" type="button">Log In</button>
         <div class="auth-divider">or</div>
         <button class="btn-google" type="button">
           <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.76h3.56c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.76c-.98.66-2.24 1.05-3.72 1.05-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.96 10.96 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
           Continue with Google
         </button>
       </form>
+      <p class="auth-switch">Don't have an account? <a id="goto-register">Sign up</a></p>
     </div>
   </div>
 
-  <!-- ─── MAIN APP ─── -->
-  <div id="app">
-    <!-- Navbar -->
+  <!-- Register Page -->
+  <div class="auth-page" id="register-page">
+    <div class="auth-box">
+      <h1>Create Account</h1>
+      <p class="subtitle">Join RedsssProduction Studios</p>
+      <form id="register-form" onsubmit="return false">
+        <div class="avatar-upload-area">
+          <div class="avatar-preview" id="reg-avatar-preview" title="Click to upload a profile picture">📷</div>
+          <span class="avatar-upload-label">Profile picture (optional)</span>
+          <input type="file" id="reg-avatar-input" accept="image/*" style="display:none">
+        </div>
+        <div class="form-group">
+          <label>Username</label>
+          <input class="form-input" type="text" id="reg-username" placeholder="Choose a username" maxlength="20" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input class="form-input" type="email" id="reg-email" placeholder="you@email.com" autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input class="form-input" type="password" id="reg-password" placeholder="At least 6 characters" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <input class="form-input" type="password" id="reg-confirm" placeholder="••••••••" autocomplete="new-password">
+        </div>
+        <div class="auth-error" id="reg-error"></div>
+        <button class="btn btn-primary btn-full" id="register-btn" type="button">Create Account</button>
+        <div class="auth-divider">or</div>
+        <button class="btn-google" type="button">
+          <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.76h3.56c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.76c-.98.66-2.24 1.05-3.72 1.05-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18A10.96 10.96 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          Continue with Google
+        </button>
+      </form>
+      <p class="auth-switch">Already have an account? <a id="goto-login">Log in</a></p>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div id="app" style="display:none">
     <nav class="navbar">
-      <div class="nav-brand">Redsss<span>Production Studios</span></div>
+      <div class="nav-brand">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='0' fill='%23c0392b'/%3E%3Ctext x='16' y='22' text-anchor='middle' fill='white' font-size='18' font-weight='bold' font-family='sans-serif'%3ER%3C/text%3E%3C/svg%3E" alt="Logo">
+        <span class="brand-text">Redsss<span>Production Studios</span></span>
+      </div>
+
       <div class="nav-links">
         <button class="nav-link active" data-page="home">Home</button>
         <button class="nav-link" data-page="games">Games</button>
-        <button class="nav-link" data-page="friends">Friends</button>
-        <button class="nav-link" data-page="messenger">Messenger</button>
-        <button class="nav-link" data-page="admin" id="nav-admin" style="display:none">Admin</button>
+        <button class="nav-link" data-page="messenger" onclick="window.location.href='messenger.html'">RedsssMessenger</button>
+        <button class="nav-link" data-page="support">Support</button>
       </div>
-      <div class="nav-user">
+
+      <div class="nav-right">
+        <!-- Notification Bell -->
+        <div class="notif-wrapper">
+          <button class="notif-bell" id="notif-bell" title="Notifications">🔔</button>
+          <span class="notif-badge" id="notif-badge">0</span>
+          <div class="notif-dropdown" id="notif-dropdown">
+            <div class="notif-dropdown-header">Notifications</div>
+            <div id="notif-list"><div class="notif-empty">No notifications</div></div>
+          </div>
+        </div>
+
         <div class="nav-avatar" id="nav-avatar" title="Profile"></div>
-        <button class="btn-logout" id="btn-logout">Log Out</button>
+        <span class="nav-username" id="nav-username"></span>
       </div>
     </nav>
 
     <!-- Profile Dropdown -->
     <div class="profile-dropdown" id="profile-dropdown">
-      <div class="profile-header">
-        <div class="profile-avatar-lg" id="profile-avatar-lg"></div>
-        <div class="profile-info">
-          <div class="profile-name" id="profile-name"></div>
-          <div class="profile-email" id="profile-email"></div>
+      <div class="profile-dd-header">
+        <div class="profile-dd-avatar" id="profile-dd-avatar"></div>
+        <div>
+          <div class="profile-dd-name" id="profile-dd-name"></div>
+          <div class="profile-dd-email" id="profile-dd-email"></div>
         </div>
       </div>
-      <input class="profile-status-input" id="profile-status" placeholder="Set a status..." maxlength="100">
+      <div class="profile-dd-section">
+        <label>Status</label>
+        <input class="profile-dd-input" id="profile-status" placeholder="Set a status..." maxlength="100">
+      </div>
       <input type="file" id="avatar-upload" accept="image/*" style="display:none">
-      <button class="btn btn-primary" style="width:100%;font-size:13px;padding:8px" id="save-profile-btn">Save Profile</button>
+      <button class="btn btn-primary btn-sm btn-full" id="save-profile-btn">Save Changes</button>
+      <button class="btn-logout" id="btn-logout">Log Out</button>
     </div>
 
-    <!-- Pages -->
-    <div class="content">
+    <!-- Page Content -->
+    <div class="page-content">
       <!-- HOME -->
       <div class="page active" id="page-home">
-        <div class="home-page">
-          <div class="hero">
-            <h2>Welcome to <span>Redsss</span>Production Studios</h2>
-            <p>Play games, chat with friends, and hang out.</p>
-          </div>
-          <h3 class="home-section-title">Featured Games</h3>
-          <div class="slideshow-wrapper">
-            <div class="slideshow" id="home-slideshow"></div>
-          </div>
+        <div class="hero">
+          <h2>Welcome to <span class="accent">Redsss</span>Production Studios</h2>
+          <p>Play games, chat with friends, and hang out.</p>
+        </div>
+        <div class="section">
+          <h3 class="section-title">Featured Games</h3>
+          <div class="featured-grid" id="home-featured"></div>
         </div>
       </div>
 
       <!-- GAMES -->
       <div class="page" id="page-games">
-        <div class="games-page">
-          <h2 style="margin-bottom:24px;font-size:24px">Games</h2>
-          <div class="games-grid" id="games-grid"></div>
+        <div class="section">
+          <h2 style="font-size:24px;margin-bottom:24px">Games</h2>
+          <div class="featured-grid" id="games-grid"></div>
         </div>
       </div>
 
-      <!-- FRIENDS -->
-      <div class="page" id="page-friends">
-        <div class="friends-page">
-          <div class="friends-sidebar">
-            <div class="friends-sidebar-header">
-              <h3>Friends</h3>
-              <input class="friends-search" id="friends-search" placeholder="Search friends...">
-            </div>
-            <div class="friends-tabs">
-              <button class="friends-tab active" data-ftab="online">Online</button>
-              <button class="friends-tab" data-ftab="all">All</button>
-              <button class="friends-tab" data-ftab="pending">Pending</button>
-            </div>
-            <div class="friends-list" id="friends-list"></div>
-          </div>
-          <div class="friends-content" id="friends-content">
-            <p>Select a friend or add a new one!</p>
-            <div class="add-friend-box">
-              <input id="add-friend-input" placeholder="Enter username...">
-              <button class="btn btn-primary" id="add-friend-btn">Add</button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- SUPPORT -->
+      <div class="page" id="page-support">
+        <div class="support-page">
+          <h2>Support</h2>
 
-      <!-- ADMIN -->
-      <div class="page" id="page-admin">
-        <div class="admin-page">
-          <h2 style="margin-bottom:24px;font-size:24px">Admin Panel</h2>
-
-          <!-- Manage Games -->
-          <div class="admin-section">
-            <h3>Manage Games</h3>
-            <div class="admin-form" id="game-form">
-              <input id="game-title" placeholder="Game title">
-              <input id="game-desc" placeholder="Short description">
-              <input id="game-url" placeholder="Game URL (e.g. games/snake-pit/index.html)">
-              <input id="game-img" placeholder="Thumbnail URL (Cloudinary or direct link)">
-              <select id="game-status">
-                <option value="released">Released</option>
-                <option value="early">Early Access</option>
-                <option value="coming">Coming Soon</option>
-              </select>
-              <button class="btn btn-primary" id="save-game-btn">Add Game</button>
+          <div class="faq-item">
+            <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+              <span>How do I play games?</span>
+              <span class="arrow">▼</span>
             </div>
-            <table class="admin-table" id="games-table">
-              <thead>
-                <tr><th>Title</th><th>Status</th><th>Actions</th></tr>
-              </thead>
-              <tbody id="games-table-body"></tbody>
-            </table>
+            <div class="faq-answer">Go to the Games page and click on any game card. The game will open in a fullscreen player. Click the close button to return.</div>
           </div>
 
-          <!-- Manage Users -->
-          <div class="admin-section">
-            <h3>Manage Users</h3>
-            <table class="admin-table" id="users-table">
-              <thead>
-                <tr><th>Username</th><th>Email</th><th>Role</th><th>Actions</th></tr>
-              </thead>
-              <tbody id="users-table-body"></tbody>
-            </table>
+          <div class="faq-item">
+            <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+              <span>How do I use RedsssMessenger?</span>
+              <span class="arrow">▼</span>
+            </div>
+            <div class="faq-answer">Click "RedsssMessenger" in the navigation bar. You can create servers, join channels, and send direct messages to friends.</div>
           </div>
-        </div>
-      </div>
 
-      <!-- MESSENGER -->
-      <div class="page" id="page-messenger">
-        <!-- Server Strip -->
-        <div class="messenger-layout" id="messenger-app">
-          <div class="server-strip">
-            <div class="server-icon dm-icon active" id="dm-tab" title="Direct Messages">💬</div>
-            <div class="server-divider"></div>
-            <div id="server-icons"></div>
-            <button class="server-add" id="create-server-btn" title="Create Server">+</button>
+          <div class="faq-item">
+            <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+              <span>How do I add friends?</span>
+              <span class="arrow">▼</span>
+            </div>
+            <div class="faq-answer">Open RedsssMessenger and go to the Direct Messages view. Use the add friend button and type their username to send a friend request.</div>
           </div>
-          <!-- Channel Sidebar -->
-          <div class="channel-sidebar">
-            <div class="channel-header">
-              <span id="sidebar-title">Direct Messages</span>
-              <span class="server-settings" id="server-settings-btn" style="display:none" title="Settings">⚙</span>
+
+          <div class="faq-item">
+            <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+              <span>How do I change my profile picture?</span>
+              <span class="arrow">▼</span>
             </div>
-            <div class="channel-list" id="channel-list"></div>
-            <div class="channel-user-area">
-              <div class="friend-avatar" id="msg-user-avatar"></div>
-              <span id="msg-user-name"></span>
-            </div>
+            <div class="faq-answer">Click on your avatar in the top right corner to open your profile. Click the avatar in the dropdown to upload a new image.</div>
           </div>
-          <!-- Chat Area -->
-          <div class="chat-area">
-            <div class="chat-header" id="chat-header" style="display:none">
-              <span class="hash">#</span>
-              <span class="channel-name" id="chat-channel-name"></span>
+
+          <div class="faq-item">
+            <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+              <span>I found a bug or have a suggestion</span>
+              <span class="arrow">▼</span>
             </div>
-            <div class="chat-messages" id="chat-messages">
-              <div class="chat-empty">Select a conversation to start chatting</div>
-            </div>
-            <div class="chat-input-area" id="chat-input-area" style="display:none">
-              <div class="chat-input-wrapper">
-                <button class="chat-input-btn" id="attach-btn" title="Upload image">📎</button>
-                <input type="file" id="chat-file-input" accept="image/*">
-                <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
-                <button class="chat-input-btn" id="emoji-btn" title="Emoji">😀</button>
-              </div>
-            </div>
+            <div class="faq-answer">Use the contact form below to send us a message and we'll look into it.</div>
           </div>
-          <!-- Members Sidebar -->
-          <div class="members-sidebar" id="members-sidebar" style="display:none">
-            <div class="members-title">Members</div>
-            <div id="members-list"></div>
+
+          <div class="support-contact">
+            <h3>Contact Us</h3>
+            <div class="support-form">
+              <input class="form-input" id="support-subject" placeholder="Subject">
+              <textarea id="support-message" placeholder="Describe your issue or suggestion..."></textarea>
+              <button class="btn btn-primary" id="submit-support">Send Message</button>
+            </div>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- ─── CREATE SERVER MODAL ─── -->
-  <div class="modal-overlay" id="create-server-modal">
-    <div class="modal">
-      <h3>Create a Server</h3>
-      <div class="create-server-form">
-        <input id="server-name-input" placeholder="Server name" maxlength="50">
-      </div>
-      <div class="modal-buttons">
-        <button class="btn-cancel" onclick="document.getElementById('create-server-modal').classList.remove('active')">Cancel</button>
-        <button class="btn btn-primary" id="confirm-create-server">Create</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ─── GAME PLAYER OVERLAY ─── -->
+  <!-- Game Player Overlay -->
   <div id="game-player">
-    <div class="game-player-header">
+    <div class="game-player-bar">
       <h3 id="game-player-title">Game</h3>
       <button class="game-player-close" id="game-player-close">✕ Close</button>
     </div>
     <iframe id="game-iframe" allowfullscreen></iframe>
   </div>
 
-  <!-- ─── TOAST CONTAINER ─── -->
+  <!-- Toast Container -->
   <div class="toast-container" id="toast-container"></div>
 
-  <!-- Firebase SDKs (compat) -->
+  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
-  <!-- App Scripts -->
   <script src="js/firebase-config.js"></script>
   <script src="js/auth.js"></script>
-  <script src="js/friends.js"></script>
-  <script src="js/messenger.js"></script>
   <script src="js/app.js"></script>
-  <script>
-      document.addEventListener('keydown', function(e) {
-          if (e.ctrlKey && e.key === 'j') {
-              e.preventDefault();
-              window.location.href = 'https://sciencedataportal.com';
-          }
-      });
-  </script>
 </body>
 </html>

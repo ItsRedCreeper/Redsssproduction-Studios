@@ -1,522 +1,597 @@
 /* ───────────────────────────────────────────────
-   Messenger — RedsssProduction Studios v2
-   Servers, Channels, DMs, real-time chat
+   RedsssMessenger — Main JS
+   DMs, servers, channels, real-time chat
    ─────────────────────────────────────────────── */
 
-let msgUser = null;
-let msgProfile = null;
-let currentView = 'dm'; // 'dm' or server id
-let currentChannel = null; // channel id or DM conversation id
-let messageListener = null;
+const Messenger = (() => {
+  let currentUser = null;
+  let userProfile = null;
+  let chatUnsub = null;
+  let currentChat = null;   // { type: 'dm', friendUid } | { type: 'channel', serverId, channelId }
+  let currentServerId = null;
 
-/* ─── TOAST (guarded: app.js defines this on main page) ─── */
+  /* ── Init ── */
+  function init() {
+    auth.onAuthStateChanged(async (user) => {
+      document.getElementById('loading-screen').style.display = 'none';
 
-if (typeof showToast === 'undefined') {
-  // eslint-disable-next-line no-inner-declarations
-  function showToast(message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    const toast = document.createElement('div');
-    toast.className = 'toast ' + type;
-    toast.textContent = message;
-    container.appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3500);
+      if (user) {
+        currentUser = user;
+        document.getElementById('messenger-app').style.display = 'flex';
+        await loadProfile();
+        renderUserBar();
+        loadFriends();
+        loadServers();
+        loadPendingRequests();
+        setupPresence();
+      } else {
+        window.location.href = 'index.html';
+      }
+    });
+
+    // Back to main site
+    document.getElementById('msg-back').addEventListener('click', () => {
+      window.location.href = 'index.html';
+    });
+
+    // DM button
+    document.getElementById('dm-btn').addEventListener('click', showDMView);
+
+    // Sidebar tabs
+    document.querySelectorAll('.sidebar-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.sidebar-tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    // Send message
+    document.getElementById('chat-send').addEventListener('click', sendMessage);
+    document.getElementById('chat-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+
+    // Add friend
+    document.getElementById('add-friend-btn').addEventListener('click', sendFriendRequest);
+    document.getElementById('add-friend-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') sendFriendRequest();
+    });
+
+    // Create server
+    document.getElementById('create-server-btn').addEventListener('click', () => {
+      document.getElementById('create-server-modal').classList.add('open');
+    });
+    document.getElementById('cancel-server-btn').addEventListener('click', () => {
+      document.getElementById('create-server-modal').classList.remove('open');
+    });
+    document.getElementById('confirm-server-btn').addEventListener('click', createServer);
+
+    // Create channel
+    document.getElementById('create-channel-btn').addEventListener('click', () => {
+      document.getElementById('create-channel-modal').classList.add('open');
+    });
+    document.getElementById('cancel-channel-btn').addEventListener('click', () => {
+      document.getElementById('create-channel-modal').classList.remove('open');
+    });
+    document.getElementById('confirm-channel-btn').addEventListener('click', createChannel);
+
+    // Friend search filter
+    document.getElementById('friend-search').addEventListener('input', filterFriends);
   }
-}
 
-if (typeof escapeHtml === 'undefined') {
-  // eslint-disable-next-line no-inner-declarations
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(str || ''));
-    return div.innerHTML;
+  /* ── Profile ── */
+  async function loadProfile() {
+    const doc = await db.collection('users').doc(currentUser.uid).get();
+    userProfile = doc.exists ? doc.data() : { username: 'User', avatar: '' };
   }
-}
 
-/* ─── AUTH STATE ─── */
-
-auth.onAuthStateChanged(async (user) => {
-  if (user) {
-    msgUser = user;
-    const doc = await db.collection('users').doc(user.uid).get();
-    if (doc.exists) {
-      msgProfile = { id: doc.id, ...doc.data() };
+  function renderUserBar() {
+    const av = document.getElementById('msg-avatar');
+    if (userProfile.avatar) {
+      av.innerHTML = '<img src="' + esc(userProfile.avatar) + '" alt="">';
     } else {
-      // Profile not found — stay on page, auth.js handles access control
+      av.textContent = (userProfile.username || 'U').charAt(0).toUpperCase();
+    }
+    document.getElementById('msg-username').textContent = userProfile.username || 'User';
+    document.getElementById('msg-status').textContent = userProfile.status || 'Online';
+  }
+
+  /* ── DM View ── */
+  function showDMView() {
+    currentServerId = null;
+    document.querySelectorAll('.server-icon').forEach(s => s.classList.remove('active'));
+    document.getElementById('dm-btn').classList.add('active');
+
+    document.getElementById('sidebar-header').textContent = 'Direct Messages';
+    document.getElementById('dm-section').style.display = 'flex';
+    document.getElementById('channel-section').style.display = 'none';
+    document.getElementById('members-sidebar').style.display = 'none';
+  }
+
+  /* ── Friends ── */
+  function loadFriends() {
+    db.collection('users').doc(currentUser.uid).onSnapshot(doc => {
+      if (!doc.exists) return;
+      const friends = doc.data().friends || [];
+      renderFriendsList(friends);
+    });
+  }
+
+  async function renderFriendsList(friendUids) {
+    const list = document.getElementById('friends-list');
+
+    if (!friendUids.length) {
+      list.innerHTML = '<div class="sidebar-empty">No friends yet</div>';
       return;
     }
 
-    renderUserArea();
-    loadServers();
-    loadDMs();
-    document.getElementById('messenger-app').style.display = 'flex';
-  } else {
-    // Not authenticated — app.js handles login gating
-    return;
+    // Fetch friend profiles (batch up to 10 at a time for Firestore `in` query)
+    const profiles = [];
+    for (let i = 0; i < friendUids.length; i += 10) {
+      const batch = friendUids.slice(i, i + 10);
+      const snap = await db.collection('users')
+        .where(firebase.firestore.FieldPath.documentId(), 'in', batch)
+        .get();
+      snap.forEach(d => profiles.push({ uid: d.id, ...d.data() }));
+    }
+
+    list.innerHTML = profiles.map(f => {
+      const initial = (f.username || 'U').charAt(0).toUpperCase();
+      const avatarHtml = f.avatar
+        ? '<img src="' + esc(f.avatar) + '" alt="">'
+        : initial;
+      const onlineDot = f.online ? '<span class="online-dot"></span>' : '';
+
+      return '<div class="friend-item" data-uid="' + f.uid + '">' +
+        '<div class="friend-avatar">' + avatarHtml + onlineDot + '</div>' +
+        '<div>' +
+          '<div class="friend-name">' + esc(f.username) + '</div>' +
+          '<div class="friend-status">' + esc(f.status || (f.online ? 'Online' : 'Offline')) + '</div>' +
+        '</div></div>';
+    }).join('');
+
+    list.querySelectorAll('.friend-item').forEach(el => {
+      el.addEventListener('click', () => openDM(el.dataset.uid, profiles.find(p => p.uid === el.dataset.uid)));
+    });
   }
 
-  const loading = document.getElementById('loading-screen');
-  if (loading) loading.style.display = 'none';
-});
-
-/* ─── USER AREA ─── */
-
-function renderUserArea() {
-  const avatar = document.getElementById('msg-user-avatar');
-  const name = document.getElementById('msg-user-name');
-  const initial = (msgProfile.username || '?')[0].toUpperCase();
-
-  if (msgProfile.avatar) {
-    avatar.innerHTML = '<img src="' + escapeHtml(msgProfile.avatar) + '" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover">';
-  } else {
-    avatar.textContent = initial;
+  function filterFriends() {
+    const q = document.getElementById('friend-search').value.toLowerCase();
+    document.querySelectorAll('#friends-list .friend-item').forEach(el => {
+      const name = el.querySelector('.friend-name').textContent.toLowerCase();
+      el.style.display = name.includes(q) ? '' : 'none';
+    });
   }
-  name.textContent = msgProfile.username;
-}
 
-/* ─── SERVERS ─── */
+  /* ── Friend Requests ── */
+  async function sendFriendRequest() {
+    const input = document.getElementById('add-friend-input');
+    const username = input.value.trim();
+    if (!username) return;
 
-let serversCache = [];
+    try {
+      const snap = await db.collection('users')
+        .where('usernameLower', '==', username.toLowerCase())
+        .limit(1)
+        .get();
 
-async function loadServers() {
-  // Listen for servers the user is a member of
-  db.collection('servers')
-    .where('members', 'array-contains', msgUser.uid)
-    .orderBy('name')
-    .onSnapshot(snap => {
-      serversCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      renderServerIcons();
-    });
-}
+      if (snap.empty) {
+        showToast('User not found.', 'error');
+        return;
+      }
 
-function renderServerIcons() {
-  const container = document.getElementById('server-icons');
-  container.innerHTML = serversCache.map(s => `
-    <div class="server-icon ${currentView === s.id ? 'active' : ''}"
-         onclick="switchToServer('${s.id}')"
-         title="${escapeHtml(s.name)}">
-      ${escapeHtml((s.name || '?')[0].toUpperCase())}
-    </div>
-  `).join('');
-}
+      const targetDoc = snap.docs[0];
+      if (targetDoc.id === currentUser.uid) {
+        showToast("You can't add yourself.", 'error');
+        return;
+      }
 
-document.getElementById('dm-tab').addEventListener('click', () => {
-  currentView = 'dm';
-  currentChannel = null;
-  document.getElementById('sidebar-title').textContent = 'Direct Messages';
-  document.getElementById('server-settings-btn').style.display = 'none';
-  document.getElementById('members-sidebar').style.display = 'none';
-  loadDMs();
-  clearChat();
-  renderServerIcons();
-  document.getElementById('dm-tab').classList.add('active');
-});
+      // Check if already friends
+      const myDoc = await db.collection('users').doc(currentUser.uid).get();
+      const myFriends = myDoc.data().friends || [];
+      if (myFriends.includes(targetDoc.id)) {
+        showToast('Already friends!', 'info');
+        return;
+      }
 
-function switchToServer(serverId) {
-  currentView = serverId;
-  currentChannel = null;
-  document.getElementById('dm-tab').classList.remove('active');
-  renderServerIcons();
+      // Check if request already exists
+      const existing = await db.collection('friend_requests')
+        .where('from', '==', currentUser.uid)
+        .where('to', '==', targetDoc.id)
+        .limit(1)
+        .get();
 
-  const server = serversCache.find(s => s.id === serverId);
-  document.getElementById('sidebar-title').textContent = server ? server.name : 'Server';
-  document.getElementById('server-settings-btn').style.display =
-    (server && server.owner === msgUser.uid) ? '' : 'none';
-  document.getElementById('members-sidebar').style.display = '';
+      if (!existing.empty) {
+        showToast('Request already sent.', 'info');
+        return;
+      }
 
-  loadChannels(serverId);
-  loadMembers(serverId);
-  clearChat();
-}
+      await db.collection('friend_requests').add({
+        from: currentUser.uid,
+        fromUsername: userProfile.username,
+        to: targetDoc.id,
+        toUsername: targetDoc.data().username,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        status: 'pending'
+      });
 
-/* ─── CREATE SERVER ─── */
+      // Notify target
+      await db.collection('users').doc(targetDoc.id).collection('notifications').add({
+        message: userProfile.username + ' sent you a friend request!',
+        type: 'friend_request',
+        fromUid: currentUser.uid,
+        read: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
 
-document.getElementById('create-server-btn').addEventListener('click', () => {
-  document.getElementById('create-server-modal').classList.add('active');
-  document.getElementById('server-name-input').value = '';
-  document.getElementById('server-name-input').focus();
-});
-
-document.getElementById('confirm-create-server').addEventListener('click', async () => {
-  const name = document.getElementById('server-name-input').value.trim();
-  if (!name) { showToast('Server name is required.', 'error'); return; }
-
-  try {
-    const ref = await db.collection('servers').add({
-      name: name,
-      owner: msgUser.uid,
-      members: [msgUser.uid],
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    // Create a default #general channel
-    await db.collection('servers').doc(ref.id).collection('channels').add({
-      name: 'general',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    document.getElementById('create-server-modal').classList.remove('active');
-    showToast('Server created!', 'success');
-    switchToServer(ref.id);
-  } catch (err) {
-    showToast('Failed to create server.', 'error');
+      input.value = '';
+      showToast('Friend request sent!', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to send request.', 'error');
+    }
   }
-});
 
-/* ─── CHANNELS ─── */
-
-async function loadChannels(serverId) {
-  db.collection('servers').doc(serverId).collection('channels')
-    .orderBy('name')
-    .onSnapshot(snap => {
-      const channels = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const list = document.getElementById('channel-list');
-      list.innerHTML = channels.map(c => `
-        <div class="channel-item ${currentChannel === c.id ? 'active' : ''}"
-             onclick="openChannel('${serverId}', '${c.id}', '${escapeHtml(c.name)}')">
-          <span class="hash">#</span> ${escapeHtml(c.name)}
-        </div>
-      `).join('');
-    });
-}
-
-function openChannel(serverId, channelId, channelName) {
-  currentChannel = channelId;
-  document.getElementById('chat-header').style.display = 'flex';
-  document.getElementById('chat-channel-name').textContent = channelName;
-  document.getElementById('chat-input-area').style.display = 'flex';
-  document.getElementById('chat-input').placeholder = 'Message #' + channelName;
-
-  // Update active state
-  document.querySelectorAll('.channel-item').forEach(el => el.classList.remove('active'));
-  event.currentTarget.classList.add('active');
-
-  listenMessages('servers/' + serverId + '/channels/' + channelId + '/messages');
-}
-
-/* ─── DMs ─── */
-
-async function loadDMs() {
-  const list = document.getElementById('channel-list');
-
-  db.collection('conversations')
-    .where('participants', 'array-contains', msgUser.uid)
-    .orderBy('lastMessage', 'desc')
-    .onSnapshot(async snap => {
-      if (currentView !== 'dm') return;
-
-      const convos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      let html = '';
-
-      for (const c of convos) {
-        const otherId = c.participants.find(p => p !== msgUser.uid);
-        if (!otherId) continue;
-
-        let otherUser;
-        try {
-          const userDoc = await db.collection('users').doc(otherId).get();
-          otherUser = userDoc.exists ? userDoc.data() : { username: 'Deleted User', avatar: '' };
-        } catch {
-          otherUser = { username: 'Unknown', avatar: '' };
+  function loadPendingRequests() {
+    db.collection('friend_requests')
+      .where('to', '==', currentUser.uid)
+      .where('status', '==', 'pending')
+      .onSnapshot(snap => {
+        const container = document.getElementById('pending-requests');
+        if (snap.empty) {
+          container.innerHTML = '<div class="sidebar-empty">No pending requests</div>';
+          return;
         }
 
-        const initial = (otherUser.username || '?')[0].toUpperCase();
-        html += `
-          <div class="dm-item ${currentChannel === c.id ? 'active' : ''}"
-               onclick="openDM('${c.id}', '${escapeHtml(otherUser.username)}')">
-            <div class="friend-avatar">
-              ${otherUser.avatar ? '<img src="' + escapeHtml(otherUser.avatar) + '" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover">' : initial}
-            </div>
-            <span class="name">${escapeHtml(otherUser.username)}</span>
-          </div>
-        `;
-      }
+        container.innerHTML = '';
+        snap.forEach(doc => {
+          const req = doc.data();
+          const div = document.createElement('div');
+          div.className = 'pending-item';
+          div.innerHTML =
+            '<span>' + esc(req.fromUsername) + '</span>' +
+            '<div class="pending-actions">' +
+              '<button class="pending-accept" data-id="' + doc.id + '" data-uid="' + req.from + '">Accept</button>' +
+              '<button class="pending-deny" data-id="' + doc.id + '">Deny</button>' +
+            '</div>';
+          container.appendChild(div);
+        });
 
-      list.innerHTML = html || '<p style="padding:12px;color:var(--text-muted);font-size:13px">No conversations yet</p>';
-    });
-}
+        container.querySelectorAll('.pending-accept').forEach(btn => {
+          btn.addEventListener('click', () => acceptFriend(btn.dataset.id, btn.dataset.uid));
+        });
+        container.querySelectorAll('.pending-deny').forEach(btn => {
+          btn.addEventListener('click', () => denyFriend(btn.dataset.id));
+        });
+      });
+  }
 
-function openDM(convoId, name) {
-  currentChannel = convoId;
-  document.getElementById('chat-header').style.display = 'flex';
-  document.querySelector('.chat-header .hash').textContent = '@';
-  document.getElementById('chat-channel-name').textContent = name;
-  document.getElementById('chat-input-area').style.display = 'flex';
-  document.getElementById('chat-input').placeholder = 'Message @' + name;
-  document.getElementById('members-sidebar').style.display = 'none';
-
-  listenMessages('conversations/' + convoId + '/messages');
-}
-
-/* ─── MEMBERS ─── */
-
-async function loadMembers(serverId) {
-  const server = serversCache.find(s => s.id === serverId);
-  if (!server) return;
-
-  const list = document.getElementById('members-list');
-  let html = '';
-
-  for (const uid of server.members) {
+  async function acceptFriend(requestId, fromUid) {
     try {
-      const doc = await db.collection('users').doc(uid).get();
-      if (!doc.exists) continue;
-      const u = doc.data();
-      const initial = (u.username || '?')[0].toUpperCase();
-      html += `
-        <div class="member-item">
-          <div class="friend-avatar" style="position:relative">
-            ${u.avatar ? '<img src="' + escapeHtml(u.avatar) + '" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover">' : initial}
-            <div class="status-dot ${u.online ? 'online' : 'offline'}"></div>
-          </div>
-          <span class="name">${escapeHtml(u.username)}</span>
-        </div>
-      `;
-    } catch { /* skip */ }
-  }
+      const batch = db.batch();
+      const myRef = db.collection('users').doc(currentUser.uid);
+      const theirRef = db.collection('users').doc(fromUid);
+      const reqRef = db.collection('friend_requests').doc(requestId);
 
-  list.innerHTML = html;
-}
+      batch.update(myRef, { friends: firebase.firestore.FieldValue.arrayUnion(fromUid) });
+      batch.update(theirRef, { friends: firebase.firestore.FieldValue.arrayUnion(currentUser.uid) });
+      batch.update(reqRef, { status: 'accepted' });
 
-/* ─── MESSAGES ─── */
-
-function listenMessages(path) {
-  if (messageListener) messageListener();
-
-  const container = document.getElementById('chat-messages');
-  container.innerHTML = '';
-
-  messageListener = db.collection(path)
-    .orderBy('timestamp')
-    .limitToLast(100)
-    .onSnapshot(snap => {
-      container.innerHTML = '';
-      snap.docs.forEach(doc => {
-        const m = doc.data();
-        const msgEl = createMessageEl(doc.id, m, path);
-        container.appendChild(msgEl);
-      });
-      container.scrollTop = container.scrollHeight;
-    });
-}
-
-function createMessageEl(id, m, path) {
-  const div = document.createElement('div');
-  div.className = 'message';
-
-  const initial = (m.authorName || '?')[0].toUpperCase();
-  const time = m.timestamp ? new Date(m.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-  const isOwn = m.authorId === msgUser.uid;
-
-  let contentHtml = escapeHtml(m.text || '');
-  if (m.imageUrl) {
-    contentHtml += '<img src="' + escapeHtml(m.imageUrl) + '" alt="image">';
-  }
-
-  div.innerHTML = `
-    <div class="msg-avatar">
-      ${m.authorAvatar ? '<img src="' + escapeHtml(m.authorAvatar) + '" alt="">' : initial}
-    </div>
-    <div class="msg-content">
-      <div class="msg-header">
-        <span class="msg-author">${escapeHtml(m.authorName)}</span>
-        <span class="msg-time">${time}</span>
-      </div>
-      <div class="msg-text">${contentHtml}</div>
-      ${isOwn ? `<div class="msg-actions">
-        <button onclick="deleteMessage('${path}', '${id}')">Delete</button>
-      </div>` : ''}
-    </div>
-  `;
-
-  return div;
-}
-
-/* ─── SEND MESSAGE ─── */
-
-document.getElementById('chat-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
-});
-
-async function sendMessage() {
-  const input = document.getElementById('chat-input');
-  const text = input.value.trim();
-  if (!text || !currentChannel) return;
-
-  let path;
-  if (currentView === 'dm') {
-    path = 'conversations/' + currentChannel + '/messages';
-  } else {
-    path = 'servers/' + currentView + '/channels/' + currentChannel + '/messages';
-  }
-
-  input.value = '';
-
-  try {
-    await db.collection(path).add({
-      text: text,
-      authorId: msgUser.uid,
-      authorName: msgProfile.username,
-      authorAvatar: msgProfile.avatar || '',
-      timestamp: firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    // Update last message time for DMs
-    if (currentView === 'dm') {
-      db.collection('conversations').doc(currentChannel).update({
-        lastMessage: firebase.firestore.FieldValue.serverTimestamp()
-      }).catch(() => {});
+      await batch.commit();
+      showToast('Friend added!', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to accept.', 'error');
     }
-  } catch (err) {
-    showToast('Failed to send message.', 'error');
   }
-}
 
-/* ─── IMAGE UPLOAD ─── */
+  async function denyFriend(requestId) {
+    try {
+      await db.collection('friend_requests').doc(requestId).update({ status: 'denied' });
+      showToast('Request denied.', 'info');
+    } catch { showToast('Failed.', 'error'); }
+  }
 
-document.getElementById('attach-btn').addEventListener('click', () => {
-  document.getElementById('chat-file-input').click();
-});
+  /* ── DM Chat ── */
+  function openDM(friendUid, profile) {
+    if (chatUnsub) { chatUnsub(); chatUnsub = null; }
 
-document.getElementById('chat-file-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (file.size > 10 * 1024 * 1024) { showToast('Image must be under 10MB.', 'error'); return; }
-  if (!currentChannel) return;
+    currentChat = { type: 'dm', friendUid };
 
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('upload_preset', CLOUDINARY_PRESET);
+    document.querySelectorAll('.friend-item').forEach(f => f.classList.remove('active'));
+    const el = document.querySelector('.friend-item[data-uid="' + friendUid + '"]');
+    if (el) el.classList.add('active');
 
-  try {
-    showToast('Uploading image...', 'info');
-    const res = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/image/upload', {
-      method: 'POST',
-      body: formData
-    });
-    const data = await res.json();
+    document.getElementById('chat-title').textContent = profile ? profile.username : 'Chat';
+    document.getElementById('chat-input-bar').style.display = 'flex';
+    document.getElementById('members-sidebar').style.display = 'none';
 
-    if (data.secure_url) {
-      let path;
-      if (currentView === 'dm') {
-        path = 'conversations/' + currentChannel + '/messages';
-      } else {
-        path = 'servers/' + currentView + '/channels/' + currentChannel + '/messages';
-      }
+    // DM conversation ID (sorted UIDs)
+    const convoId = [currentUser.uid, friendUid].sort().join('_');
 
-      await db.collection(path).add({
-        text: '',
-        imageUrl: data.secure_url,
-        authorId: msgUser.uid,
-        authorName: msgProfile.username,
-        authorAvatar: msgProfile.avatar || '',
-        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    const messagesEl = document.getElementById('chat-messages');
+    messagesEl.innerHTML = '<div class="chat-empty">Loading...</div>';
+
+    chatUnsub = db.collection('dms').doc(convoId).collection('messages')
+      .orderBy('createdAt', 'asc')
+      .limitToLast(100)
+      .onSnapshot(snap => {
+        if (snap.empty) {
+          messagesEl.innerHTML = '<div class="chat-empty">No messages yet. Say hi!</div>';
+          return;
+        }
+
+        messagesEl.innerHTML = '';
+        snap.forEach(doc => {
+          messagesEl.appendChild(renderMessage(doc.data()));
+        });
+        messagesEl.scrollTop = messagesEl.scrollHeight;
       });
+  }
+
+  /* ── Servers ── */
+  function loadServers() {
+    db.collection('servers')
+      .where('members', 'array-contains', currentUser.uid)
+      .onSnapshot(snap => {
+        const list = document.getElementById('server-list');
+        list.innerHTML = '';
+        snap.forEach(doc => {
+          const s = doc.data();
+          const icon = document.createElement('div');
+          icon.className = 'server-icon';
+          icon.title = s.name;
+          icon.textContent = (s.name || 'S').charAt(0).toUpperCase();
+          icon.dataset.id = doc.id;
+          icon.addEventListener('click', () => openServer(doc.id, s));
+          list.appendChild(icon);
+        });
+      });
+  }
+
+  async function createServer() {
+    const name = document.getElementById('server-name-input').value.trim();
+    if (!name) return;
+
+    try {
+      const ref = await db.collection('servers').add({
+        name,
+        owner: currentUser.uid,
+        members: [currentUser.uid],
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Create default #general channel
+      await db.collection('servers').doc(ref.id).collection('channels').add({
+        name: 'general',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      document.getElementById('server-name-input').value = '';
+      document.getElementById('create-server-modal').classList.remove('open');
+      showToast('Server created!', 'success');
+    } catch {
+      showToast('Failed to create server.', 'error');
     }
-  } catch (err) {
-    showToast('Upload failed.', 'error');
   }
 
-  e.target.value = '';
-});
+  function openServer(serverId, serverData) {
+    currentServerId = serverId;
 
-/* ─── DELETE MESSAGE ─── */
+    document.querySelectorAll('.server-icon').forEach(s => s.classList.remove('active'));
+    const icon = document.querySelector('.server-icon[data-id="' + serverId + '"]');
+    if (icon) icon.classList.add('active');
 
-async function deleteMessage(path, msgId) {
-  try {
-    await db.collection(path).doc(msgId).delete();
-  } catch (err) {
-    showToast('Failed to delete message.', 'error');
+    document.getElementById('sidebar-header').textContent = serverData.name;
+    document.getElementById('dm-section').style.display = 'none';
+    document.getElementById('channel-section').style.display = 'flex';
+    document.getElementById('members-sidebar').style.display = '';
+
+    loadChannels(serverId);
+    loadMembers(serverId, serverData.members);
   }
-}
 
-/* ─── CLEAR CHAT ─── */
+  function loadChannels(serverId) {
+    db.collection('servers').doc(serverId).collection('channels')
+      .orderBy('name')
+      .onSnapshot(snap => {
+        const list = document.getElementById('channel-list');
+        list.innerHTML = '';
+        snap.forEach(doc => {
+          const ch = doc.data();
+          const el = document.createElement('div');
+          el.className = 'channel-item';
+          el.dataset.id = doc.id;
+          el.innerHTML = '<span class="channel-hash">#</span> ' + esc(ch.name);
+          el.addEventListener('click', () => openChannel(serverId, doc.id, ch.name));
+          list.appendChild(el);
+        });
 
-function clearChat() {
-  if (messageListener) { messageListener(); messageListener = null; }
-  document.getElementById('chat-messages').innerHTML = '<div class="chat-empty">Select a conversation to start chatting</div>';
-  document.getElementById('chat-header').style.display = 'none';
-  document.getElementById('chat-input-area').style.display = 'none';
-}
-
-/* ─── SERVER SETTINGS ─── */
-
-document.getElementById('server-settings-btn').addEventListener('click', () => {
-  if (currentView === 'dm') return;
-  const server = serversCache.find(s => s.id === currentView);
-  if (!server || server.owner !== msgUser.uid) return;
-
-  const action = prompt('Server: ' + server.name + '\n\nType one of:\n- invite USERNAME\n- kick USERNAME\n- delete\n- channel CHANNELNAME');
-  if (!action) return;
-
-  const parts = action.split(' ');
-  const cmd = parts[0].toLowerCase();
-  const arg = parts.slice(1).join(' ').trim();
-
-  if (cmd === 'invite' && arg) inviteToServer(arg);
-  else if (cmd === 'kick' && arg) kickFromServer(arg);
-  else if (cmd === 'delete') deleteServer();
-  else if (cmd === 'channel' && arg) createChannel(arg);
-  else showToast('Unknown command.', 'error');
-});
-
-async function inviteToServer(username) {
-  try {
-    const snap = await db.collection('users').where('usernameLower', '==', username.toLowerCase()).get();
-    if (snap.empty) { showToast('User not found.', 'error'); return; }
-    const userId = snap.docs[0].id;
-
-    await db.collection('servers').doc(currentView).update({
-      members: firebase.firestore.FieldValue.arrayUnion(userId)
-    });
-    showToast(username + ' invited!', 'success');
-    loadMembers(currentView);
-  } catch (err) {
-    showToast('Failed to invite.', 'error');
+        // Auto-open first channel
+        if (!snap.empty && !currentChat) {
+          const first = snap.docs[0];
+          openChannel(serverId, first.id, first.data().name);
+        }
+      });
   }
-}
 
-async function kickFromServer(username) {
-  try {
-    const snap = await db.collection('users').where('usernameLower', '==', username.toLowerCase()).get();
-    if (snap.empty) { showToast('User not found.', 'error'); return; }
-    const userId = snap.docs[0].id;
+  async function createChannel() {
+    if (!currentServerId) return;
+    const name = document.getElementById('channel-name-input').value.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    if (!name) return;
 
-    if (userId === msgUser.uid) { showToast("You can't kick yourself.", 'error'); return; }
-
-    await db.collection('servers').doc(currentView).update({
-      members: firebase.firestore.FieldValue.arrayRemove(userId)
-    });
-    showToast(username + ' kicked.', 'success');
-    loadMembers(currentView);
-  } catch (err) {
-    showToast('Failed to kick.', 'error');
+    try {
+      await db.collection('servers').doc(currentServerId).collection('channels').add({
+        name,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      document.getElementById('channel-name-input').value = '';
+      document.getElementById('create-channel-modal').classList.remove('open');
+      showToast('Channel created!', 'success');
+    } catch {
+      showToast('Failed to create channel.', 'error');
+    }
   }
-}
 
-async function deleteServer() {
-  if (!confirm('Delete this server permanently?')) return;
-  try {
-    await db.collection('servers').doc(currentView).delete();
-    showToast('Server deleted.', 'success');
-    currentView = 'dm';
-    currentChannel = null;
-    document.getElementById('dm-tab').click();
-  } catch (err) {
-    showToast('Failed to delete server.', 'error');
+  async function loadMembers(serverId, memberUids) {
+    const list = document.getElementById('members-list');
+    list.innerHTML = '';
+
+    const profiles = [];
+    for (let i = 0; i < memberUids.length; i += 10) {
+      const batch = memberUids.slice(i, i + 10);
+      const snap = await db.collection('users')
+        .where(firebase.firestore.FieldPath.documentId(), 'in', batch)
+        .get();
+      snap.forEach(d => profiles.push({ uid: d.id, ...d.data() }));
+    }
+
+    profiles.sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0));
+
+    list.innerHTML = profiles.map(m => {
+      const initial = (m.username || 'U').charAt(0).toUpperCase();
+      const avatarHtml = m.avatar ? '<img src="' + esc(m.avatar) + '" alt="">' : initial;
+      return '<div class="member-item' + (m.online ? ' online' : '') + '">' +
+        '<div class="member-avatar">' + avatarHtml + '</div>' +
+        '<span class="member-name">' + esc(m.username) + '</span></div>';
+    }).join('');
   }
-}
 
-async function createChannel(name) {
-  try {
-    await db.collection('servers').doc(currentView).collection('channels').add({
-      name: name.toLowerCase().replace(/\s+/g, '-'),
+  /* ── Channel Chat ── */
+  function openChannel(serverId, channelId, channelName) {
+    if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+
+    currentChat = { type: 'channel', serverId, channelId };
+
+    document.querySelectorAll('.channel-item').forEach(c => c.classList.remove('active'));
+    const el = document.querySelector('.channel-item[data-id="' + channelId + '"]');
+    if (el) el.classList.add('active');
+
+    document.getElementById('chat-title').textContent = '# ' + channelName;
+    document.getElementById('chat-input-bar').style.display = 'flex';
+
+    const messagesEl = document.getElementById('chat-messages');
+    messagesEl.innerHTML = '<div class="chat-empty">Loading...</div>';
+
+    chatUnsub = db.collection('servers').doc(serverId)
+      .collection('channels').doc(channelId)
+      .collection('messages')
+      .orderBy('createdAt', 'asc')
+      .limitToLast(100)
+      .onSnapshot(snap => {
+        if (snap.empty) {
+          messagesEl.innerHTML = '<div class="chat-empty">No messages yet. Start the conversation!</div>';
+          return;
+        }
+
+        messagesEl.innerHTML = '';
+        snap.forEach(doc => {
+          messagesEl.appendChild(renderMessage(doc.data()));
+        });
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      });
+  }
+
+  /* ── Send Message ── */
+  async function sendMessage() {
+    if (!currentChat) return;
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    input.value = '';
+
+    const msgData = {
+      text,
+      uid: currentUser.uid,
+      username: userProfile.username,
+      avatar: userProfile.avatar || '',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    showToast('Channel #' + name + ' created!', 'success');
-  } catch (err) {
-    showToast('Failed to create channel.', 'error');
+    };
+
+    try {
+      if (currentChat.type === 'dm') {
+        const convoId = [currentUser.uid, currentChat.friendUid].sort().join('_');
+        await db.collection('dms').doc(convoId).collection('messages').add(msgData);
+
+        // Notify friend
+        await db.collection('users').doc(currentChat.friendUid).collection('notifications').add({
+          message: userProfile.username + ': ' + (text.length > 60 ? text.slice(0, 60) + '...' : text),
+          type: 'dm',
+          fromUid: currentUser.uid,
+          read: false,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      } else if (currentChat.type === 'channel') {
+        await db.collection('servers').doc(currentChat.serverId)
+          .collection('channels').doc(currentChat.channelId)
+          .collection('messages').add(msgData);
+      }
+    } catch (err) {
+      console.error('Send failed:', err);
+      showToast('Failed to send message.', 'error');
+    }
   }
+
+  /* ── Render a single message ── */
+  function renderMessage(data) {
+    const div = document.createElement('div');
+    div.className = 'msg';
+
+    const initial = (data.username || 'U').charAt(0).toUpperCase();
+    const avatarContent = data.avatar
+      ? '<img src="' + esc(data.avatar) + '" alt="">'
+      : initial;
+
+    const time = data.createdAt
+      ? new Date(data.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '';
+
+    div.innerHTML =
+      '<div class="msg-avatar">' + avatarContent + '</div>' +
+      '<div class="msg-body">' +
+        '<div class="msg-header">' +
+          '<span class="msg-author">' + esc(data.username || 'Unknown') + '</span>' +
+          '<span class="msg-time">' + time + '</span>' +
+        '</div>' +
+        '<div class="msg-text">' + esc(data.text || '') + '</div>' +
+      '</div>';
+    return div;
+  }
+
+  /* ── Presence ── */
+  function setupPresence() {
+    const ref = db.collection('users').doc(currentUser.uid);
+    ref.update({ online: true, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+    window.addEventListener('beforeunload', () => {
+      ref.update({ online: false, lastSeen: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+  }
+
+  /* ── Utility ── */
+  function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  return { init };
+})();
+
+/* ── Toast (shared) ── */
+function showToast(msg, type) {
+  type = type || 'info';
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = 'toast ' + type;
+  toast.textContent = msg;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
 }
+
+document.addEventListener('DOMContentLoaded', () => Messenger.init());
