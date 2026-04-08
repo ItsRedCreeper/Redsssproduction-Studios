@@ -1,12 +1,12 @@
 /* Firebase + Cloudinary Config — RedsssProduction Studios */
 
 const firebaseConfig = {
-  apiKey: "AIzaSyA00cVrighKdgnS7wE3xxAuy5fgbpsFtS4",
-  authDomain: "redsssproduction-studios-1c6ad.firebaseapp.com",
-  projectId: "redsssproduction-studios-1c6ad",
-  storageBucket: "redsssproduction-studios-1c6ad.firebasestorage.app",
-  messagingSenderId: "963735570944",
-  appId: "1:963735570944:web:8735c024e524c8a88da6e5"
+  apiKey: "AIzaSyDTillZk16z8gaIvrs-wBVZ0QhW6LzEi0U",
+  authDomain: "redsssproduction-studios-86bec.firebaseapp.com",
+  projectId: "redsssproduction-studios-86bec",
+  storageBucket: "redsssproduction-studios-86bec.firebasestorage.app",
+  messagingSenderId: "627076589255",
+  appId: "1:627076589255:web:c99c6a1111205425fd00e2"
 };
 
 firebase.initializeApp(firebaseConfig);
