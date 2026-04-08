@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Support — RedsssProduction Studios</title>
+  <title>Friends — RedsssProduction Studios</title>
   <link rel="icon" href="images/logo.jpg">
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
@@ -70,70 +70,50 @@
         </select>
       </div>
       <input type="file" id="avatar-upload" accept="image/*" style="display:none">
-      <a href="friends.html" class="btn btn-sm btn-full" style="display:block;text-align:center;border:1px solid var(--border);color:var(--text-secondary);margin-bottom:8px;text-decoration:none">Friends</a>
       <button class="btn btn-primary btn-sm btn-full" id="save-profile-btn">Save Changes</button>
       <button class="btn-logout" id="btn-logout">Log Out</button>
     </div>
 
-    <!-- Support Content -->
-    <div class="page-content">
-      <div class="support-page">
-        <h2>Support</h2>
-
-        <div class="faq-item">
-          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-            <span>How do I play games?</span>
-            <span class="arrow">▼</span>
-          </div>
-          <div class="faq-answer">Go to the Games page and click on any game card. The game opens in a fullscreen player. Click Close to return.</div>
+    <!-- Friends Layout -->
+    <div class="friends-layout">
+      <!-- Left Sidebar -->
+      <div class="friends-sidebar">
+        <div class="friends-sidebar-header">
+          <h3>Friends</h3>
+          <button class="btn btn-primary btn-sm" id="add-friend-toggle">Add Friend</button>
         </div>
 
-        <div class="faq-item">
-          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-            <span>How do I use RedsssMessenger?</span>
-            <span class="arrow">▼</span>
-          </div>
-          <div class="faq-answer">Click "RedsssMessenger" in the navigation bar. You can create servers, join channels, and send direct messages to friends.</div>
+        <!-- Add Friend (hidden by default) -->
+        <div class="friends-add-section" id="friends-add-section" style="display:none">
+          <input class="form-input" id="friend-search-input" placeholder="Search username (min 3 chars)..." minlength="3" maxlength="20">
+          <div id="friend-search-results"></div>
         </div>
 
-        <div class="faq-item">
-          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-            <span>How do I add friends?</span>
-            <span class="arrow">▼</span>
+        <!-- Pending Requests -->
+        <div class="friends-pending" id="friends-pending-section">
+          <div class="friends-section-title">
+            Pending Requests <span class="friends-pending-badge" id="pending-count">0</span>
           </div>
-          <div class="faq-answer">Open RedsssMessenger and go to the Direct Messages view. Use the Add Friend tab and type a username to send a friend request.</div>
+          <div id="pending-list"></div>
         </div>
 
-        <div class="faq-item">
-          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-            <span>How do I change my profile picture?</span>
-            <span class="arrow">▼</span>
-          </div>
-          <div class="faq-answer">Click your avatar in the top right corner. In the dropdown, click the avatar image to upload a new picture.</div>
+        <!-- Friends List -->
+        <div class="friends-section-title">All Friends</div>
+        <div class="friends-filter">
+          <input class="form-input" id="friends-filter" placeholder="Filter friends...">
         </div>
+        <div class="friends-list-scroll" id="friends-list"></div>
+      </div>
 
-        <div class="faq-item">
-          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-            <span>I found a bug or have a suggestion</span>
-            <span class="arrow">▼</span>
-          </div>
-          <div class="faq-answer">Use the contact form below to send us a message and we'll look into it.</div>
-        </div>
-
-        <div class="support-contact">
-          <h3>Contact Us</h3>
-          <div class="support-form">
-            <input class="form-input" id="support-subject" placeholder="Subject" minlength="3" maxlength="100">
-            <textarea id="support-message" placeholder="Describe your issue or suggestion..." minlength="10" maxlength="2000"></textarea>
-            <button class="btn btn-primary" id="submit-support">Send Message</button>
-          </div>
-        </div>
+      <!-- Right Main Content -->
+      <div class="friends-main" id="friends-main">
+        <div class="friends-empty">Select a friend to view their profile</div>
       </div>
     </div>
 
   </div>
 
-  <!-- Toast -->
+  <!-- Toast Container -->
   <div class="toast-container" id="toast-container"></div>
 
   <!-- Firebase SDKs -->
@@ -144,7 +124,7 @@
   <script src="js/cropper-util.js"></script>
   <script src="js/firebase-config.js"></script>
   <script src="js/nav.js"></script>
-  <script src="js/support.js"></script>
+  <script src="js/friends.js"></script>
 
 </body>
 </html>

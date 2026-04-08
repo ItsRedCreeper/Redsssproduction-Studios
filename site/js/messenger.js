@@ -1,7 +1,9 @@
 /* ───────────────────────────────────────────────
    RedsssMessenger — Main JS
-   Initialized by app.js after auth resolves.
+   Initialized after auth resolves via Nav.init().
    DMs, servers, channels, real-time chat.
+   Profile cache: messages store uid only, display
+   resolved from cache for always-fresh names/avatars.
    ─────────────────────────────────────────────── */
 
 const Messenger = (() => {
@@ -11,34 +13,29 @@ const Messenger = (() => {
   let currentChat = null;   // { type: 'dm', friendUid } | { type: 'channel', serverId, channelId }
   let currentServerId = null;
 
-  /* ── Init — called by app.js after login ── */
+  // Profile cache — uid → { username, avatar, effectiveStatus }
+  const profileCache = new Map();
+  let _serverImageBlob = null;
+
+  /* ── Init — called after login ── */
   function init(user, profile) {
     currentUser = user;
     userProfile = profile;
 
+    // Cache self
+    profileCache.set(user.uid, {
+      username: profile.username,
+      avatar: profile.avatar || '',
+      effectiveStatus: profile.effectiveStatus || 'online'
+    });
+
     // DM button
     document.getElementById('dm-btn').addEventListener('click', showDMView);
-
-    // Sidebar tabs
-    document.querySelectorAll('.sidebar-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.sidebar-tab-content').forEach(c => c.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-      });
-    });
 
     // Send message
     document.getElementById('chat-send').addEventListener('click', sendMessage);
     document.getElementById('chat-input').addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-    });
-
-    // Add friend
-    document.getElementById('add-friend-btn').addEventListener('click', sendFriendRequest);
-    document.getElementById('add-friend-input').addEventListener('keydown', e => {
-      if (e.key === 'Enter') sendFriendRequest();
     });
 
     // Create server
@@ -47,8 +44,23 @@ const Messenger = (() => {
     });
     document.getElementById('cancel-server-btn').addEventListener('click', () => {
       document.getElementById('create-server-modal').classList.remove('open');
+      _resetServerModal();
     });
     document.getElementById('confirm-server-btn').addEventListener('click', createServer);
+
+    // Server image upload
+    document.getElementById('server-img-preview').addEventListener('click', () => {
+      document.getElementById('server-img-input').click();
+    });
+    document.getElementById('server-img-input').addEventListener('change', _previewServerImage);
+
+    // Visibility toggle
+    document.querySelectorAll('.visibility-opt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.visibility-opt').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
 
     // Create channel
     document.getElementById('create-channel-btn').addEventListener('click', () => {
@@ -62,24 +74,14 @@ const Messenger = (() => {
     // Friend search filter
     document.getElementById('friend-search').addEventListener('input', filterFriends);
 
+    // Discover button
+    const discoverBtn = document.getElementById('discover-btn');
+    if (discoverBtn) discoverBtn.addEventListener('click', showDiscover);
+
     // Initialize
-    renderUserBar();
     loadFriends();
     loadServers();
-    loadPendingRequests();
     showDMView();
-  }
-
-  /* ── Profile ── */
-  function renderUserBar() {
-    const av = document.getElementById('msg-avatar');
-    if (userProfile.avatar) {
-      av.innerHTML = '<img src="' + esc(userProfile.avatar) + '" alt="">';
-    } else {
-      av.textContent = (userProfile.username || 'U').charAt(0).toUpperCase();
-    }
-    document.getElementById('msg-username').textContent = userProfile.username || 'User';
-    document.getElementById('msg-status').textContent = userProfile.status || 'Online';
   }
 
   /* ── DM View ── */
@@ -92,9 +94,14 @@ const Messenger = (() => {
     document.getElementById('dm-section').style.display = 'flex';
     document.getElementById('channel-section').style.display = 'none';
     document.getElementById('members-sidebar').style.display = 'none';
+
+    // Track activity
+    db.collection('users').doc(currentUser.uid).update({
+      'activity.server': null
+    }).catch(() => {});
   }
 
-  /* ── Friends ── */
+  /* ── Friends (for DM list) ── */
   function loadFriends() {
     db.collection('users').doc(currentUser.uid).onSnapshot(doc => {
       if (!doc.exists) return;
@@ -118,7 +125,16 @@ const Messenger = (() => {
       const snap = await db.collection('users')
         .where(firebase.firestore.FieldPath.documentId(), 'in', batch)
         .get();
-      snap.forEach(d => profiles.push({ uid: d.id, ...d.data() }));
+      snap.forEach(d => {
+        const data = d.data();
+        profiles.push({ uid: d.id, ...data });
+        // Update cache
+        profileCache.set(d.id, {
+          username: data.username,
+          avatar: data.avatar || '',
+          effectiveStatus: data.effectiveStatus || 'offline'
+        });
+      });
     }
 
     list.innerHTML = profiles.map(f => {
@@ -126,13 +142,15 @@ const Messenger = (() => {
       const avatarHtml = f.avatar
         ? '<img src="' + esc(f.avatar) + '" alt="">'
         : initial;
-      const onlineDot = f.online ? '<span class="online-dot"></span>' : '';
+      const eStatus = f.effectiveStatus || 'offline';
 
       return '<div class="friend-item" data-uid="' + f.uid + '">' +
-        '<div class="friend-avatar">' + avatarHtml + onlineDot + '</div>' +
+        '<div class="friend-avatar">' + avatarHtml +
+          '<span class="status-dot ' + eStatus + '"></span>' +
+        '</div>' +
         '<div>' +
           '<div class="friend-name">' + esc(f.username) + '</div>' +
-          '<div class="friend-status">' + esc(f.status || (f.online ? 'Online' : 'Offline')) + '</div>' +
+          '<div class="friend-status">' + _statusLabel(eStatus) + '</div>' +
         '</div></div>';
     }).join('');
 
@@ -141,141 +159,17 @@ const Messenger = (() => {
     });
   }
 
+  function _statusLabel(status) {
+    const labels = { online: 'Online', away: 'Away', dnd: 'Do Not Disturb', offline: 'Offline' };
+    return labels[status] || 'Offline';
+  }
+
   function filterFriends() {
     const q = document.getElementById('friend-search').value.toLowerCase();
     document.querySelectorAll('#friends-list .friend-item').forEach(el => {
       const name = el.querySelector('.friend-name').textContent.toLowerCase();
       el.style.display = name.includes(q) ? '' : 'none';
     });
-  }
-
-  /* ── Friend Requests ── */
-  async function sendFriendRequest() {
-    const input = document.getElementById('add-friend-input');
-    const username = input.value.trim();
-    if (!username) return;
-
-    try {
-      const snap = await db.collection('users')
-        .where('usernameLower', '==', username.toLowerCase())
-        .limit(1)
-        .get();
-
-      if (snap.empty) {
-        showToast('User not found.', 'error');
-        return;
-      }
-
-      const targetDoc = snap.docs[0];
-      if (targetDoc.id === currentUser.uid) {
-        showToast("You can't add yourself.", 'error');
-        return;
-      }
-
-      // Check if already friends
-      const myDoc = await db.collection('users').doc(currentUser.uid).get();
-      const myFriends = myDoc.data().friends || [];
-      if (myFriends.includes(targetDoc.id)) {
-        showToast('Already friends!', 'info');
-        return;
-      }
-
-      // Check if request already exists
-      const existing = await db.collection('friend_requests')
-        .where('from', '==', currentUser.uid)
-        .where('to', '==', targetDoc.id)
-        .limit(1)
-        .get();
-
-      if (!existing.empty) {
-        showToast('Request already sent.', 'info');
-        return;
-      }
-
-      await db.collection('friend_requests').add({
-        from: currentUser.uid,
-        fromUsername: userProfile.username,
-        to: targetDoc.id,
-        toUsername: targetDoc.data().username,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        status: 'pending'
-      });
-
-      // Notify target
-      await db.collection('users').doc(targetDoc.id).collection('notifications').add({
-        message: userProfile.username + ' sent you a friend request!',
-        type: 'friend_request',
-        fromUid: currentUser.uid,
-        read: false,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-
-      input.value = '';
-      showToast('Friend request sent!', 'success');
-    } catch (err) {
-      console.error(err);
-      showToast('Failed to send request.', 'error');
-    }
-  }
-
-  function loadPendingRequests() {
-    db.collection('friend_requests')
-      .where('to', '==', currentUser.uid)
-      .where('status', '==', 'pending')
-      .onSnapshot(snap => {
-        const container = document.getElementById('pending-requests');
-        if (snap.empty) {
-          container.innerHTML = '<div class="sidebar-empty">No pending requests</div>';
-          return;
-        }
-
-        container.innerHTML = '';
-        snap.forEach(doc => {
-          const req = doc.data();
-          const div = document.createElement('div');
-          div.className = 'pending-item';
-          div.innerHTML =
-            '<span>' + esc(req.fromUsername) + '</span>' +
-            '<div class="pending-actions">' +
-              '<button class="pending-accept" data-id="' + doc.id + '" data-uid="' + req.from + '">Accept</button>' +
-              '<button class="pending-deny" data-id="' + doc.id + '">Deny</button>' +
-            '</div>';
-          container.appendChild(div);
-        });
-
-        container.querySelectorAll('.pending-accept').forEach(btn => {
-          btn.addEventListener('click', () => acceptFriend(btn.dataset.id, btn.dataset.uid));
-        });
-        container.querySelectorAll('.pending-deny').forEach(btn => {
-          btn.addEventListener('click', () => denyFriend(btn.dataset.id));
-        });
-      });
-  }
-
-  async function acceptFriend(requestId, fromUid) {
-    try {
-      const batch = db.batch();
-      const myRef = db.collection('users').doc(currentUser.uid);
-      const theirRef = db.collection('users').doc(fromUid);
-      const reqRef = db.collection('friend_requests').doc(requestId);
-
-      batch.update(myRef, { friends: firebase.firestore.FieldValue.arrayUnion(fromUid) });
-      batch.update(theirRef, { friends: firebase.firestore.FieldValue.arrayUnion(currentUser.uid) });
-      batch.update(reqRef, { status: 'accepted' });
-
-      await batch.commit();
-      showToast('Friend added!', 'success');
-    } catch (err) {
-      console.error(err);
-      showToast('Failed to accept.', 'error');
-    }
-  }
-
-  async function denyFriend(requestId) {
-    try {
-      await db.collection('friend_requests').doc(requestId).update({ status: 'denied' });
-      showToast('Request denied.', 'info');
-    } catch { showToast('Failed.', 'error'); }
   }
 
   /* ── DM Chat ── */
@@ -322,26 +216,134 @@ const Messenger = (() => {
       .onSnapshot(snap => {
         const list = document.getElementById('server-list');
         list.innerHTML = '';
+
+        const publicServers = [];
+        const privateServers = [];
+
         snap.forEach(doc => {
           const s = doc.data();
-          const icon = document.createElement('div');
-          icon.className = 'server-icon';
-          icon.title = s.name;
-          icon.textContent = (s.name || 'S').charAt(0).toUpperCase();
-          icon.dataset.id = doc.id;
-          icon.addEventListener('click', () => openServer(doc.id, s));
-          list.appendChild(icon);
+          const entry = { id: doc.id, ...s };
+          if (s.visibility === 'private') {
+            privateServers.push(entry);
+          } else {
+            publicServers.push(entry);
+          }
         });
+
+        // Public servers
+        if (publicServers.length) {
+          const label = document.createElement('div');
+          label.className = 'server-label';
+          label.textContent = 'Public';
+          list.appendChild(label);
+          publicServers.forEach(s => list.appendChild(_createServerIcon(s)));
+        }
+
+        // Private servers
+        if (privateServers.length) {
+          if (publicServers.length) {
+            const div = document.createElement('div');
+            div.className = 'server-divider';
+            list.appendChild(div);
+          }
+          const label = document.createElement('div');
+          label.className = 'server-label';
+          label.textContent = 'Private';
+          list.appendChild(label);
+          privateServers.forEach(s => list.appendChild(_createServerIcon(s)));
+        }
       });
+  }
+
+  function _createServerIcon(s) {
+    const icon = document.createElement('div');
+    icon.className = 'server-icon';
+    icon.title = s.name;
+    if (s.image) {
+      icon.innerHTML = '<img src="' + esc(s.image) + '" alt="">';
+    } else {
+      icon.textContent = (s.name || 'S').charAt(0).toUpperCase();
+    }
+    icon.dataset.id = s.id;
+    icon.addEventListener('click', () => openServer(s.id, s));
+    return icon;
+  }
+
+  async function _previewServerImage(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { showToast('Image must be under 5 MB.', 'error'); return; }
+    try {
+      _serverImageBlob = await CropperUtil.open(file, { aspectRatio: 1, width: 256, height: 256 });
+      const url = URL.createObjectURL(_serverImageBlob);
+      document.getElementById('server-img-preview').innerHTML = '<img src="' + url + '" alt="">';
+    } catch { _serverImageBlob = null; }
+    e.target.value = '';
+  }
+
+  function _resetServerModal() {
+    document.getElementById('server-name-input').value = '';
+    document.getElementById('server-desc-input').value = '';
+    document.getElementById('server-img-input').value = '';
+    _serverImageBlob = null;
+    document.getElementById('server-img-preview').innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
+    document.querySelectorAll('.visibility-opt').forEach(b => b.classList.remove('active'));
+    document.getElementById('vis-public').classList.add('active');
   }
 
   async function createServer() {
     const name = document.getElementById('server-name-input').value.trim();
-    if (!name) return;
+    if (!name || name.length < 3 || name.length > 50) {
+      showToast('Server name must be 3–50 characters.', 'error');
+      return;
+    }
+
+    const description = document.getElementById('server-desc-input').value.trim();
+    if (description.length > 200) {
+      showToast('Description must be under 200 characters.', 'error');
+      return;
+    }
+
+    // Check 2-server limit
+    try {
+      const myServers = await db.collection('servers')
+        .where('owner', '==', currentUser.uid)
+        .get();
+      if (myServers.size >= 2) {
+        showToast('You can only own up to 2 servers.', 'error');
+        return;
+      }
+    } catch { /* proceed */ }
+
+    const visibility = document.querySelector('.visibility-opt.active')?.dataset.value || 'public';
+
+    // Upload image if provided
+    let imageUrl = '';
+    if (_serverImageBlob) {
+      showToast('Uploading server image...', 'info');
+      try {
+        const fd = new FormData();
+        fd.append('file', _serverImageBlob);
+        fd.append('upload_preset', CLOUDINARY_PRESET);
+        const res = await fetch(
+          'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/image/upload',
+          { method: 'POST', body: fd }
+        );
+        const data = await res.json();
+        imageUrl = data.secure_url || '';
+      } catch {
+        showToast('Image upload failed.', 'error');
+        return;
+      }
+    }
 
     try {
       const ref = await db.collection('servers').add({
         name,
+        description,
+        image: imageUrl,
+        visibility,
         owner: currentUser.uid,
         members: [currentUser.uid],
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -353,11 +355,95 @@ const Messenger = (() => {
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-      document.getElementById('server-name-input').value = '';
       document.getElementById('create-server-modal').classList.remove('open');
+      _resetServerModal();
       showToast('Server created!', 'success');
     } catch {
       showToast('Failed to create server.', 'error');
+    }
+  }
+
+  /* ── Discover View ── */
+  async function showDiscover() {
+    currentServerId = null;
+    currentChat = null;
+    if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+
+    document.querySelectorAll('.server-icon').forEach(s => s.classList.remove('active'));
+    document.getElementById('discover-btn').classList.add('active');
+
+    document.getElementById('sidebar-header').textContent = 'Discover Servers';
+    document.getElementById('dm-section').style.display = 'none';
+    document.getElementById('channel-section').style.display = 'none';
+    document.getElementById('members-sidebar').style.display = 'none';
+    document.getElementById('chat-input-bar').style.display = 'none';
+    document.getElementById('chat-header').innerHTML =
+      '<span>Discover Public Servers</span>';
+
+    const messagesEl = document.getElementById('chat-messages');
+    messagesEl.innerHTML = '<div class="chat-empty">Loading servers...</div>';
+
+    try {
+      const snap = await db.collection('servers')
+        .where('visibility', '==', 'public')
+        .orderBy('createdAt', 'desc')
+        .limit(50)
+        .get();
+
+      if (snap.empty) {
+        messagesEl.innerHTML = '<div class="chat-empty">No public servers yet. Create one!</div>';
+        return;
+      }
+
+      messagesEl.innerHTML = '<div class="discover-grid"></div>';
+      const grid = messagesEl.querySelector('.discover-grid');
+
+      snap.forEach(doc => {
+        const s = doc.data();
+        const membersAlready = (s.members || []).includes(currentUser.uid);
+        const initial = (s.name || 'S').charAt(0).toUpperCase();
+        const imgHtml = s.image
+          ? '<img src="' + esc(s.image) + '" alt="">'
+          : '<span>' + initial + '</span>';
+
+        const card = document.createElement('div');
+        card.className = 'discover-card';
+        card.innerHTML =
+          '<div class="discover-card-img">' + imgHtml + '</div>' +
+          '<div class="discover-card-body">' +
+            '<h4>' + esc(s.name) + '</h4>' +
+            '<p>' + esc(s.description || 'No description') + '</p>' +
+            '<div class="discover-card-meta">' + (s.members || []).length + ' members</div>' +
+            (membersAlready
+              ? '<button class="btn btn-sm" style="margin-top:8px;border:1px solid var(--border);color:var(--text-muted)" disabled>Joined</button>'
+              : '<button class="btn btn-primary btn-sm discover-join" data-id="' + doc.id + '" style="margin-top:8px">Join Server</button>') +
+          '</div>';
+
+        grid.appendChild(card);
+      });
+
+      grid.querySelectorAll('.discover-join').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const sid = btn.dataset.id;
+          try {
+            await db.collection('servers').doc(sid).update({
+              members: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
+            });
+            btn.textContent = 'Joined';
+            btn.disabled = true;
+            btn.classList.remove('btn-primary');
+            btn.style.color = 'var(--text-muted)';
+            btn.style.border = '1px solid var(--border)';
+            showToast('Joined server!', 'success');
+          } catch {
+            showToast('Failed to join.', 'error');
+          }
+        });
+      });
+    } catch (err) {
+      console.error(err);
+      messagesEl.innerHTML = '<div class="chat-empty">Failed to load servers.</div>';
     }
   }
 
@@ -372,6 +458,11 @@ const Messenger = (() => {
     document.getElementById('dm-section').style.display = 'none';
     document.getElementById('channel-section').style.display = 'flex';
     document.getElementById('members-sidebar').style.display = '';
+
+    // Track activity
+    db.collection('users').doc(currentUser.uid).update({
+      'activity.server': serverData.name
+    }).catch(() => {});
 
     loadChannels(serverId);
     loadMembers(serverId, serverData.members);
@@ -404,7 +495,10 @@ const Messenger = (() => {
   async function createChannel() {
     if (!currentServerId) return;
     const name = document.getElementById('channel-name-input').value.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-    if (!name) return;
+    if (!name || name.length > 30) {
+      showToast('Channel name must be 1–30 characters.', 'error');
+      return;
+    }
 
     try {
       await db.collection('servers').doc(currentServerId).collection('channels').add({
@@ -429,16 +523,29 @@ const Messenger = (() => {
       const snap = await db.collection('users')
         .where(firebase.firestore.FieldPath.documentId(), 'in', batch)
         .get();
-      snap.forEach(d => profiles.push({ uid: d.id, ...d.data() }));
+      snap.forEach(d => {
+        const data = d.data();
+        profiles.push({ uid: d.id, ...data });
+        profileCache.set(d.id, {
+          username: data.username,
+          avatar: data.avatar || '',
+          effectiveStatus: data.effectiveStatus || 'offline'
+        });
+      });
     }
 
-    profiles.sort((a, b) => (b.online ? 1 : 0) - (a.online ? 1 : 0));
+    // Sort: online first, then away, then offline
+    const order = { online: 0, away: 1, dnd: 2, offline: 3 };
+    profiles.sort((a, b) => (order[a.effectiveStatus] || 3) - (order[b.effectiveStatus] || 3));
 
     list.innerHTML = profiles.map(m => {
       const initial = (m.username || 'U').charAt(0).toUpperCase();
       const avatarHtml = m.avatar ? '<img src="' + esc(m.avatar) + '" alt="">' : initial;
-      return '<div class="member-item' + (m.online ? ' online' : '') + '">' +
-        '<div class="member-avatar">' + avatarHtml + '</div>' +
+      const eStatus = m.effectiveStatus || 'offline';
+      return '<div class="member-item">' +
+        '<div class="member-avatar">' + avatarHtml +
+          '<span class="status-dot ' + eStatus + '"></span>' +
+        '</div>' +
         '<span class="member-name">' + esc(m.username) + '</span></div>';
     }).join('');
   }
@@ -478,20 +585,18 @@ const Messenger = (() => {
       });
   }
 
-  /* ── Send Message ── */
+  /* ── Send Message (uid-only storage) ── */
   async function sendMessage() {
     if (!currentChat) return;
     const input = document.getElementById('chat-input');
     const text = input.value.trim();
-    if (!text) return;
+    if (!text || text.length > 2000) return;
 
     input.value = '';
 
     const msgData = {
       text,
       uid: currentUser.uid,
-      username: userProfile.username,
-      avatar: userProfile.avatar || '',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     };
 
@@ -519,14 +624,20 @@ const Messenger = (() => {
     }
   }
 
-  /* ── Render a single message ── */
+  /* ── Render a single message (resolves from profileCache) ── */
   function renderMessage(data) {
     const div = document.createElement('div');
     div.className = 'msg';
 
-    const initial = (data.username || 'U').charAt(0).toUpperCase();
-    const avatarContent = data.avatar
-      ? '<img src="' + esc(data.avatar) + '" alt="">'
+    // Resolve from cache, fall back to denormalized data for old messages
+    const cached = profileCache.get(data.uid);
+    const username = cached ? cached.username : (data.username || 'Unknown');
+    const avatar = cached ? cached.avatar : (data.avatar || '');
+    const eStatus = cached ? cached.effectiveStatus : 'offline';
+
+    const initial = (username || 'U').charAt(0).toUpperCase();
+    const avatarContent = avatar
+      ? '<img src="' + esc(avatar) + '" alt="">'
       : initial;
 
     const time = data.createdAt
@@ -534,10 +645,12 @@ const Messenger = (() => {
       : '';
 
     div.innerHTML =
-      '<div class="msg-avatar">' + avatarContent + '</div>' +
+      '<div class="msg-avatar">' + avatarContent +
+        '<span class="status-dot ' + eStatus + '"></span>' +
+      '</div>' +
       '<div class="msg-body">' +
         '<div class="msg-header">' +
-          '<span class="msg-author">' + esc(data.username || 'Unknown') + '</span>' +
+          '<span class="msg-author">' + esc(username) + '</span>' +
           '<span class="msg-time">' + time + '</span>' +
         '</div>' +
         '<div class="msg-text">' + esc(data.text || '') + '</div>' +

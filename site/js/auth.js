@@ -7,6 +7,7 @@
 
 const Auth = (() => {
   const googleProvider = new firebase.auth.GoogleAuthProvider();
+  let _regAvatarBlob = null;
 
   function init() {
     // Login form
@@ -32,16 +33,17 @@ const Auth = (() => {
       document.getElementById('login-page').style.display = 'flex';
     });
 
-    // Avatar preview on register
-    document.getElementById('reg-avatar-input').addEventListener('change', (e) => {
+    // Avatar preview on register (with crop)
+    document.getElementById('reg-avatar-input').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const preview = document.getElementById('reg-avatar-preview');
-        preview.innerHTML = '<img src="' + reader.result + '" alt="">';
-      };
-      reader.readAsDataURL(file);
+      if (file.size > 5 * 1024 * 1024) { showToast('Image must be under 5 MB', 'error'); return; }
+      try {
+        _regAvatarBlob = await CropperUtil.open(file, { aspectRatio: 1, width: 256, height: 256 });
+        const url = URL.createObjectURL(_regAvatarBlob);
+        document.getElementById('reg-avatar-preview').innerHTML = '<img src="' + url + '" alt="">';
+      } catch { _regAvatarBlob = null; }
+      e.target.value = '';
     });
 
     document.getElementById('reg-avatar-preview').addEventListener('click', () => {
@@ -103,8 +105,8 @@ const Auth = (() => {
       errorEl.textContent = 'Username can only contain letters, numbers, and underscores.';
       return;
     }
-    if (password.length < 6) {
-      errorEl.textContent = 'Password must be at least 6 characters.';
+    if (password.length < 6 || password.length > 128) {
+      errorEl.textContent = 'Password must be 6–128 characters.';
       return;
     }
     if (password !== confirm) {
@@ -129,14 +131,9 @@ const Auth = (() => {
 
       // Upload avatar if provided
       let avatarUrl = '';
-      const file = document.getElementById('reg-avatar-input').files[0];
-      if (file) {
-        if (file.size > 5 * 1024 * 1024) {
-          errorEl.textContent = 'Image must be under 5MB.';
-          document.getElementById('register-btn').disabled = false;
-          return;
-        }
-        avatarUrl = await uploadToCloudinary(file);
+      if (_regAvatarBlob) {
+        avatarUrl = await uploadToCloudinary(_regAvatarBlob);
+        _regAvatarBlob = null;
       }
 
       const cred = await auth.createUserWithEmailAndPassword(email, password);
@@ -165,7 +162,8 @@ const Auth = (() => {
       usernameLower: username.toLowerCase(),
       email: user.email,
       avatar: avatar || '',
-      status: '',
+      status: 'auto',
+      effectiveStatus: 'online',
       role: 'user',
       friends: [],
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),

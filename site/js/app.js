@@ -8,6 +8,8 @@ const App = (() => {
   let currentUser = null;
   let userProfile = null;
   let notifUnsubscribe = null;
+  let _idleTimer = null;
+  const IDLE_MS = 10 * 60 * 1000; // 10 minutes
 
   /* ── Init ── */
   function init() {
@@ -35,14 +37,33 @@ const App = (() => {
     });
 
     // Profile dropdown
-    document.getElementById('nav-avatar').addEventListener('click', _toggleProfile);
+    const avatarWrapper = document.querySelector('.nav-avatar-wrapper');
+    if (avatarWrapper) avatarWrapper.addEventListener('click', _toggleProfile);
     document.getElementById('nav-username').addEventListener('click', _toggleProfile);
     document.getElementById('profile-dd-avatar').addEventListener('click', () => {
       document.getElementById('avatar-upload').click();
     });
     document.getElementById('avatar-upload').addEventListener('change', _handleAvatarChange);
     document.getElementById('save-profile-btn').addEventListener('click', _saveProfile);
-    document.getElementById('btn-logout').addEventListener('click', () => auth.signOut());
+
+    // Username edit: click name to toggle input
+    document.getElementById('profile-dd-name').addEventListener('click', function () {
+      this.style.display = 'none';
+      var inp = document.getElementById('profile-dd-name-input');
+      inp.style.display = '';
+      inp.value = userProfile.username || '';
+      inp.focus();
+    });
+
+    document.getElementById('btn-logout').addEventListener('click', () => {
+      if (currentUser) {
+        db.collection('users').doc(currentUser.uid).update({
+          online: false, effectiveStatus: 'offline',
+          lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+        }).catch(() => {});
+      }
+      auth.signOut();
+    });
 
     // Notifications bell
     document.getElementById('notif-bell').addEventListener('click', _toggleNotifs);
@@ -56,7 +77,7 @@ const App = (() => {
       const notifDD = document.getElementById('notif-dropdown');
       if (profDD.classList.contains('open') &&
           !profDD.contains(e.target) &&
-          !document.getElementById('nav-avatar').contains(e.target) &&
+          !document.querySelector('.nav-avatar-wrapper')?.contains(e.target) &&
           e.target.id !== 'nav-username') {
         profDD.classList.remove('open');
       }
@@ -74,9 +95,9 @@ const App = (() => {
       const doc = await db.collection('users').doc(currentUser.uid).get();
       userProfile = doc.exists
         ? doc.data()
-        : { username: currentUser.displayName || 'User', avatar: '', status: '' };
+        : { username: currentUser.displayName || 'User', avatar: '', status: 'auto', effectiveStatus: 'online' };
     } catch {
-      userProfile = { username: currentUser.displayName || 'User', avatar: '', status: '' };
+      userProfile = { username: currentUser.displayName || 'User', avatar: '', status: 'auto', effectiveStatus: 'online' };
     }
   }
 
@@ -84,11 +105,16 @@ const App = (() => {
   function _renderUserUI() {
     const name   = userProfile.username || 'User';
     const avatar = userProfile.avatar   || '';
+    const eStatus = userProfile.effectiveStatus || 'offline';
 
     const navAv = document.getElementById('nav-avatar');
     navAv.innerHTML = avatar
       ? '<img src="' + _esc(avatar) + '" alt="">'
       : name.charAt(0).toUpperCase();
+
+    // Status dot on nav avatar
+    const navDot = document.getElementById('nav-status-dot');
+    if (navDot) navDot.className = 'status-dot ' + eStatus;
 
     document.getElementById('nav-username').textContent = name;
 
@@ -98,12 +124,18 @@ const App = (() => {
       : name.charAt(0).toUpperCase();
 
     document.getElementById('profile-dd-name').textContent  = name;
+    document.getElementById('profile-dd-name').style.display = '';
+    var nameInp = document.getElementById('profile-dd-name-input');
+    if (nameInp) { nameInp.style.display = 'none'; nameInp.value = name; }
     document.getElementById('profile-dd-email').textContent = currentUser.email || '';
-    document.getElementById('profile-status').value         = userProfile.status || '';
+
+    const statusSelect = document.getElementById('profile-status');
+    if (statusSelect) statusSelect.value = userProfile.status || 'auto';
   }
 
   /* ── Profile dropdown toggles ── */
-  function _toggleProfile() {
+  function _toggleProfile(e) {
+    e.stopPropagation();
     document.getElementById('profile-dropdown').classList.toggle('open');
     document.getElementById('notif-dropdown').classList.remove('open');
   }
@@ -113,15 +145,18 @@ const App = (() => {
     document.getElementById('profile-dropdown').classList.remove('open');
   }
 
-  /* ── Avatar upload via Cloudinary ── */
+  /* ── Avatar upload with crop ── */
   async function _handleAvatarChange(e) {
     const file = e.target.files[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { showToast('Image must be under 5 MB', 'error'); return; }
+    var blob;
+    try { blob = await CropperUtil.open(file, { aspectRatio: 1, width: 256, height: 256 }); }
+    catch { return; } // cancelled
     showToast('Uploading avatar...', 'info');
     try {
       const fd = new FormData();
-      fd.append('file', file);
+      fd.append('file', blob);
       fd.append('upload_preset', CLOUDINARY_PRESET);
       const res = await fetch(
         'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/image/upload',
@@ -135,17 +170,57 @@ const App = (() => {
         showToast('Avatar updated!', 'success');
       }
     } catch { showToast('Upload failed.', 'error'); }
+    e.target.value = '';
   }
 
-  /* ── Save status ── */
+  /* ── Save status + optional username ── */
   async function _saveProfile() {
-    const status = document.getElementById('profile-status').value.trim();
+    var status = document.getElementById('profile-status').value;
+    var updates = {};
+
+    // Username change?
+    var nameInp = document.getElementById('profile-dd-name-input');
+    if (nameInp && nameInp.style.display !== 'none') {
+      var newName = nameInp.value.trim();
+      if (newName && newName !== userProfile.username) {
+        if (newName.length < 3 || newName.length > 20) {
+          showToast('Username must be 3-20 characters.', 'error'); return;
+        }
+        if (!/^[a-zA-Z0-9_]+$/.test(newName)) {
+          showToast('Only letters, numbers and underscores.', 'error'); return;
+        }
+        var lower = newName.toLowerCase();
+        var snap = await db.collection('users')
+          .where('usernameLower', '==', lower).limit(1).get();
+        if (!snap.empty && snap.docs[0].id !== currentUser.uid) {
+          showToast('Username already taken.', 'error'); return;
+        }
+        updates.username = newName;
+        updates.usernameLower = lower;
+      }
+    }
+
     try {
-      await db.collection('users').doc(currentUser.uid).update({ status });
+      var effectiveStatus = _computeEffective(status);
+      updates.status = status;
+      updates.effectiveStatus = effectiveStatus;
+      await db.collection('users').doc(currentUser.uid).update(updates);
+      if (updates.username) {
+        userProfile.username = updates.username;
+        userProfile.usernameLower = updates.usernameLower;
+      }
       userProfile.status = status;
+      userProfile.effectiveStatus = effectiveStatus;
+      _renderUserUI();
       showToast('Profile saved!', 'success');
       document.getElementById('profile-dropdown').classList.remove('open');
     } catch { showToast('Failed to save.', 'error'); }
+  }
+
+  /* ── Compute effective status ── */
+  function _computeEffective(status) {
+    if (status === 'auto') return document.hidden ? 'away' : 'online';
+    return status;
   }
 
   /* ── Notifications real-time listener ── */
@@ -242,21 +317,68 @@ const App = (() => {
     document.getElementById('game-iframe').src = '';
   }
 
-  /* ── Online presence ── */
+  /* ── Online presence + Auto status ── */
   function _setupPresence() {
     const ref = db.collection('users').doc(currentUser.uid);
+    const effective = _computeEffective(userProfile.status || 'auto');
+
     ref.update({
-      online:   true,
-      lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+      online: true,
+      effectiveStatus: effective,
+      lastSeen: firebase.firestore.FieldValue.serverTimestamp(),
+      'activity.page': 'home'
     }).catch(() => {});
 
-    window.addEventListener('beforeunload', () => {
-      ref.update({ online: false, lastSeen: firebase.firestore.FieldValue.serverTimestamp() });
+    userProfile.effectiveStatus = effective;
+    _renderUserUI();
+
+    // Visibility change (tab hidden/shown)
+    document.addEventListener('visibilitychange', () => {
+      if (userProfile.status !== 'auto') return;
+      const eff = document.hidden ? 'away' : 'online';
+      ref.update({ effectiveStatus: eff, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+      userProfile.effectiveStatus = eff;
+      _renderUserUI();
+      if (!document.hidden) _resetIdleTimer();
     });
 
+    // Idle detection
+    const resetIdle = () => _resetIdleTimer();
+    document.addEventListener('mousemove', resetIdle, { passive: true });
+    document.addEventListener('keydown', resetIdle, { passive: true });
+    _resetIdleTimer();
+
+    // Beforeunload → offline
+    window.addEventListener('beforeunload', () => {
+      ref.update({
+        online: false,
+        effectiveStatus: userProfile.status === 'auto' ? 'offline' : userProfile.effectiveStatus,
+        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+
+    // Heartbeat
     setInterval(() => {
       ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
     }, 60000);
+  }
+
+  function _resetIdleTimer() {
+    if (userProfile.status !== 'auto') return;
+    clearTimeout(_idleTimer);
+    if (userProfile.effectiveStatus === 'away' && !document.hidden) {
+      const ref = db.collection('users').doc(currentUser.uid);
+      ref.update({ effectiveStatus: 'online' }).catch(() => {});
+      userProfile.effectiveStatus = 'online';
+      _renderUserUI();
+    }
+    _idleTimer = setTimeout(() => {
+      if (userProfile.status !== 'auto') return;
+      const ref = db.collection('users').doc(currentUser.uid);
+      ref.update({ effectiveStatus: 'away' }).catch(() => {});
+      userProfile.effectiveStatus = 'away';
+      _renderUserUI();
+    }, IDLE_MS);
   }
 
   function _esc(str) {

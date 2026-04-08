@@ -6,6 +6,7 @@
   <title>Games — RedsssProduction Studios</title>
   <link rel="icon" href="images/logo.jpg">
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
 </head>
 <body>
 
@@ -40,7 +41,10 @@
             <div id="notif-list"><div class="notif-empty">No notifications</div></div>
           </div>
         </div>
-        <div class="nav-avatar" id="nav-avatar" title="Profile"></div>
+        <div class="nav-avatar-wrapper">
+          <div class="nav-avatar" id="nav-avatar" title="Profile"></div>
+          <span class="status-dot" id="nav-status-dot"></span>
+        </div>
         <span class="nav-username" id="nav-username"></span>
       </div>
     </nav>
@@ -51,14 +55,22 @@
         <div class="profile-dd-avatar" id="profile-dd-avatar"></div>
         <div>
           <div class="profile-dd-name" id="profile-dd-name"></div>
+          <input class="profile-dd-username-input" id="profile-dd-name-input" minlength="3" maxlength="20" placeholder="Username" style="display:none">
           <div class="profile-dd-email" id="profile-dd-email"></div>
         </div>
       </div>
       <div class="profile-dd-section">
         <label>Status</label>
-        <input class="profile-dd-input" id="profile-status" placeholder="Set a status..." maxlength="100">
+        <select class="profile-dd-select" id="profile-status">
+          <option value="auto">Auto</option>
+          <option value="online">Online</option>
+          <option value="away">Away</option>
+          <option value="dnd">Do Not Disturb</option>
+          <option value="offline">Offline</option>
+        </select>
       </div>
       <input type="file" id="avatar-upload" accept="image/*" style="display:none">
+      <a href="friends.html" class="btn btn-sm btn-full" style="display:block;text-align:center;border:1px solid var(--border);color:var(--text-secondary);margin-bottom:8px;text-decoration:none">Friends</a>
       <button class="btn btn-primary btn-sm btn-full" id="save-profile-btn">Save Changes</button>
       <button class="btn-logout" id="btn-logout">Log Out</button>
     </div>
@@ -89,6 +101,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+  <script src="js/cropper-util.js"></script>
   <script src="js/firebase-config.js"></script>
   <script src="js/nav.js"></script>
   <script src="js/games.js"></script>

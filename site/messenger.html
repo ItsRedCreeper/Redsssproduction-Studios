@@ -6,7 +6,7 @@
   <title>RedsssMessenger — RedsssProduction Studios</title>
   <link rel="icon" href="images/logo.jpg">
   <link rel="stylesheet" href="css/style.css">
-  <link rel="stylesheet" href="css/messenger.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
 </head>
 <body class="messenger-page">
 
@@ -41,7 +41,10 @@
             <div id="notif-list"><div class="notif-empty">No notifications</div></div>
           </div>
         </div>
-        <div class="nav-avatar" id="nav-avatar" title="Profile"></div>
+        <div class="nav-avatar-wrapper">
+          <div class="nav-avatar" id="nav-avatar" title="Profile"></div>
+          <span class="status-dot" id="nav-status-dot"></span>
+        </div>
         <span class="nav-username" id="nav-username"></span>
       </div>
     </nav>
@@ -52,14 +55,22 @@
         <div class="profile-dd-avatar" id="profile-dd-avatar"></div>
         <div>
           <div class="profile-dd-name" id="profile-dd-name"></div>
+          <input class="profile-dd-username-input" id="profile-dd-name-input" minlength="3" maxlength="20" placeholder="Username" style="display:none">
           <div class="profile-dd-email" id="profile-dd-email"></div>
         </div>
       </div>
       <div class="profile-dd-section">
         <label>Status</label>
-        <input class="profile-dd-input" id="profile-status" placeholder="Set a status..." maxlength="100">
+        <select class="profile-dd-select" id="profile-status">
+          <option value="auto">Auto</option>
+          <option value="online">Online</option>
+          <option value="away">Away</option>
+          <option value="dnd">Do Not Disturb</option>
+          <option value="offline">Offline</option>
+        </select>
       </div>
       <input type="file" id="avatar-upload" accept="image/*" style="display:none">
+      <a href="friends.html" class="btn btn-sm btn-full" style="display:block;text-align:center;border:1px solid var(--border);color:var(--text-secondary);margin-bottom:8px;text-decoration:none">Friends</a>
       <button class="btn btn-primary btn-sm btn-full" id="save-profile-btn">Save Changes</button>
       <button class="btn-logout" id="btn-logout">Log Out</button>
     </div>
@@ -74,6 +85,10 @@
           </div>
       <div class="server-divider"></div>
       <div id="server-list"></div>
+      <div class="server-divider"></div>
+      <div class="server-icon" id="discover-btn" title="Discover Servers">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+      </div>
       <div class="server-icon add" id="create-server-btn" title="Create Server">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </div>
@@ -86,40 +101,15 @@
       <!-- DM View -->
       <div class="sidebar-section" id="dm-section">
         <div class="sidebar-search">
-          <input class="form-input" id="friend-search" placeholder="Search friends...">
+          <input class="form-input" id="friend-search" placeholder="Search friends..." maxlength="20">
         </div>
-        <div class="sidebar-tabs">
-          <button class="sidebar-tab active" data-tab="friends">Friends</button>
-          <button class="sidebar-tab" data-tab="add-friend">Add Friend</button>
-        </div>
-
-        <div class="sidebar-tab-content active" id="tab-friends">
-          <div id="friends-list"><div class="sidebar-empty">No friends yet</div></div>
-        </div>
-
-        <div class="sidebar-tab-content" id="tab-add-friend">
-          <div class="add-friend-form">
-            <input class="form-input" id="add-friend-input" placeholder="Enter username...">
-            <button class="btn btn-primary btn-sm" id="add-friend-btn">Send Request</button>
-          </div>
-          <div id="pending-requests"></div>
-        </div>
+        <div id="friends-list"><div class="sidebar-empty">No friends yet</div></div>
       </div>
 
       <!-- Channel View -->
       <div class="sidebar-section" id="channel-section" style="display:none">
         <div id="channel-list"></div>
         <button class="btn btn-primary btn-sm btn-full" id="create-channel-btn" style="margin:12px 10px;width:calc(100% - 20px)">+ Channel</button>
-      </div>
-
-      <!-- User bar at bottom of sidebar -->
-      <div class="user-bar">
-        <div class="user-bar-avatar" id="msg-avatar"></div>
-        <div class="user-bar-info">
-          <span class="user-bar-name" id="msg-username"></span>
-          <span class="user-bar-status" id="msg-status">Online</span>
-        </div>
-
       </div>
     </div>
 
@@ -152,7 +142,25 @@
       <h3>Create a Server</h3>
       <div class="form-group">
         <label>Server Name</label>
-        <input class="form-input" id="server-name-input" placeholder="My Server" maxlength="50">
+        <input class="form-input" id="server-name-input" placeholder="My Server" minlength="3" maxlength="50">
+      </div>
+      <div class="form-group">
+        <label>Description <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+        <input class="form-input" id="server-desc-input" placeholder="What's this server about?" maxlength="200">
+      </div>
+      <div class="form-group">
+        <label>Server Image <span style="color:var(--text-muted);font-weight:400">(optional)</span></label>
+        <div class="server-img-upload" id="server-img-preview" title="Click to upload">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </div>
+        <input type="file" id="server-img-input" accept="image/*" style="display:none">
+      </div>
+      <div class="form-group">
+        <label>Visibility</label>
+        <div class="visibility-toggle">
+          <button class="visibility-opt active" data-value="public" id="vis-public">Public</button>
+          <button class="visibility-opt" data-value="private" id="vis-private">Private</button>
+        </div>
       </div>
       <div class="modal-actions">
         <button class="btn" id="cancel-server-btn">Cancel</button>
@@ -167,7 +175,7 @@
       <h3>Create a Channel</h3>
       <div class="form-group">
         <label>Channel Name</label>
-        <input class="form-input" id="channel-name-input" placeholder="general" maxlength="30">
+        <input class="form-input" id="channel-name-input" placeholder="general" minlength="1" maxlength="30">
       </div>
       <div class="modal-actions">
         <button class="btn" id="cancel-channel-btn">Cancel</button>
@@ -185,6 +193,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+  <script src="js/cropper-util.js"></script>
   <script src="js/firebase-config.js"></script>
   <script src="js/nav.js"></script>
   <script src="js/messenger.js"></script>

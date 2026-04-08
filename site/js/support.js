@@ -17,6 +17,8 @@ const Support = (() => {
     const subject = document.getElementById('support-subject').value.trim();
     const message = document.getElementById('support-message').value.trim();
     if (!subject || !message) { showToast('Please fill in both fields.', 'error'); return; }
+    if (subject.length < 3 || subject.length > 100) { showToast('Subject must be 3–100 characters.', 'error'); return; }
+    if (message.length < 10 || message.length > 2000) { showToast('Message must be 10–2000 characters.', 'error'); return; }
     try {
       await db.collection('support_tickets').add({
         uid:       _user.uid,
