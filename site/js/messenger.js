@@ -406,11 +406,14 @@ const Messenger = (() => {
     try {
       const snap = await db.collection('servers')
         .where('visibility', '==', 'public')
-        .orderBy('createdAt', 'desc')
         .limit(50)
         .get();
 
-      if (snap.empty) {
+      const docs = [];
+      snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+      docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+      if (!docs.length) {
         messagesEl.innerHTML = '<div class="chat-empty">No public servers yet. Create one!</div>';
         return;
       }
@@ -418,8 +421,7 @@ const Messenger = (() => {
       messagesEl.innerHTML = '<div class="discover-grid"></div>';
       const grid = messagesEl.querySelector('.discover-grid');
 
-      snap.forEach(doc => {
-        const s = doc.data();
+      docs.forEach(s => {
         const membersAlready = (s.members || []).includes(currentUser.uid);
         const initial = (s.name || 'S').charAt(0).toUpperCase();
         const imgHtml = s.image
@@ -436,7 +438,7 @@ const Messenger = (() => {
             '<div class="discover-card-meta">' + (s.members || []).length + ' members</div>' +
             (membersAlready
               ? '<button class="btn btn-sm" style="margin-top:8px;border:1px solid var(--border);color:var(--text-muted)" disabled>Joined</button>'
-              : '<button class="btn btn-primary btn-sm discover-join" data-id="' + doc.id + '" style="margin-top:8px">Join Server</button>') +
+              : '<button class="btn btn-primary btn-sm discover-join" data-id="' + s.id + '" style="margin-top:8px">Join Server</button>') +
           '</div>';
 
         grid.appendChild(card);

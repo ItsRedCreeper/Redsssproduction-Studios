@@ -1005,6 +1005,14 @@ body.messenger-page #app {
   flex-shrink: 0;
 }
 
+#server-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
 .server-icon {
   width: 42px;
   height: 42px;
