@@ -3,27 +3,80 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RedsssMessenger</title>
+  <title>RedsssMessenger — RedsssProduction Studios</title>
+  <link rel="icon" href="images/logo.jpg">
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/messenger.css">
 </head>
-<body>
+<body class="messenger-page">
 
-  <!-- Loading -->
+  <!-- Loading Screen -->
   <div id="loading-screen">
-    <div class="loader-logo">RedsssMessenger</div>
+    <div class="loader-logo">RedsssProduction Studios</div>
     <div class="loader-spinner"></div>
   </div>
 
-  <!-- Messenger Layout -->
-  <div id="messenger-app" style="display:none">
+  <!-- App (shown after auth confirms) -->
+  <div id="app" style="display:none">
+
+    <nav class="navbar">
+      <div class="nav-brand">
+        <img src="images/logo.jpg" alt="RedsssProduction Studios">
+        <span class="brand-text">RedsssProduction Studios</span>
+      </div>
+      <div class="nav-links">
+        <a class="nav-link" data-page="home" href="index.html">Home</a>
+        <a class="nav-link" data-page="games" href="games.html">Games</a>
+        <a class="nav-link" data-page="messenger" href="messenger.html">RedsssMessenger</a>
+        <a class="nav-link" data-page="support" href="support.html">Support</a>
+      </div>
+      <div class="nav-right">
+        <div class="notif-wrapper">
+          <button class="notif-bell" id="notif-bell" title="Notifications">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </button>
+          <span class="notif-badge" id="notif-badge">0</span>
+          <div class="notif-dropdown" id="notif-dropdown">
+            <div class="notif-dropdown-header">Notifications</div>
+            <div id="notif-list"><div class="notif-empty">No notifications</div></div>
+          </div>
+        </div>
+        <div class="nav-avatar" id="nav-avatar" title="Profile"></div>
+        <span class="nav-username" id="nav-username"></span>
+      </div>
+    </nav>
+
+    <!-- Profile Dropdown -->
+    <div class="profile-dropdown" id="profile-dropdown">
+      <div class="profile-dd-header">
+        <div class="profile-dd-avatar" id="profile-dd-avatar"></div>
+        <div>
+          <div class="profile-dd-name" id="profile-dd-name"></div>
+          <div class="profile-dd-email" id="profile-dd-email"></div>
+        </div>
+      </div>
+      <div class="profile-dd-section">
+        <label>Status</label>
+        <input class="profile-dd-input" id="profile-status" placeholder="Set a status..." maxlength="100">
+      </div>
+      <input type="file" id="avatar-upload" accept="image/*" style="display:none">
+      <button class="btn btn-primary btn-sm btn-full" id="save-profile-btn">Save Changes</button>
+      <button class="btn-logout" id="btn-logout">Log Out</button>
+    </div>
+
+    <!-- Messenger Layout -->
+    <div id="messenger-app">
 
     <!-- Server Strip (far left) -->
     <div class="server-strip">
-      <div class="server-icon active" id="dm-btn" title="Direct Messages">💬</div>
+      <div class="server-icon active" id="dm-btn" title="Direct Messages">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
       <div class="server-divider"></div>
       <div id="server-list"></div>
-      <div class="server-icon add" id="create-server-btn" title="Create Server">+</div>
+      <div class="server-icon add" id="create-server-btn" title="Create Server">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </div>
     </div>
 
     <!-- Sidebar -->
@@ -66,7 +119,7 @@
           <span class="user-bar-name" id="msg-username"></span>
           <span class="user-bar-status" id="msg-status">Online</span>
         </div>
-        <button class="user-bar-btn" id="msg-back" title="Back to main site">🏠</button>
+
       </div>
     </div>
 
@@ -80,7 +133,9 @@
       </div>
       <div class="chat-input-bar" id="chat-input-bar" style="display:none">
         <input class="chat-input" id="chat-input" placeholder="Type a message..." maxlength="2000">
-        <button class="chat-send" id="chat-send">➤</button>
+        <button class="chat-send" id="chat-send">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
       </div>
     </div>
 
@@ -89,9 +144,9 @@
       <div class="members-header">Members</div>
       <div id="members-list"></div>
     </div>
-  </div>
+    </div><!-- /messenger-app -->
 
-  <!-- Create Server Modal -->
+    <!-- Create Server Modal -->
   <div class="modal-overlay" id="create-server-modal">
     <div class="modal">
       <h3>Create a Server</h3>
@@ -121,15 +176,22 @@
     </div>
   </div>
 
-  <!-- Toast Container -->
+  </div><!-- /app -->
+
+  <!-- Toast -->
   <div class="toast-container" id="toast-container"></div>
 
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-
   <script src="js/firebase-config.js"></script>
+  <script src="js/nav.js"></script>
   <script src="js/messenger.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      Nav.init('messenger').then(({ user, profile }) => Messenger.init(user, profile));
+    });
+  </script>
 </body>
 </html>

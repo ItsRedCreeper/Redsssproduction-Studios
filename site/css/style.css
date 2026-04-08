@@ -100,14 +100,30 @@ button { font-family: inherit; }
   font-weight: 500;
   color: var(--text-secondary);
   background: none;
-  border: none;
+  border: 1px solid var(--border);
   border-radius: var(--r);
   cursor: pointer;
   transition: var(--transition);
 }
 
-.nav-link:hover { color: var(--text); background: var(--bg-hover); }
-.nav-link.active { color: var(--red); background: var(--bg-tertiary); }
+/* Allow <a> tags to look identical to button nav-links */
+a.nav-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  line-height: 1;
+}
+a.nav-link:hover { text-decoration: none; }
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.nav-link:hover { color: var(--text); background: var(--bg-hover); border-color: var(--gray-light); }
+.nav-link.active { color: var(--red); background: var(--bg-tertiary); border-color: var(--red); }
 
 .nav-right {
   display: flex;

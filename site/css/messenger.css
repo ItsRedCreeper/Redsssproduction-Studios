@@ -4,20 +4,16 @@
    server strip | sidebar | chat area | members
    ─────────────────────────────────────────────── */
 
-/* Layout */
-#page-messenger {
-  height: calc(100vh - 56px);
-  overflow: hidden;
-}
-
-#page-messenger.active {
+/* Layout — standalone messenger.html page */
+body.messenger-page #app {
   display: flex;
+  flex-direction: column;
+  height: 100vh;
 }
 
 #messenger-app {
   display: flex;
-  height: 100%;
-  width: 100%;
+  flex: 1;
   overflow: hidden;
 }
 

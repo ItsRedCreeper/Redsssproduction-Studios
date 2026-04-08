@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Support — RedsssProduction Studios</title>
+  <link rel="icon" href="images/logo.jpg">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Loading Screen -->
+  <div id="loading-screen">
+    <div class="loader-logo">RedsssProduction Studios</div>
+    <div class="loader-spinner"></div>
+  </div>
+
+  <!-- App (shown after auth confirms) -->
+  <div id="app" style="display:none">
+
+    <nav class="navbar">
+      <div class="nav-brand">
+        <img src="images/logo.jpg" alt="RedsssProduction Studios">
+        <span class="brand-text">RedsssProduction Studios</span>
+      </div>
+      <div class="nav-links">
+        <a class="nav-link" data-page="home" href="index.html">Home</a>
+        <a class="nav-link" data-page="games" href="games.html">Games</a>
+        <a class="nav-link" data-page="messenger" href="messenger.html">RedsssMessenger</a>
+        <a class="nav-link" data-page="support" href="support.html">Support</a>
+      </div>
+      <div class="nav-right">
+        <div class="notif-wrapper">
+          <button class="notif-bell" id="notif-bell" title="Notifications">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </button>
+          <span class="notif-badge" id="notif-badge">0</span>
+          <div class="notif-dropdown" id="notif-dropdown">
+            <div class="notif-dropdown-header">Notifications</div>
+            <div id="notif-list"><div class="notif-empty">No notifications</div></div>
+          </div>
+        </div>
+        <div class="nav-avatar" id="nav-avatar" title="Profile"></div>
+        <span class="nav-username" id="nav-username"></span>
+      </div>
+    </nav>
+
+    <!-- Profile Dropdown -->
+    <div class="profile-dropdown" id="profile-dropdown">
+      <div class="profile-dd-header">
+        <div class="profile-dd-avatar" id="profile-dd-avatar"></div>
+        <div>
+          <div class="profile-dd-name" id="profile-dd-name"></div>
+          <div class="profile-dd-email" id="profile-dd-email"></div>
+        </div>
+      </div>
+      <div class="profile-dd-section">
+        <label>Status</label>
+        <input class="profile-dd-input" id="profile-status" placeholder="Set a status..." maxlength="100">
+      </div>
+      <input type="file" id="avatar-upload" accept="image/*" style="display:none">
+      <button class="btn btn-primary btn-sm btn-full" id="save-profile-btn">Save Changes</button>
+      <button class="btn-logout" id="btn-logout">Log Out</button>
+    </div>
+
+    <!-- Support Content -->
+    <div class="page-content">
+      <div class="support-page">
+        <h2>Support</h2>
+
+        <div class="faq-item">
+          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+            <span>How do I play games?</span>
+            <span class="arrow">▼</span>
+          </div>
+          <div class="faq-answer">Go to the Games page and click on any game card. The game opens in a fullscreen player. Click Close to return.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+            <span>How do I use RedsssMessenger?</span>
+            <span class="arrow">▼</span>
+          </div>
+          <div class="faq-answer">Click "RedsssMessenger" in the navigation bar. You can create servers, join channels, and send direct messages to friends.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+            <span>How do I add friends?</span>
+            <span class="arrow">▼</span>
+          </div>
+          <div class="faq-answer">Open RedsssMessenger and go to the Direct Messages view. Use the Add Friend tab and type a username to send a friend request.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+            <span>How do I change my profile picture?</span>
+            <span class="arrow">▼</span>
+          </div>
+          <div class="faq-answer">Click your avatar in the top right corner. In the dropdown, click the avatar image to upload a new picture.</div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
+            <span>I found a bug or have a suggestion</span>
+            <span class="arrow">▼</span>
+          </div>
+          <div class="faq-answer">Use the contact form below to send us a message and we'll look into it.</div>
+        </div>
+
+        <div class="support-contact">
+          <h3>Contact Us</h3>
+          <div class="support-form">
+            <input class="form-input" id="support-subject" placeholder="Subject">
+            <textarea id="support-message" placeholder="Describe your issue or suggestion..."></textarea>
+            <button class="btn btn-primary" id="submit-support">Send Message</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Toast -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/nav.js"></script>
+  <script src="js/support.js"></script>
+
+</body>
+</html>
