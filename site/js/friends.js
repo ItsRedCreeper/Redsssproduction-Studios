@@ -216,30 +216,49 @@ const Friends = (() => {
     } catch { showToast('Failed.', 'error'); }
   }
 
-  /* ── Load friends list (real-time) ── */
+  /* ── Load friends list (real-time, per-friend listeners) ── */
+  const _friendListeners = new Map(); // uid → unsubscribe fn
+
   function _loadFriends() {
-    db.collection('users').doc(currentUser.uid).onSnapshot(async doc => {
+    // Watch the current user's friends array
+    db.collection('users').doc(currentUser.uid).onSnapshot(doc => {
       if (!doc.exists) return;
       const friendUids = doc.data().friends || [];
 
       if (!friendUids.length) {
+        _friendListeners.forEach(unsub => unsub());
+        _friendListeners.clear();
+        friendProfiles = [];
         document.getElementById('friends-list').innerHTML =
           '<div class="friends-search-hint">No friends yet. Add some!</div>';
         return;
       }
 
-      // Fetch profiles
-      const profiles = [];
-      for (let i = 0; i < friendUids.length; i += 10) {
-        const batch = friendUids.slice(i, i + 10);
-        const snap = await db.collection('users')
-          .where(firebase.firestore.FieldPath.documentId(), 'in', batch)
-          .get();
-        snap.forEach(d => profiles.push({ uid: d.id, ...d.data() }));
-      }
+      // Remove listeners for UIDs no longer in the list
+      _friendListeners.forEach((unsub, uid) => {
+        if (!friendUids.includes(uid)) {
+          unsub();
+          _friendListeners.delete(uid);
+          friendProfiles = friendProfiles.filter(p => p.uid !== uid);
+        }
+      });
 
-      friendProfiles = profiles;
-      _renderFriendsList(profiles);
+      // Add per-friend listeners for any new UIDs
+      friendUids.forEach(uid => {
+        if (_friendListeners.has(uid)) return;
+        const unsub = db.collection('users').doc(uid).onSnapshot(d => {
+          if (!d.exists) return;
+          const profile = { uid: d.id, ...d.data() };
+          const idx = friendProfiles.findIndex(p => p.uid === uid);
+          if (idx >= 0) {
+            friendProfiles[idx] = profile;
+          } else {
+            friendProfiles.push(profile);
+          }
+          _renderFriendsList(friendProfiles.slice());
+        });
+        _friendListeners.set(uid, unsub);
+      });
     });
   }
 

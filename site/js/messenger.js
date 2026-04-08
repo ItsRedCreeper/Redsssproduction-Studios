@@ -101,40 +101,60 @@ const Messenger = (() => {
     }).catch(() => {});
   }
 
-  /* ── Friends (for DM list) ── */
+  /* ── Friends (for DM list) — per-friend live listeners ── */
+  const _dmFriendListeners = new Map(); // uid → unsubscribe fn
+  const _dmProfiles = new Map();        // uid → profile data
+
   function loadFriends() {
     db.collection('users').doc(currentUser.uid).onSnapshot(doc => {
       if (!doc.exists) return;
-      const friends = doc.data().friends || [];
-      renderFriendsList(friends);
+      const friendUids = doc.data().friends || [];
+
+      if (!friendUids.length) {
+        _dmFriendListeners.forEach(unsub => unsub());
+        _dmFriendListeners.clear();
+        _dmProfiles.clear();
+        document.getElementById('friends-list').innerHTML =
+          '<div class="sidebar-empty">No friends yet</div>';
+        return;
+      }
+
+      // Remove stale listeners
+      _dmFriendListeners.forEach((unsub, uid) => {
+        if (!friendUids.includes(uid)) {
+          unsub();
+          _dmFriendListeners.delete(uid);
+          _dmProfiles.delete(uid);
+        }
+      });
+
+      // Add per-friend listeners for new UIDs
+      friendUids.forEach(uid => {
+        if (_dmFriendListeners.has(uid)) return;
+        const unsub = db.collection('users').doc(uid).onSnapshot(d => {
+          if (!d.exists) return;
+          const data = d.data();
+          _dmProfiles.set(uid, { uid, ...data });
+          // Update profile cache
+          profileCache.set(uid, {
+            username: data.username,
+            avatar: data.avatar || '',
+            effectiveStatus: data.effectiveStatus || 'offline'
+          });
+          _renderDMFriendsList();
+        });
+        _dmFriendListeners.set(uid, unsub);
+      });
     });
   }
 
-  async function renderFriendsList(friendUids) {
+  function _renderDMFriendsList() {
     const list = document.getElementById('friends-list');
+    const profiles = Array.from(_dmProfiles.values());
 
-    if (!friendUids.length) {
+    if (!profiles.length) {
       list.innerHTML = '<div class="sidebar-empty">No friends yet</div>';
       return;
-    }
-
-    // Fetch friend profiles (batch up to 10 at a time for Firestore `in` query)
-    const profiles = [];
-    for (let i = 0; i < friendUids.length; i += 10) {
-      const batch = friendUids.slice(i, i + 10);
-      const snap = await db.collection('users')
-        .where(firebase.firestore.FieldPath.documentId(), 'in', batch)
-        .get();
-      snap.forEach(d => {
-        const data = d.data();
-        profiles.push({ uid: d.id, ...data });
-        // Update cache
-        profileCache.set(d.id, {
-          username: data.username,
-          avatar: data.avatar || '',
-          effectiveStatus: data.effectiveStatus || 'offline'
-        });
-      });
     }
 
     list.innerHTML = profiles.map(f => {
@@ -155,7 +175,7 @@ const Messenger = (() => {
     }).join('');
 
     list.querySelectorAll('.friend-item').forEach(el => {
-      el.addEventListener('click', () => openDM(el.dataset.uid, profiles.find(p => p.uid === el.dataset.uid)));
+      el.addEventListener('click', () => openDM(el.dataset.uid, _dmProfiles.get(el.dataset.uid)));
     });
   }
 
