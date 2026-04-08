@@ -332,6 +332,23 @@ const App = (() => {
     userProfile.effectiveStatus = effective;
     _renderUserUI();
 
+    // RTDB presence — fires server-side even on hard close/shutdown
+    try {
+      const rtdb = firebase.database();
+      const presenceRef = rtdb.ref('presence/' + currentUser.uid);
+      rtdb.ref('.info/connected').on('value', snap => {
+        if (!snap.val()) return;
+        presenceRef.onDisconnect().update({ effectiveStatus: 'offline', online: false })
+          .then(() => presenceRef.update({ effectiveStatus: effective, online: true }));
+        presenceRef.on('value', pSnap => {
+          const pVal = pSnap.val();
+          if (pVal && pVal.online === false) {
+            ref.update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+          }
+        });
+      });
+    } catch (e) { console.warn('RTDB presence unavailable', e); }
+
     // Visibility change (tab hidden/shown)
     document.addEventListener('visibilitychange', () => {
       if (userProfile.status !== 'auto') return;

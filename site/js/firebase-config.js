@@ -6,7 +6,8 @@ const firebaseConfig = {
   projectId: "redsssproduction-studios-86bec",
   storageBucket: "redsssproduction-studios-86bec.firebasestorage.app",
   messagingSenderId: "627076589255",
-  appId: "1:627076589255:web:c99c6a1111205425fd00e2"
+  appId: "1:627076589255:web:c99c6a1111205425fd00e2",
+  databaseURL: "https://redsssproduction-studios-86bec-default-rtdb.firebaseio.com"
 };
 
 firebase.initializeApp(firebaseConfig);

@@ -16,6 +16,7 @@ const Messenger = (() => {
   // Profile cache — uid → { username, avatar, effectiveStatus }
   const profileCache = new Map();
   let _serverImageBlob = null;
+  let _replyState = null; // { uid, username, text, docId } | null
 
   /* ── Init — called after login ── */
   function init(user, profile) {
@@ -37,6 +38,7 @@ const Messenger = (() => {
     document.getElementById('chat-input').addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
+    document.getElementById('reply-cancel').addEventListener('click', _cancelReply);
 
     // Create server
     document.getElementById('create-server-btn').addEventListener('click', () => {
@@ -247,7 +249,7 @@ const Messenger = (() => {
 
         messagesEl.innerHTML = '';
         snap.forEach(doc => {
-          messagesEl.appendChild(renderMessage(doc.data()));
+          messagesEl.appendChild(renderMessage(doc.data(), doc.id, doc.ref));
         });
         messagesEl.scrollTop = messagesEl.scrollHeight;
       });
@@ -662,7 +664,7 @@ const Messenger = (() => {
 
         messagesEl.innerHTML = '';
         snap.forEach(doc => {
-          messagesEl.appendChild(renderMessage(doc.data()));
+          messagesEl.appendChild(renderMessage(doc.data(), doc.id, doc.ref));
         });
         messagesEl.scrollTop = messagesEl.scrollHeight;
       });
@@ -682,6 +684,16 @@ const Messenger = (() => {
       uid: currentUser.uid,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     };
+
+    if (_replyState) {
+      msgData.replyTo = {
+        docId: _replyState.docId,
+        uid: _replyState.uid,
+        username: _replyState.username,
+        text: _replyState.text
+      };
+      _cancelReply();
+    }
 
     try {
       if (currentChat.type === 'dm') {
@@ -708,7 +720,7 @@ const Messenger = (() => {
   }
 
   /* ── Render a single message (resolves from profileCache) ── */
-  function renderMessage(data) {
+  function renderMessage(data, docId, docRef) {
     const div = document.createElement('div');
     div.className = 'msg';
 
@@ -727,18 +739,123 @@ const Messenger = (() => {
       ? new Date(data.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       : '';
 
+    const isOwn = currentUser && data.uid === currentUser.uid;
+
+    // Reply quote block
+    let replyQuoteHTML = '';
+    if (data.replyTo) {
+      const rAuthor = esc(data.replyTo.username || 'Unknown');
+      const rText = esc((data.replyTo.text || '').slice(0, 100));
+      replyQuoteHTML = '<div class="msg-reply-quote"><strong>' + rAuthor + '</strong>: ' + rText + '</div>';
+    }
+
+    // Action buttons
+    const replyBtn = '<button class="msg-action-btn reply" title="Reply">&#x21A9;</button>';
+    const editBtn = isOwn ? '<button class="msg-action-btn edit" title="Edit">&#x270E;</button>' : '';
+    const deleteBtn = isOwn ? '<button class="msg-action-btn delete" title="Delete">&#x1F5D1;</button>' : '';
+    const actionsHTML = '<div class="msg-actions">' + replyBtn + editBtn + deleteBtn + '</div>';
+
+    const editedTag = data.edited ? '<span class="msg-edited-tag">(edited)</span>' : '';
+
     div.innerHTML =
       '<div class="msg-avatar">' + avatarContent +
         '<span class="status-dot ' + eStatus + '"></span>' +
       '</div>' +
       '<div class="msg-body">' +
+        replyQuoteHTML +
         '<div class="msg-header">' +
           '<span class="msg-author">' + esc(username) + '</span>' +
           '<span class="msg-time">' + time + '</span>' +
         '</div>' +
-        '<div class="msg-text">' + esc(data.text || '') + '</div>' +
-      '</div>';
+        '<div class="msg-text">' + esc(data.text || '') + editedTag + '</div>' +
+      '</div>' +
+      actionsHTML;
+
+    // Wire action buttons
+    div.querySelector('.msg-action-btn.reply').addEventListener('click', () => {
+      _setReply(data, docId);
+    });
+    if (isOwn && docRef) {
+      div.querySelector('.msg-action-btn.edit').addEventListener('click', () => {
+        _editMessage(docRef, data.text || '', div);
+      });
+      div.querySelector('.msg-action-btn.delete').addEventListener('click', () => {
+        _deleteMessage(docRef);
+      });
+    }
+
     return div;
+  }
+
+  /* ── Reply helpers ── */
+  function _setReply(data, docId) {
+    const cached = profileCache.get(data.uid);
+    const username = cached ? cached.username : (data.username || 'Unknown');
+    const preview = (data.text || '').slice(0, 80) + ((data.text || '').length > 80 ? '…' : '');
+    _replyState = { uid: data.uid, username, text: data.text || '', docId };
+    document.getElementById('reply-to-name').textContent = username;
+    document.getElementById('reply-to-preview').textContent = preview;
+    document.getElementById('reply-bar').style.display = 'flex';
+    document.getElementById('chat-input').focus();
+  }
+
+  function _cancelReply() {
+    _replyState = null;
+    document.getElementById('reply-bar').style.display = 'none';
+    document.getElementById('reply-to-name').textContent = '';
+    document.getElementById('reply-to-preview').textContent = '';
+  }
+
+  /* ── Edit / Delete ── */
+  function _editMessage(docRef, currentText, msgEl) {
+    const msgTextEl = msgEl.querySelector('.msg-text');
+    if (!msgTextEl || msgEl.querySelector('.msg-edit-input')) return; // already editing
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'msg-edit-input';
+    textarea.value = currentText;
+    textarea.rows = 1;
+
+    const hint = document.createElement('div');
+    hint.className = 'msg-edit-actions';
+    hint.innerHTML =
+      '<span class="msg-edit-hint">Enter to save &nbsp;·&nbsp; Esc to cancel</span>';
+
+    const original = msgTextEl.innerHTML;
+    msgTextEl.innerHTML = '';
+    msgTextEl.appendChild(textarea);
+    msgTextEl.appendChild(hint);
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+    async function save() {
+      const newText = textarea.value.trim();
+      if (!newText || newText === currentText) { cancel(); return; }
+      try {
+        await docRef.update({ text: newText, edited: true });
+      } catch {
+        showToast('Failed to edit message.', 'error');
+        cancel();
+      }
+    }
+
+    function cancel() {
+      msgTextEl.innerHTML = original;
+    }
+
+    textarea.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+      if (e.key === 'Escape') { cancel(); }
+    });
+  }
+
+  async function _deleteMessage(docRef) {
+    if (!confirm('Delete this message?')) return;
+    try {
+      await docRef.delete();
+    } catch {
+      showToast('Failed to delete message.', 'error');
+    }
   }
 
   /* ── Utility ── */

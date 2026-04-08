@@ -7,6 +7,7 @@ const Friends = (() => {
   let currentUser = null;
   let userProfile = null;
   let friendProfiles = [];
+  let _myFriendUids = []; // keep in sync with live listener
 
   function init(user, profile) {
     currentUser = user;
@@ -82,14 +83,18 @@ const Friends = (() => {
             ? '<img src="' + _esc(u.avatar) + '" alt="">'
             : initial;
 
+          const alreadyFriend = _myFriendUids.includes(doc.id);
+
           div.innerHTML =
             '<div class="friend-avatar">' + avatarHtml + '</div>' +
             '<span class="friend-name">' + _esc(u.username) + '</span>' +
-            '<button class="btn btn-primary btn-sm friends-add-btn" data-uid="' + doc.id + '" data-name="' + _esc(u.username) + '">Add</button>';
+            (alreadyFriend
+              ? '<button class="btn btn-sm friends-add-btn" disabled style="opacity:.5;cursor:default">Friends</button>'
+              : '<button class="btn btn-primary btn-sm friends-add-btn" data-uid="' + doc.id + '" data-name="' + _esc(u.username) + '">Add</button>');
           results.appendChild(div);
         });
 
-        results.querySelectorAll('.friends-add-btn').forEach(btn => {
+        results.querySelectorAll('.friends-add-btn:not([disabled])').forEach(btn => {
           btn.addEventListener('click', () => _sendFriendRequest(btn.dataset.uid, btn.dataset.name, btn));
         });
       } catch (err) {
@@ -224,6 +229,7 @@ const Friends = (() => {
     db.collection('users').doc(currentUser.uid).onSnapshot(doc => {
       if (!doc.exists) return;
       const friendUids = doc.data().friends || [];
+      _myFriendUids = friendUids; // keep in sync for search button state
 
       if (!friendUids.length) {
         _friendListeners.forEach(unsub => unsub());
@@ -304,7 +310,7 @@ const Friends = (() => {
 
     const activity = profile.activity || {};
     if (activity.page === 'games' && activity.game) return 'Playing ' + activity.game;
-    if (activity.page === 'messenger' && activity.server) return 'In RedsssMessenger — #' + activity.server;
+    if (activity.page === 'messenger' && activity.server) return 'In RedsssMessenger — ' + activity.server;
     if (activity.page === 'messenger' && activity.dm)     return 'Messaging ' + activity.dm;
     if (activity.page === 'messenger') return 'In RedsssMessenger';
     if (activity.page === 'games') return 'Browsing Games';

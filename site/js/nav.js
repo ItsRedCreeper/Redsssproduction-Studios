@@ -292,6 +292,24 @@ const Nav = (() => {
     profile.effectiveStatus = effective;
     _renderUserUI(user, profile);
 
+    // RTDB presence — fires server-side even on hard close/shutdown
+    try {
+      const rtdb = firebase.database();
+      const presenceRef = rtdb.ref('presence/' + user.uid);
+      rtdb.ref('.info/connected').on('value', snap => {
+        if (!snap.val()) return;
+        presenceRef.onDisconnect().update({ effectiveStatus: 'offline', online: false })
+          .then(() => presenceRef.update({ effectiveStatus: effective, online: true }));
+        // Sync RTDB offline flag to Firestore for other clients
+        presenceRef.on('value', pSnap => {
+          const pVal = pSnap.val();
+          if (pVal && pVal.online === false) {
+            ref.update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+          }
+        });
+      });
+    } catch (e) { console.warn('RTDB presence unavailable', e); }
+
     // Visibility change (tab hidden/shown)
     document.addEventListener('visibilitychange', () => {
       if (profile.status !== 'auto') return;
