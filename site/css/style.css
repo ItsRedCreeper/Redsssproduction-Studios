@@ -83,19 +83,15 @@ button { font-family: inherit; }
 .nav-brand .brand-text {
   font-size: 16px;
   font-weight: 700;
-  color: var(--red);
-  white-space: nowrap;
-}
-
-.nav-brand .brand-text span {
   color: var(--text);
-  font-weight: 400;
+  white-space: nowrap;
 }
 
 .nav-links {
   display: flex;
   gap: 4px;
   flex: 1;
+  justify-content: center;
 }
 
 .nav-link {

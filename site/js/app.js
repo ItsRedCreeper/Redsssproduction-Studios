@@ -22,6 +22,7 @@ const App = (() => {
         document.getElementById('app').style.display = '';
         await loadUserProfile();
         renderUserUI();
+        Messenger.init(currentUser, userProfile);
         setupPresence();
         listenNotifications();
         loadGames();
@@ -37,8 +38,6 @@ const App = (() => {
     // Navigation
     document.querySelectorAll('.nav-link[data-page]').forEach(btn => {
       btn.addEventListener('click', () => {
-        // Skip messenger – it has onclick to navigate
-        if (btn.dataset.page === 'messenger') return;
         switchPage(btn.dataset.page);
       });
     });
@@ -248,43 +247,27 @@ const App = (() => {
       const homeGrid = document.getElementById('home-featured');
       const gamesGrid = document.getElementById('games-grid');
 
-      const html = games.map(g => {
-        const statusClass = g.status === 'released' ? 'badge-released'
-          : g.status === 'early' ? 'badge-early' : 'badge-coming';
-        const statusText = g.status === 'released' ? 'Released'
-          : g.status === 'early' ? 'Early Access' : 'Coming Soon';
+      const gamepadSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>';
 
+      function gameCardHtml(g) {
+        const sClass = g.status === 'released' ? 'badge-released'
+          : g.status === 'early' ? 'badge-early' : 'badge-coming';
+        const sText = g.status === 'released' ? 'Released'
+          : g.status === 'early' ? 'Early Access' : 'Coming Soon';
         return '<div class="game-card" data-url="' + escapeHtml(g.url || '') + '" data-title="' + escapeHtml(g.title) + '">' +
           '<div class="game-card-img">' +
-            (g.image ? '<img src="' + escapeHtml(g.image) + '" alt="">' : '🎮') +
+            (g.image ? '<img src="' + escapeHtml(g.image) + '" alt="">' : gamepadSvg) +
           '</div>' +
           '<div class="game-card-body">' +
             '<h3>' + escapeHtml(g.title) + '</h3>' +
             '<p>' + escapeHtml(g.description || '') + '</p>' +
-            '<span class="badge ' + statusClass + '">' + statusText + '</span>' +
+            '<span class="badge ' + sClass + '">' + sText + '</span>' +
           '</div></div>';
-      }).join('');
+      }
 
-      // Show first 4 on home, all on games page
-      const featured = games.slice(0, 4);
-      homeGrid.innerHTML = featured.length ? featured.map(g => {
-        const statusClass = g.status === 'released' ? 'badge-released'
-          : g.status === 'early' ? 'badge-early' : 'badge-coming';
-        const statusText = g.status === 'released' ? 'Released'
-          : g.status === 'early' ? 'Early Access' : 'Coming Soon';
-
-        return '<div class="game-card" data-url="' + escapeHtml(g.url || '') + '" data-title="' + escapeHtml(g.title) + '">' +
-          '<div class="game-card-img">' +
-            (g.image ? '<img src="' + escapeHtml(g.image) + '" alt="">' : '🎮') +
-          '</div>' +
-          '<div class="game-card-body">' +
-            '<h3>' + escapeHtml(g.title) + '</h3>' +
-            '<p>' + escapeHtml(g.description || '') + '</p>' +
-            '<span class="badge ' + statusClass + '">' + statusText + '</span>' +
-          '</div></div>';
-      }).join('') : '<p style="color:var(--text-muted)">No games yet. Check back soon!</p>';
-
-      gamesGrid.innerHTML = html || '<p style="color:var(--text-muted)">No games yet. Check back soon!</p>';
+      const noGames = '<p style="color:var(--text-muted)">No games yet. Check back soon!</p>';
+      homeGrid.innerHTML = games.length ? games.slice(0, 4).map(gameCardHtml).join('') : noGames;
+      gamesGrid.innerHTML = games.length ? games.map(gameCardHtml).join('') : noGames;
 
       // Game click handlers
       document.querySelectorAll('.game-card').forEach(card => {

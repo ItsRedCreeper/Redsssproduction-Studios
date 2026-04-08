@@ -5,9 +5,19 @@
    ─────────────────────────────────────────────── */
 
 /* Layout */
+#page-messenger {
+  height: calc(100vh - 56px);
+  overflow: hidden;
+}
+
+#page-messenger.active {
+  display: flex;
+}
+
 #messenger-app {
   display: flex;
-  height: 100vh;
+  height: 100%;
+  width: 100%;
   overflow: hidden;
 }
 

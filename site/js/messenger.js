@@ -1,6 +1,7 @@
 /* ───────────────────────────────────────────────
    RedsssMessenger — Main JS
-   DMs, servers, channels, real-time chat
+   Initialized by app.js after auth resolves.
+   DMs, servers, channels, real-time chat.
    ─────────────────────────────────────────────── */
 
 const Messenger = (() => {
@@ -10,29 +11,10 @@ const Messenger = (() => {
   let currentChat = null;   // { type: 'dm', friendUid } | { type: 'channel', serverId, channelId }
   let currentServerId = null;
 
-  /* ── Init ── */
-  function init() {
-    auth.onAuthStateChanged(async (user) => {
-      document.getElementById('loading-screen').style.display = 'none';
-
-      if (user) {
-        currentUser = user;
-        document.getElementById('messenger-app').style.display = 'flex';
-        await loadProfile();
-        renderUserBar();
-        loadFriends();
-        loadServers();
-        loadPendingRequests();
-        setupPresence();
-      } else {
-        window.location.href = 'index.html';
-      }
-    });
-
-    // Back to main site
-    document.getElementById('msg-back').addEventListener('click', () => {
-      window.location.href = 'index.html';
-    });
+  /* ── Init — called by app.js after login ── */
+  function init(user, profile) {
+    currentUser = user;
+    userProfile = profile;
 
     // DM button
     document.getElementById('dm-btn').addEventListener('click', showDMView);
@@ -79,14 +61,16 @@ const Messenger = (() => {
 
     // Friend search filter
     document.getElementById('friend-search').addEventListener('input', filterFriends);
+
+    // Initialize
+    renderUserBar();
+    loadFriends();
+    loadServers();
+    loadPendingRequests();
+    showDMView();
   }
 
   /* ── Profile ── */
-  async function loadProfile() {
-    const doc = await db.collection('users').doc(currentUser.uid).get();
-    userProfile = doc.exists ? doc.data() : { username: 'User', avatar: '' };
-  }
-
   function renderUserBar() {
     const av = document.getElementById('msg-avatar');
     if (userProfile.avatar) {
@@ -561,15 +545,6 @@ const Messenger = (() => {
     return div;
   }
 
-  /* ── Presence ── */
-  function setupPresence() {
-    const ref = db.collection('users').doc(currentUser.uid);
-    ref.update({ online: true, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
-    window.addEventListener('beforeunload', () => {
-      ref.update({ online: false, lastSeen: firebase.firestore.FieldValue.serverTimestamp() });
-    });
-  }
-
   /* ── Utility ── */
   function esc(str) {
     const d = document.createElement('div');
@@ -579,19 +554,3 @@ const Messenger = (() => {
 
   return { init };
 })();
-
-/* ── Toast (shared) ── */
-function showToast(msg, type) {
-  type = type || 'info';
-  const container = document.getElementById('toast-container');
-  const toast = document.createElement('div');
-  toast.className = 'toast ' + type;
-  toast.textContent = msg;
-  container.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    setTimeout(() => toast.remove(), 300);
-  }, 3500);
-}
-
-document.addEventListener('DOMContentLoaded', () => Messenger.init());
