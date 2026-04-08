@@ -304,7 +304,8 @@ const Friends = (() => {
 
     const activity = profile.activity || {};
     if (activity.page === 'games' && activity.game) return 'Playing ' + activity.game;
-    if (activity.page === 'messenger' && activity.server) return 'In RedsssMessenger — ' + activity.server;
+    if (activity.page === 'messenger' && activity.server) return 'In RedsssMessenger — #' + activity.server;
+    if (activity.page === 'messenger' && activity.dm)     return 'Messaging ' + activity.dm;
     if (activity.page === 'messenger') return 'In RedsssMessenger';
     if (activity.page === 'games') return 'Browsing Games';
     if (activity.page === 'support') return 'Viewing Support';

@@ -82,6 +82,22 @@ const Messenger = (() => {
     loadFriends();
     loadServers();
     showDMView();
+
+    // Auto-open DM if ?dm=UID is in the URL
+    const _dmParam = new URLSearchParams(window.location.search).get('dm');
+    if (_dmParam) {
+      // Wait for the friend's profile to arrive then open their DM
+      const _waitForDM = setInterval(() => {
+        const prof = _dmProfiles.get(_dmParam);
+        if (prof) {
+          clearInterval(_waitForDM);
+          showDMView();
+          openDM(_dmParam, prof);
+        }
+      }, 100);
+      // Give up after 5 seconds
+      setTimeout(() => clearInterval(_waitForDM), 5000);
+    }
   }
 
   /* ── DM View ── */
@@ -97,7 +113,8 @@ const Messenger = (() => {
 
     // Track activity
     db.collection('users').doc(currentUser.uid).update({
-      'activity.server': null
+      'activity.server': null,
+      'activity.dm': null
     }).catch(() => {});
   }
 
@@ -205,6 +222,13 @@ const Messenger = (() => {
     document.getElementById('chat-title').textContent = profile ? profile.username : 'Chat';
     document.getElementById('chat-input-bar').style.display = 'flex';
     document.getElementById('members-sidebar').style.display = 'none';
+
+    // Track activity
+    const dmName = profile ? (profile.username || '') : '';
+    db.collection('users').doc(currentUser.uid).update({
+      'activity.dm': dmName,
+      'activity.server': null
+    }).catch(() => {});
 
     // DM conversation ID (sorted UIDs)
     const convoId = [currentUser.uid, friendUid].sort().join('_');
@@ -397,8 +421,7 @@ const Messenger = (() => {
     document.getElementById('channel-section').style.display = 'none';
     document.getElementById('members-sidebar').style.display = 'none';
     document.getElementById('chat-input-bar').style.display = 'none';
-    document.getElementById('chat-header').innerHTML =
-      '<span>Discover Public Servers</span>';
+    document.getElementById('chat-title').textContent = 'Discover Public Servers';
 
     const messagesEl = document.getElementById('chat-messages');
     messagesEl.innerHTML = '<div class="chat-empty">Loading servers...</div>';
@@ -469,6 +492,8 @@ const Messenger = (() => {
     }
   }
 
+  let _serverDocUnsub = null;
+
   function openServer(serverId, serverData) {
     currentServerId = serverId;
 
@@ -483,11 +508,19 @@ const Messenger = (() => {
 
     // Track activity
     db.collection('users').doc(currentUser.uid).update({
-      'activity.server': serverData.name
+      'activity.server': serverData.name,
+      'activity.dm': null
     }).catch(() => {});
 
     loadChannels(serverId);
-    loadMembers(serverId, serverData.members);
+
+    // Live listener on server doc → updates members list when someone joins/leaves
+    if (_serverDocUnsub) { _serverDocUnsub(); _serverDocUnsub = null; }
+    _serverDocUnsub = db.collection('servers').doc(serverId).onSnapshot(snap => {
+      if (!snap.exists) return;
+      loadMembers(serverId, snap.data().members || []);
+    });
+    loadMembers(serverId, serverData.members || []);
   }
 
   function loadChannels(serverId) {
@@ -535,31 +568,59 @@ const Messenger = (() => {
     }
   }
 
-  async function loadMembers(serverId, memberUids) {
-    const list = document.getElementById('members-list');
-    list.innerHTML = '';
+  // Per-server member listeners: serverId → Map(uid → unsubscribe)
+  const _memberListeners = new Map();
+  const _memberProfiles  = new Map(); // uid → profile (for current server)
+  let   _currentMemberServerId = null;
 
-    const profiles = [];
-    for (let i = 0; i < memberUids.length; i += 10) {
-      const batch = memberUids.slice(i, i + 10);
-      const snap = await db.collection('users')
-        .where(firebase.firestore.FieldPath.documentId(), 'in', batch)
-        .get();
-      snap.forEach(d => {
+  function loadMembers(serverId, memberUids) {
+    // Tear down listeners from a previous server
+    if (_currentMemberServerId !== serverId) {
+      if (_memberListeners.has(_currentMemberServerId)) {
+        _memberListeners.get(_currentMemberServerId).forEach(unsub => unsub());
+        _memberListeners.delete(_currentMemberServerId);
+      }
+      _memberProfiles.clear();
+      _currentMemberServerId = serverId;
+    }
+
+    const serverListeners = _memberListeners.get(serverId) || new Map();
+    _memberListeners.set(serverId, serverListeners);
+
+    // Remove listeners for UIDs no longer in the list
+    serverListeners.forEach((unsub, uid) => {
+      if (!memberUids.includes(uid)) {
+        unsub();
+        serverListeners.delete(uid);
+        _memberProfiles.delete(uid);
+      }
+    });
+
+    // Add per-member listeners for new UIDs
+    memberUids.forEach(uid => {
+      if (serverListeners.has(uid)) return;
+      const unsub = db.collection('users').doc(uid).onSnapshot(d => {
+        if (!d.exists) return;
         const data = d.data();
-        profiles.push({ uid: d.id, ...data });
-        profileCache.set(d.id, {
+        _memberProfiles.set(uid, { uid, ...data });
+        profileCache.set(uid, {
           username: data.username,
           avatar: data.avatar || '',
           effectiveStatus: data.effectiveStatus || 'offline'
         });
+        _renderMembersList();
       });
-    }
+      serverListeners.set(uid, unsub);
+    });
+  }
 
-    // Sort: online first, then away, then offline
+  function _renderMembersList() {
+    if (_currentMemberServerId !== currentServerId) return; // stale
+    const list = document.getElementById('members-list');
+    if (!list) return;
+    const profiles = Array.from(_memberProfiles.values());
     const order = { online: 0, away: 1, dnd: 2, offline: 3 };
     profiles.sort((a, b) => (order[a.effectiveStatus] || 3) - (order[b.effectiveStatus] || 3));
-
     list.innerHTML = profiles.map(m => {
       const initial = (m.username || 'U').charAt(0).toUpperCase();
       const avatarHtml = m.avatar ? '<img src="' + esc(m.avatar) + '" alt="">' : initial;
