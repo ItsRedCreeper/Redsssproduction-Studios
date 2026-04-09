@@ -643,7 +643,7 @@ a.nav-link:hover { text-decoration: none; }
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
-  padding: 36px 40px 0;
+  padding: 36px 40px 40px;
 }
 @media (max-width: 700px) {
   .home-quick { grid-template-columns: repeat(2, 1fr); }
