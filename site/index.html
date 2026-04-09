@@ -149,14 +149,69 @@
     <div class="page-content">
       <!-- HOME -->
       <div class="page active" id="page-home">
-        <div class="hero">
-          <h2>Welcome to RedsssProduction Studios</h2>
-          <p>Play games, chat with friends, and hang out.</p>
+
+        <!-- Slideshow -->
+        <div class="slideshow" id="home-slideshow">
+          <div class="slideshow-track" id="slideshow-track">
+            <!-- Slides injected by JS -->
+          </div>
+          <button class="slideshow-arrow prev" id="slide-prev" aria-label="Previous slide">&#8249;</button>
+          <button class="slideshow-arrow next" id="slide-next" aria-label="Next slide">&#8250;</button>
+          <div class="slideshow-dots" id="slideshow-dots"></div>
         </div>
+
+        <!-- Welcome header -->
+        <div class="home-welcome">
+          <h2>Welcome to <span>RedsssProduction Studios</span></h2>
+          <p>Play games, chat with friends, and hang out with the community.</p>
+        </div>
+
+        <!-- Community stats -->
+        <div class="home-stats" id="home-stats">
+          <div class="home-stat">
+            <div class="home-stat-value" id="stat-online">—</div>
+            <div class="home-stat-label">Online Now</div>
+          </div>
+          <div class="home-stat">
+            <div class="home-stat-value" id="stat-games">—</div>
+            <div class="home-stat-label">Games</div>
+          </div>
+          <div class="home-stat">
+            <div class="home-stat-value" id="stat-members">—</div>
+            <div class="home-stat-label">Members</div>
+          </div>
+        </div>
+
+        <!-- Quick-access cards -->
+        <div class="home-quick">
+          <a class="quick-card" href="games.html">
+            <div class="quick-card-icon red">🎮</div>
+            <h3>Games</h3>
+            <p>Browse &amp; play all available games</p>
+          </a>
+          <a class="quick-card" href="messenger.html">
+            <div class="quick-card-icon red">💬</div>
+            <h3>Messenger</h3>
+            <p>DM friends or join servers</p>
+          </a>
+          <a class="quick-card" href="friends.html">
+            <div class="quick-card-icon red">👥</div>
+            <h3>Friends</h3>
+            <p>Manage &amp; add friends</p>
+          </a>
+          <a class="quick-card" href="support.html">
+            <div class="quick-card-icon red">🛠️</div>
+            <h3>Support</h3>
+            <p>Get help or report a bug</p>
+          </a>
+        </div>
+
+        <!-- Featured Games -->
         <div class="section">
           <h3 class="section-title">Featured Games</h3>
           <div class="featured-grid" id="home-featured"></div>
         </div>
+
       </div>
 
     </div>
@@ -164,6 +219,7 @@
   <!-- Footer -->
   <footer class="site-footer">
     <div class="footer-inner">
+      <div class="footer-brand">Redsss<span>Production</span> Studios</div>
       <nav class="footer-nav">
         <a href="index.html">Home</a>
         <a href="games.html">Games</a>
@@ -177,6 +233,7 @@
         <a href="mailto:liam.wagner@billingsstudents.org">Contact</a>
         <a href="support.html">Report a Bug</a>
       </div>
+      <div class="footer-divider"></div>
       <div class="footer-bottom">
         <span>&copy; 2026 RedsssProduction Studios. All rights reserved.</span>
         <span class="footer-version">DEMO v1.0</span>

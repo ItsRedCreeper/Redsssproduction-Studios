@@ -11,6 +11,33 @@ const App = (() => {
   let _idleTimer = null;
   const IDLE_MS = 10 * 60 * 1000; // 10 minutes
 
+  // Slideshow
+  let _slideIndex = 0;
+  let _slideInterval = null;
+  const _slides = [
+    {
+      emoji: '🎮',
+      bg: 'linear-gradient(135deg, #1a0a0a 0%, #8b1a1a 100%)',
+      title: 'Play Games',
+      sub: 'Explore a growing library of browser games',
+      href: 'games.html'
+    },
+    {
+      emoji: '💬',
+      bg: 'linear-gradient(135deg, #0a0a1a 0%, #1a1a6e 100%)',
+      title: 'RedsssMessenger',
+      sub: 'Chat with friends and join community servers',
+      href: 'messenger.html'
+    },
+    {
+      emoji: '👥',
+      bg: 'linear-gradient(135deg, #0a1a0a 0%, #1a4a1a 100%)',
+      title: 'Friends',
+      sub: 'Add friends, see who is online, send messages',
+      href: 'friends.html'
+    }
+  ];
+
   /* ── Init ── */
   function init() {
     Auth.init();
@@ -27,6 +54,7 @@ const App = (() => {
         _setupPresence();
         _listenNotifications();
         _loadFeaturedGames();
+        _loadCommunityStats();
       } else {
         currentUser = null;
         userProfile = null;
@@ -35,6 +63,9 @@ const App = (() => {
         Auth.showLogin();
       }
     });
+
+    // Slideshow UI
+    _buildSlideshow();
 
     // Profile dropdown
     const avatarWrapper = document.querySelector('.nav-avatar-wrapper');
@@ -402,6 +433,87 @@ const App = (() => {
     const d = document.createElement('div');
     d.textContent = str;
     return d.innerHTML;
+  }
+
+  /* ── Slideshow ── */
+  function _buildSlideshow() {
+    const track = document.getElementById('slideshow-track');
+    const dotsEl = document.getElementById('slideshow-dots');
+    if (!track || !dotsEl) return;
+
+    // Build slides
+    track.innerHTML = _slides.map(s =>
+      '<div class="slide">' +
+        '<div class="slide-bg" style="background:' + s.bg + '"></div>' +
+        '<div class="slide-bg-fallback">' + s.emoji + '</div>' +
+        '<div class="slide-caption">' +
+          '<div class="slide-caption-text">' +
+            '<div class="slide-caption-title">' + _esc(s.title) + '</div>' +
+            '<div class="slide-caption-sub">' + _esc(s.sub) + '</div>' +
+          '</div>' +
+          '<a href="' + _esc(s.href) + '" class="slide-caption-btn">Learn More</a>' +
+        '</div>' +
+      '</div>'
+    ).join('');
+
+    // Build dots
+    dotsEl.innerHTML = _slides.map((_, i) =>
+      '<button class="slideshow-dot' + (i === 0 ? ' active' : '') + '" data-i="' + i + '" aria-label="Slide ' + (i + 1) + '"></button>'
+    ).join('');
+    dotsEl.querySelectorAll('.slideshow-dot').forEach(btn =>
+      btn.addEventListener('click', () => _goToSlide(parseInt(btn.dataset.i)))
+    );
+
+    // Arrows
+    document.getElementById('slide-prev').addEventListener('click', () =>
+      _goToSlide((_slideIndex - 1 + _slides.length) % _slides.length)
+    );
+    document.getElementById('slide-next').addEventListener('click', () =>
+      _goToSlide((_slideIndex + 1) % _slides.length)
+    );
+
+    // Auto-advance every 5s
+    _startSlideshowTimer();
+
+    // Pause on hover
+    const ss = document.getElementById('home-slideshow');
+    if (ss) {
+      ss.addEventListener('mouseenter', () => { clearInterval(_slideInterval); _slideInterval = null; });
+      ss.addEventListener('mouseleave', _startSlideshowTimer);
+    }
+  }
+
+  function _goToSlide(idx) {
+    _slideIndex = idx;
+    const track = document.getElementById('slideshow-track');
+    if (track) track.style.transform = 'translateX(-' + (idx * 100) + '%)';
+    document.querySelectorAll('.slideshow-dot').forEach((d, i) =>
+      d.classList.toggle('active', i === idx)
+    );
+  }
+
+  function _startSlideshowTimer() {
+    clearInterval(_slideInterval);
+    _slideInterval = setInterval(() =>
+      _goToSlide((_slideIndex + 1) % _slides.length)
+    , 5000);
+  }
+
+  /* ── Community stats ── */
+  async function _loadCommunityStats() {
+    try {
+      const [gamesSnap, membersSnap, onlineSnap] = await Promise.all([
+        db.collection('games').get(),
+        db.collection('users').get(),
+        db.collection('users').where('online', '==', true).get()
+      ]);
+      const statEl = id => document.getElementById(id);
+      if (statEl('stat-games')) statEl('stat-games').textContent = gamesSnap.size;
+      if (statEl('stat-members')) statEl('stat-members').textContent = membersSnap.size;
+      if (statEl('stat-online')) statEl('stat-online').textContent = onlineSnap.size;
+    } catch (e) {
+      // stats unavailable — leave as —
+    }
   }
 
   return { init };

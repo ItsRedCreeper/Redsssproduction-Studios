@@ -287,6 +287,7 @@ const Friends = (() => {
             _rtdbFriendListeners.set(uid, () => presRef.off('value', rtdbHandler));
           } catch (e) { /* RTDB unavailable */ }
         }
+      });
     });
   }
 
