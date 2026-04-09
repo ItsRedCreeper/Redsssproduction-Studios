@@ -308,7 +308,10 @@ const Nav = (() => {
       rtdb.ref('.info/connected').on('value', snap => {
         if (!snap.val()) return;
         presenceRef.onDisconnect().update({ effectiveStatus: 'offline', online: false })
-          .then(() => presenceRef.update({ effectiveStatus: effective, online: true }));
+          .then(() => {
+            // Guard: don't write online:true if _goOffline already ran
+            if (!_pageClosing) presenceRef.update({ effectiveStatus: effective, online: true });
+          });
         // Sync RTDB offline flag to Firestore for other clients
         presenceRef.on('value', pSnap => {
           const pVal = pSnap.val();
@@ -339,6 +342,12 @@ const Nav = (() => {
       try { fetch(_fsRestUrl, { method: 'PATCH', body: fsPayload, headers: hdrs, keepalive: true }); } catch(e) {}
       // RTDB SDK write — works if WebSocket still open
       if (presenceRef) presenceRef.update({ online: false, effectiveStatus: 'offline' }).catch(() => {});
+      // Firestore SDK write — fallback for browsers where keepalive fetch may not complete on full close
+      ref.update({
+        online: false,
+        effectiveStatus: profile.status === 'auto' ? 'offline' : profile.effectiveStatus,
+        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+      }).catch(() => {});
     }
 
     window.addEventListener('pagehide', _goOffline);
