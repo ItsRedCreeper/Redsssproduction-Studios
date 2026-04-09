@@ -365,6 +365,13 @@ const App = (() => {
 
     // RTDB presence — fires server-side even on hard close/shutdown
     let presenceRef = null;
+    let _cachedToken = null;
+    function _refreshToken() {
+      currentUser.getIdToken().then(t => { _cachedToken = t; }).catch(() => {});
+    }
+    _refreshToken();
+    setInterval(_refreshToken, 55 * 60 * 1000);
+
     try {
       const rtdb = firebase.database();
       presenceRef = rtdb.ref('presence/' + currentUser.uid);
@@ -381,16 +388,24 @@ const App = (() => {
       });
     } catch (e) { console.warn('RTDB presence unavailable', e); }
 
+    const _rtdbRestUrl = 'https://redsssproduction-studios-86bec-default-rtdb.firebaseio.com/presence/' + currentUser.uid + '.json';
+
     let _awayTimer = null;
     let _pageClosing = false;
 
     function _goOffline() {
-      if (_pageClosing) return; // run only once
+      if (_pageClosing) return;
       _pageClosing = true;
       clearTimeout(_awayTimer);
-      // RTDB write — WebSocket is still open during pagehide, most reliable
+      const offlinePayload = JSON.stringify({ online: false, effectiveStatus: 'offline' });
+      // keepalive fetch — guaranteed to complete even after page unload (cross-browser)
+      try {
+        const url = _cachedToken ? _rtdbRestUrl + '?auth=' + _cachedToken : _rtdbRestUrl;
+        fetch(url, { method: 'PATCH', body: offlinePayload, headers: { 'Content-Type': 'application/json' }, keepalive: true });
+      } catch (e) {}
+      // RTDB SDK write — works if WebSocket still open
       if (presenceRef) presenceRef.update({ online: false, effectiveStatus: 'offline' }).catch(() => {});
-      // Firestore write — may or may not complete, RTDB listener is backup
+      // Firestore write — backup
       ref.update({
         online: false,
         effectiveStatus: userProfile.status === 'auto' ? 'offline' : userProfile.effectiveStatus,

@@ -294,6 +294,14 @@ const Nav = (() => {
 
     // RTDB presence — fires server-side even on hard close/shutdown
     let presenceRef = null;
+    let _cachedToken = null;
+    // Cache the auth token so _goOffline can use it synchronously in pagehide
+    function _refreshToken() {
+      user.getIdToken().then(t => { _cachedToken = t; }).catch(() => {});
+    }
+    _refreshToken();
+    setInterval(_refreshToken, 55 * 60 * 1000); // refresh before 1h expiry
+
     try {
       const rtdb = firebase.database();
       presenceRef = rtdb.ref('presence/' + user.uid);
@@ -311,16 +319,24 @@ const Nav = (() => {
       });
     } catch (e) { console.warn('RTDB presence unavailable', e); }
 
+    const _rtdbRestUrl = 'https://redsssproduction-studios-86bec-default-rtdb.firebaseio.com/presence/' + user.uid + '.json';
+
     let _awayTimer = null;
     let _pageClosing = false;
 
     function _goOffline() {
-      if (_pageClosing) return; // run only once
+      if (_pageClosing) return;
       _pageClosing = true;
       clearTimeout(_awayTimer);
-      // RTDB write — WebSocket is still open during pagehide, most reliable
+      const offlinePayload = JSON.stringify({ online: false, effectiveStatus: 'offline' });
+      // keepalive fetch — browser spec guarantees this completes even after page unload (cross-browser)
+      try {
+        const url = _cachedToken ? _rtdbRestUrl + '?auth=' + _cachedToken : _rtdbRestUrl;
+        fetch(url, { method: 'PATCH', body: offlinePayload, headers: { 'Content-Type': 'application/json' }, keepalive: true });
+      } catch (e) {}
+      // RTDB SDK write — works if WebSocket still open
       if (presenceRef) presenceRef.update({ online: false, effectiveStatus: 'offline' }).catch(() => {});
-      // Firestore write — may or may not complete, RTDB listener is backup
+      // Firestore write — may not complete on close, RTDB listener on friends' clients is backup
       ref.update({
         online: false,
         effectiveStatus: profile.status === 'auto' ? 'offline' : profile.effectiveStatus,
