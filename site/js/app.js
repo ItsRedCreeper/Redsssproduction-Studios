@@ -381,13 +381,36 @@ const App = (() => {
     } catch (e) { console.warn('RTDB presence unavailable', e); }
 
     // Visibility change (tab hidden/shown)
+    // Delay 'away' write so page-close events (pagehide/beforeunload) can cancel it
+    let _awayTimer = null;
+    let _pageClosing = false;
+
+    function _cancelAwayWrite() {
+      _pageClosing = true;
+      clearTimeout(_awayTimer);
+      _awayTimer = null;
+    }
+    window.addEventListener('pagehide', _cancelAwayWrite);
+
     document.addEventListener('visibilitychange', () => {
       if (userProfile.status !== 'auto') return;
-      const eff = document.hidden ? 'away' : 'online';
-      ref.update({ effectiveStatus: eff, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
-      userProfile.effectiveStatus = eff;
-      _renderUserUI();
-      if (!document.hidden) _resetIdleTimer();
+      if (!document.hidden) {
+        clearTimeout(_awayTimer);
+        _awayTimer = null;
+        _pageClosing = false;
+        ref.update({ effectiveStatus: 'online', lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+        userProfile.effectiveStatus = 'online';
+        _renderUserUI();
+        _resetIdleTimer();
+        return;
+      }
+      // Page hidden — wait before writing 'away' so close events can cancel it
+      _awayTimer = setTimeout(() => {
+        if (_pageClosing) return;
+        ref.update({ effectiveStatus: 'away', lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+        userProfile.effectiveStatus = 'away';
+        _renderUserUI();
+      }, 500);
     });
 
     // Idle detection
@@ -398,6 +421,7 @@ const App = (() => {
 
     // Beforeunload → offline
     window.addEventListener('beforeunload', () => {
+      _cancelAwayWrite();
       ref.update({
         online: false,
         effectiveStatus: userProfile.status === 'auto' ? 'offline' : userProfile.effectiveStatus,
