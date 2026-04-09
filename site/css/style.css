@@ -120,7 +120,7 @@ a.nav-link {
 a.nav-link:hover { text-decoration: none; }
 
 .nav-link:hover { color: var(--text); background: var(--bg-hover); border-color: var(--gray-light); }
-.nav-link.active { color: var(--red); background: var(--bg-tertiary); border-color: var(--red); }
+.nav-link.active { color: var(--red); background: var(--bg-tertiary); border-color: var(--red); pointer-events: none; cursor: default; }
 
 .nav-right {
   display: flex;

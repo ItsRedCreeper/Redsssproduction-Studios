@@ -8,6 +8,7 @@ const Friends = (() => {
   let userProfile = null;
   let friendProfiles = [];
   let _myFriendUids = []; // keep in sync with live listener
+  const _rtdbOffline = new Set(); // uids RTDB has confirmed offline (takes priority over Firestore)
 
   function init(user, profile) {
     currentUser = user;
@@ -260,6 +261,8 @@ const Friends = (() => {
         const unsub = db.collection('users').doc(uid).onSnapshot(d => {
           if (!d.exists) return;
           const profile = { uid: d.id, ...d.data() };
+          // RTDB takes priority for offline — prevents visibilitychange 'away' race condition
+          if (_rtdbOffline.has(uid)) { profile.effectiveStatus = 'offline'; profile.online = false; }
           const idx = friendProfiles.findIndex(p => p.uid === uid);
           if (idx >= 0) {
             friendProfiles[idx] = profile;
@@ -276,11 +279,14 @@ const Friends = (() => {
             const rtdbHandler = snap => {
               const val = snap.val();
               if (val && val.online === false) {
+                _rtdbOffline.add(uid);
                 const idx = friendProfiles.findIndex(p => p.uid === uid);
                 if (idx >= 0 && friendProfiles[idx].effectiveStatus !== 'offline') {
                   friendProfiles[idx] = { ...friendProfiles[idx], effectiveStatus: 'offline' };
                   _renderFriendsList(friendProfiles.slice());
                 }
+              } else if (val && val.online === true) {
+                _rtdbOffline.delete(uid);
               }
             };
             presRef.on('value', rtdbHandler);

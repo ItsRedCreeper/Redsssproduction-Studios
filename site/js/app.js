@@ -217,8 +217,8 @@ const App = (() => {
         if (newName.length < 3 || newName.length > 20) {
           showToast('Username must be 3-20 characters.', 'error'); return;
         }
-        if (!/^[a-zA-Z0-9_]+$/.test(newName)) {
-          showToast('Only letters, numbers and underscores.', 'error'); return;
+        if (!/^[a-zA-Z0-9_ ]+$/.test(newName)) {
+          showToast('Only letters, numbers, underscores, and spaces.', 'error'); return;
         }
         var lower = newName.toLowerCase();
         var snap = await db.collection('users')

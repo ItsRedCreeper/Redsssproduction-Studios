@@ -124,6 +124,7 @@ const Messenger = (() => {
   const _dmFriendListeners = new Map();     // uid → Firestore unsubscribe fn
   const _rtdbDMListeners = new Map();        // uid → RTDB off fn
   const _dmProfiles = new Map();             // uid → profile data
+  const _rtdbOfflineSet = new Set();         // uids RTDB confirmed offline (takes priority over Firestore)
 
   function loadFriends() {
     db.collection('users').doc(currentUser.uid).onSnapshot(doc => {
@@ -158,12 +159,13 @@ const Messenger = (() => {
         const unsub = db.collection('users').doc(uid).onSnapshot(d => {
           if (!d.exists) return;
           const data = d.data();
-          _dmProfiles.set(uid, { uid, ...data });
+          const effectiveStatus = _rtdbOfflineSet.has(uid) ? 'offline' : (data.effectiveStatus || 'offline');
+          _dmProfiles.set(uid, { uid, ...data, effectiveStatus });
           // Update profile cache
           profileCache.set(uid, {
             username: data.username,
             avatar: data.avatar || '',
-            effectiveStatus: data.effectiveStatus || 'offline'
+            effectiveStatus
           });
           _renderDMFriendsList();
         });
@@ -175,6 +177,7 @@ const Messenger = (() => {
             const rtdbHandler = snap => {
               const val = snap.val();
               if (val && val.online === false) {
+                _rtdbOfflineSet.add(uid);
                 const current = _dmProfiles.get(uid);
                 if (current && current.effectiveStatus !== 'offline') {
                   _dmProfiles.set(uid, { ...current, effectiveStatus: 'offline' });
@@ -182,6 +185,8 @@ const Messenger = (() => {
                   if (cached) profileCache.set(uid, { ...cached, effectiveStatus: 'offline' });
                   _renderDMFriendsList();
                 }
+              } else if (val && val.online === true) {
+                _rtdbOfflineSet.delete(uid);
               }
             };
             presRef.on('value', rtdbHandler);
@@ -214,13 +219,29 @@ const Messenger = (() => {
         '</div>' +
         '<div>' +
           '<div class="friend-name">' + esc(f.username) + '</div>' +
-          '<div class="friend-status">' + _statusLabel(eStatus) + '</div>' +
+          '<div class="friend-status">' + _resolveActivity(f) + '</div>' +
         '</div></div>';
     }).join('');
 
     list.querySelectorAll('.friend-item').forEach(el => {
       el.addEventListener('click', () => openDM(el.dataset.uid, _dmProfiles.get(el.dataset.uid)));
     });
+  }
+
+  function _resolveActivity(profile) {
+    const eStatus = profile.effectiveStatus || 'offline';
+    if (eStatus === 'offline') return 'Offline';
+    if (eStatus === 'dnd') return 'Do Not Disturb';
+    const activity = profile.activity || {};
+    if (activity.page === 'games' && activity.game) return 'Playing ' + activity.game;
+    if (activity.page === 'messenger' && activity.server) return 'In RedsssMessenger — ' + activity.server;
+    if (activity.page === 'messenger' && activity.dm)     return 'Messaging ' + activity.dm;
+    if (activity.page === 'messenger') return 'In RedsssMessenger';
+    if (activity.page === 'games') return 'Browsing Games';
+    if (activity.page === 'support') return 'Viewing Support';
+    if (activity.page === 'home') return 'Online';
+    if (activity.page === 'friends') return 'Viewing Friends';
+    return eStatus === 'away' ? 'Away' : 'Online';
   }
 
   function _statusLabel(status) {

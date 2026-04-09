@@ -101,8 +101,8 @@ const Auth = (() => {
       errorEl.textContent = 'Username must be 3–20 characters.';
       return;
     }
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      errorEl.textContent = 'Username can only contain letters, numbers, and underscores.';
+    if (!/^[a-zA-Z0-9_ ]+$/.test(username)) {
+      errorEl.textContent = 'Username can only contain letters, numbers, underscores, and spaces.';
       return;
     }
     if (password.length < 6 || password.length > 128) {
