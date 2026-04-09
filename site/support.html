@@ -79,55 +79,84 @@
     <div class="page-content">
       <div class="support-page">
         <h2>Support</h2>
+        <p class="support-subtitle">How can we help you today?</p>
 
-        <div class="faq-item">
-          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-            <span>How do I play games?</span>
-            <span class="arrow">▼</span>
-          </div>
-          <div class="faq-answer">Go to the Games page and click on any game card. The game opens in a fullscreen player. Click Close to return.</div>
+        <!-- Type selector -->
+        <div class="support-type-row" id="support-type-row">
+          <button class="support-type-btn" id="btn-bug-report">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2l1.5 1.5"/><path d="M14.5 3.5L16 2"/><path d="M9 7h6"/><path d="M8.5 14s-1.5 0-1.5-1.5S8.5 12 8.5 12"/><path d="M15.5 14s1.5 0 1.5-1.5S15.5 12 15.5 12"/><ellipse cx="12" cy="13" rx="4" ry="5"/><path d="M6 10l-2 1"/><path d="M18 10l2 1"/><path d="M6 17l-2 1"/><path d="M18 17l2 1"/></svg>
+            <span>Bug Report</span>
+            <small>Report a problem or glitch</small>
+          </button>
+          <button class="support-type-btn" id="btn-user-support">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>User Support</span>
+            <small>Get help with your account</small>
+          </button>
         </div>
 
-        <div class="faq-item">
-          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-            <span>How do I use RedsssMessenger?</span>
-            <span class="arrow">▼</span>
+        <!-- Bug Report Form -->
+        <div class="support-form-card" id="form-bug-report" style="display:none">
+          <div class="support-form-header">
+            <button class="support-back-btn" id="back-from-bug">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              Back
+            </button>
+            <h3>Bug Report</h3>
           </div>
-          <div class="faq-answer">Click "RedsssMessenger" in the navigation bar. You can create servers, join channels, and send direct messages to friends.</div>
+
+          <label class="support-label">Where is the bug?</label>
+          <div class="support-search-wrap">
+            <input class="form-input" id="bug-area-search" placeholder="Search — Main Site, RedsssMessenger, or a game..." autocomplete="off">
+            <div class="support-dropdown" id="bug-area-dropdown"></div>
+          </div>
+          <div class="support-selected-tag" id="bug-area-tag" style="display:none"></div>
+
+          <label class="support-label" style="margin-top:16px">Description</label>
+          <textarea class="support-textarea" id="bug-description" placeholder="Describe what happened, what you expected, and steps to reproduce..." maxlength="3000"></textarea>
+
+          <label class="support-label" style="margin-top:16px">Screenshots (optional, up to 3)</label>
+          <div class="support-img-row" id="bug-img-row">
+            <label class="support-img-add" id="bug-img-add" title="Add image">
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <input type="file" id="bug-img-input" accept="image/*" multiple style="display:none">
+            </label>
+          </div>
+
+          <button class="btn btn-primary support-submit-btn" id="submit-bug">Submit Bug Report</button>
         </div>
 
-        <div class="faq-item">
-          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-            <span>How do I add friends?</span>
-            <span class="arrow">▼</span>
+        <!-- User Support Form -->
+        <div class="support-form-card" id="form-user-support" style="display:none">
+          <div class="support-form-header">
+            <button class="support-back-btn" id="back-from-user">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              Back
+            </button>
+            <h3>User Support</h3>
           </div>
-          <div class="faq-answer">Open RedsssMessenger and go to the Direct Messages view. Use the Add Friend tab and type a username to send a friend request.</div>
+
+          <label class="support-label">Which user is this about?</label>
+          <div class="support-search-wrap">
+            <input class="form-input" id="user-search" placeholder="Search by username..." autocomplete="off">
+            <div class="support-dropdown" id="user-dropdown"></div>
+          </div>
+          <div class="support-selected-tag" id="user-tag" style="display:none"></div>
+
+          <label class="support-label" style="margin-top:16px">Description</label>
+          <textarea class="support-textarea" id="user-description" placeholder="Describe your issue in detail..." maxlength="3000"></textarea>
+
+          <label class="support-label" style="margin-top:16px">Screenshots (optional, up to 3)</label>
+          <div class="support-img-row" id="user-img-row">
+            <label class="support-img-add" id="user-img-add" title="Add image">
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <input type="file" id="user-img-input" accept="image/*" multiple style="display:none">
+            </label>
+          </div>
+
+          <button class="btn btn-primary support-submit-btn" id="submit-user">Submit Support Request</button>
         </div>
 
-        <div class="faq-item">
-          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-            <span>How do I change my profile picture?</span>
-            <span class="arrow">▼</span>
-          </div>
-          <div class="faq-answer">Click your avatar in the top right corner. In the dropdown, click the avatar image to upload a new picture.</div>
-        </div>
-
-        <div class="faq-item">
-          <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-            <span>I found a bug or have a suggestion</span>
-            <span class="arrow">▼</span>
-          </div>
-          <div class="faq-answer">Use the contact form below to send us a message and we'll look into it.</div>
-        </div>
-
-        <div class="support-contact">
-          <h3>Contact Us</h3>
-          <div class="support-form">
-            <input class="form-input" id="support-subject" placeholder="Subject" minlength="3" maxlength="100">
-            <textarea id="support-message" placeholder="Describe your issue or suggestion..." minlength="10" maxlength="2000"></textarea>
-            <button class="btn btn-primary" id="submit-support">Send Message</button>
-          </div>
-        </div>
       </div>
     </div>
 
