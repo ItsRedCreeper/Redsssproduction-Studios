@@ -389,6 +389,8 @@ const App = (() => {
     } catch (e) { console.warn('RTDB presence unavailable', e); }
 
     const _rtdbRestUrl = 'https://redsssproduction-studios-86bec-default-rtdb.firebaseio.com/presence/' + currentUser.uid + '.json';
+    const _fsRestUrl = 'https://firestore.googleapis.com/v1/projects/redsssproduction-studios-86bec/databases/(default)/documents/users/' + currentUser.uid
+      + '?updateMask.fieldPaths=online&updateMask.fieldPaths=effectiveStatus';
 
     let _awayTimer = null;
     let _pageClosing = false;
@@ -397,20 +399,15 @@ const App = (() => {
       if (_pageClosing) return;
       _pageClosing = true;
       clearTimeout(_awayTimer);
-      const offlinePayload = JSON.stringify({ online: false, effectiveStatus: 'offline' });
-      // keepalive fetch — guaranteed to complete even after page unload (cross-browser)
-      try {
-        const url = _cachedToken ? _rtdbRestUrl + '?auth=' + _cachedToken : _rtdbRestUrl;
-        fetch(url, { method: 'PATCH', body: offlinePayload, headers: { 'Content-Type': 'application/json' }, keepalive: true });
-      } catch (e) {}
+      const rtdbPayload = JSON.stringify({ online: false, effectiveStatus: 'offline' });
+      const fsPayload = JSON.stringify({ fields: { online: { booleanValue: false }, effectiveStatus: { stringValue: 'offline' } } });
+      const hdrs = { 'Content-Type': 'application/json' };
+      if (_cachedToken) hdrs['Authorization'] = 'Bearer ' + _cachedToken;
+      // keepalive fetch — spec-guaranteed to complete even after page unload
+      try { fetch(_rtdbRestUrl + (_cachedToken ? '?auth=' + _cachedToken : ''), { method: 'PATCH', body: rtdbPayload, headers: { 'Content-Type': 'application/json' }, keepalive: true }); } catch(e) {}
+      try { fetch(_fsRestUrl, { method: 'PATCH', body: fsPayload, headers: hdrs, keepalive: true }); } catch(e) {}
       // RTDB SDK write — works if WebSocket still open
       if (presenceRef) presenceRef.update({ online: false, effectiveStatus: 'offline' }).catch(() => {});
-      // Firestore write — backup
-      ref.update({
-        online: false,
-        effectiveStatus: userProfile.status === 'auto' ? 'offline' : userProfile.effectiveStatus,
-        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
-      }).catch(() => {});
     }
 
     window.addEventListener('pagehide', _goOffline);
