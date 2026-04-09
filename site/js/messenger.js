@@ -121,8 +121,9 @@ const Messenger = (() => {
   }
 
   /* ── Friends (for DM list) — per-friend live listeners ── */
-  const _dmFriendListeners = new Map(); // uid → unsubscribe fn
-  const _dmProfiles = new Map();        // uid → profile data
+  const _dmFriendListeners = new Map();     // uid → Firestore unsubscribe fn
+  const _rtdbDMListeners = new Map();        // uid → RTDB off fn
+  const _dmProfiles = new Map();             // uid → profile data
 
   function loadFriends() {
     db.collection('users').doc(currentUser.uid).onSnapshot(doc => {
@@ -132,6 +133,8 @@ const Messenger = (() => {
       if (!friendUids.length) {
         _dmFriendListeners.forEach(unsub => unsub());
         _dmFriendListeners.clear();
+        _rtdbDMListeners.forEach(off => off());
+        _rtdbDMListeners.clear();
         _dmProfiles.clear();
         document.getElementById('friends-list').innerHTML =
           '<div class="sidebar-empty">No friends yet</div>';
@@ -144,6 +147,8 @@ const Messenger = (() => {
           unsub();
           _dmFriendListeners.delete(uid);
           _dmProfiles.delete(uid);
+          const rtdbOff = _rtdbDMListeners.get(uid);
+          if (rtdbOff) { rtdbOff(); _rtdbDMListeners.delete(uid); }
         }
       });
 
@@ -163,6 +168,26 @@ const Messenger = (() => {
           _renderDMFriendsList();
         });
         _dmFriendListeners.set(uid, unsub);
+        // RTDB presence listener — detects hard browser close / shutdown
+        if (!_rtdbDMListeners.has(uid)) {
+          try {
+            const presRef = firebase.database().ref('presence/' + uid);
+            const rtdbHandler = snap => {
+              const val = snap.val();
+              if (val && val.online === false) {
+                const current = _dmProfiles.get(uid);
+                if (current && current.effectiveStatus !== 'offline') {
+                  _dmProfiles.set(uid, { ...current, effectiveStatus: 'offline' });
+                  const cached = profileCache.get(uid);
+                  if (cached) profileCache.set(uid, { ...cached, effectiveStatus: 'offline' });
+                  _renderDMFriendsList();
+                }
+              }
+            };
+            presRef.on('value', rtdbHandler);
+            _rtdbDMListeners.set(uid, () => presRef.off('value', rtdbHandler));
+          } catch (e) { /* RTDB unavailable */ }
+        }
       });
     });
   }

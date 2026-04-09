@@ -1723,3 +1723,52 @@ body.messenger-page #app {
   color: var(--text-muted);
   margin-left: 4px;
 }
+
+/* ── Site Footer ── */
+.site-footer {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  padding: 28px 20px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.footer-inner {
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+.footer-nav,
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  justify-content: center;
+}
+.footer-nav a,
+.footer-links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color .15s;
+}
+.footer-nav a:hover,
+.footer-links a:hover {
+  color: var(--text-primary);
+}
+.footer-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  width: 100%;
+}
+.footer-version {
+  font-size: 11px;
+  opacity: 0.6;
+}

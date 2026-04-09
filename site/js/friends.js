@@ -222,7 +222,8 @@ const Friends = (() => {
   }
 
   /* ── Load friends list (real-time, per-friend listeners) ── */
-  const _friendListeners = new Map(); // uid → unsubscribe fn
+  const _friendListeners = new Map();     // uid → Firestore unsubscribe fn
+  const _rtdbFriendListeners = new Map(); // uid → RTDB off fn
 
   function _loadFriends() {
     // Watch the current user's friends array
@@ -234,6 +235,8 @@ const Friends = (() => {
       if (!friendUids.length) {
         _friendListeners.forEach(unsub => unsub());
         _friendListeners.clear();
+        _rtdbFriendListeners.forEach(off => off());
+        _rtdbFriendListeners.clear();
         friendProfiles = [];
         document.getElementById('friends-list').innerHTML =
           '<div class="friends-search-hint">No friends yet. Add some!</div>';
@@ -246,6 +249,8 @@ const Friends = (() => {
           unsub();
           _friendListeners.delete(uid);
           friendProfiles = friendProfiles.filter(p => p.uid !== uid);
+          const rtdbOff = _rtdbFriendListeners.get(uid);
+          if (rtdbOff) { rtdbOff(); _rtdbFriendListeners.delete(uid); }
         }
       });
 
@@ -264,7 +269,24 @@ const Friends = (() => {
           _renderFriendsList(friendProfiles.slice());
         });
         _friendListeners.set(uid, unsub);
-      });
+        // RTDB presence listener — detects hard browser close / shutdown
+        if (!_rtdbFriendListeners.has(uid)) {
+          try {
+            const presRef = firebase.database().ref('presence/' + uid);
+            const rtdbHandler = snap => {
+              const val = snap.val();
+              if (val && val.online === false) {
+                const idx = friendProfiles.findIndex(p => p.uid === uid);
+                if (idx >= 0 && friendProfiles[idx].effectiveStatus !== 'offline') {
+                  friendProfiles[idx] = { ...friendProfiles[idx], effectiveStatus: 'offline' };
+                  _renderFriendsList(friendProfiles.slice());
+                }
+              }
+            };
+            presRef.on('value', rtdbHandler);
+            _rtdbFriendListeners.set(uid, () => presRef.off('value', rtdbHandler));
+          } catch (e) { /* RTDB unavailable */ }
+        }
     });
   }
 
