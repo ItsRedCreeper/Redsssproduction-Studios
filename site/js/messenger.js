@@ -178,6 +178,8 @@ const Messenger = (() => {
               const val = snap.val();
               if (val && val.online === false) {
                 _rtdbOfflineSet.add(uid);
+                // Sync offline back to Firestore (beforeunload may not have fired)
+                db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
                 const current = _dmProfiles.get(uid);
                 if (current && current.effectiveStatus !== 'offline') {
                   _dmProfiles.set(uid, { ...current, effectiveStatus: 'offline' });

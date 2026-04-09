@@ -280,6 +280,8 @@ const Friends = (() => {
               const val = snap.val();
               if (val && val.online === false) {
                 _rtdbOffline.add(uid);
+                // Sync offline back to Firestore (beforeunload may not have fired)
+                db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
                 const idx = friendProfiles.findIndex(p => p.uid === uid);
                 if (idx >= 0 && friendProfiles[idx].effectiveStatus !== 'offline') {
                   friendProfiles[idx] = { ...friendProfiles[idx], effectiveStatus: 'offline' };
