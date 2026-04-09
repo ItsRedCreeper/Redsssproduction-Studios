@@ -364,9 +364,10 @@ const App = (() => {
     _renderUserUI();
 
     // RTDB presence — fires server-side even on hard close/shutdown
+    let presenceRef = null;
     try {
       const rtdb = firebase.database();
-      const presenceRef = rtdb.ref('presence/' + currentUser.uid);
+      presenceRef = rtdb.ref('presence/' + currentUser.uid);
       rtdb.ref('.info/connected').on('value', snap => {
         if (!snap.val()) return;
         presenceRef.onDisconnect().update({ effectiveStatus: 'offline', online: false })
@@ -380,18 +381,27 @@ const App = (() => {
       });
     } catch (e) { console.warn('RTDB presence unavailable', e); }
 
-    // Visibility change (tab hidden/shown)
-    // Delay 'away' write so page-close events (pagehide/beforeunload) can cancel it
     let _awayTimer = null;
     let _pageClosing = false;
 
-    function _cancelAwayWrite() {
+    function _goOffline() {
+      if (_pageClosing) return; // run only once
       _pageClosing = true;
       clearTimeout(_awayTimer);
-      _awayTimer = null;
+      // RTDB write — WebSocket is still open during pagehide, most reliable
+      if (presenceRef) presenceRef.update({ online: false, effectiveStatus: 'offline' }).catch(() => {});
+      // Firestore write — may or may not complete, RTDB listener is backup
+      ref.update({
+        online: false,
+        effectiveStatus: userProfile.status === 'auto' ? 'offline' : userProfile.effectiveStatus,
+        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+      }).catch(() => {});
     }
-    window.addEventListener('pagehide', _cancelAwayWrite);
 
+    window.addEventListener('pagehide', _goOffline);
+    window.addEventListener('beforeunload', _goOffline);
+
+    // Visibility change (tab hidden/shown)
     document.addEventListener('visibilitychange', () => {
       if (userProfile.status !== 'auto') return;
       if (!document.hidden) {
@@ -404,13 +414,13 @@ const App = (() => {
         _resetIdleTimer();
         return;
       }
-      // Page hidden — wait before writing 'away' so close events can cancel it
+      // Page hidden — delay away write so pagehide/beforeunload can cancel it
       _awayTimer = setTimeout(() => {
         if (_pageClosing) return;
         ref.update({ effectiveStatus: 'away', lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
         userProfile.effectiveStatus = 'away';
         _renderUserUI();
-      }, 500);
+      }, 600);
     });
 
     // Idle detection
@@ -418,16 +428,6 @@ const App = (() => {
     document.addEventListener('mousemove', resetIdle, { passive: true });
     document.addEventListener('keydown', resetIdle, { passive: true });
     _resetIdleTimer();
-
-    // Beforeunload → offline
-    window.addEventListener('beforeunload', () => {
-      _cancelAwayWrite();
-      ref.update({
-        online: false,
-        effectiveStatus: userProfile.status === 'auto' ? 'offline' : userProfile.effectiveStatus,
-        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    });
 
     // Heartbeat
     setInterval(() => {
