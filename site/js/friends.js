@@ -226,6 +226,11 @@ const Friends = (() => {
   const _friendListeners = new Map();     // uid → Firestore unsubscribe fn
   const _rtdbFriendListeners = new Map(); // uid → RTDB off fn
 
+  // Periodically re-render so lastSeen staleness is re-evaluated even when Firestore doesn't push
+  setInterval(() => {
+    if (friendProfiles.length) _renderFriendsList(friendProfiles.slice());
+  }, 60 * 1000);
+
   function _loadFriends() {
     // Watch the current user's friends array
     db.collection('users').doc(currentUser.uid).onSnapshot(doc => {

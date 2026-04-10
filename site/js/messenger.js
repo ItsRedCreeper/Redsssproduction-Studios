@@ -126,6 +126,11 @@ const Messenger = (() => {
   const _dmProfiles = new Map();             // uid → profile data
   const _rtdbOfflineSet = new Set();         // uids RTDB confirmed offline (takes priority over Firestore)
 
+  // Periodically re-render so lastSeen staleness is re-evaluated even when Firestore doesn't push
+  setInterval(() => {
+    if (_dmProfiles.size) _renderDMFriendsList();
+  }, 60 * 1000);
+
   function loadFriends() {
     db.collection('users').doc(currentUser.uid).onSnapshot(doc => {
       if (!doc.exists) return;

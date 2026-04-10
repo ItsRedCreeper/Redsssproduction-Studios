@@ -546,10 +546,11 @@ const App = (() => {
   /* ── Community stats ── */
   async function _loadCommunityStats() {
     try {
+      const cutoff = firebase.firestore.Timestamp.fromDate(new Date(Date.now() - 3 * 60 * 1000));
       const [gamesSnap, membersSnap, onlineSnap] = await Promise.all([
         db.collection('games').get(),
         db.collection('users').get(),
-        db.collection('users').where('online', '==', true).get()
+        db.collection('users').where('lastSeen', '>', cutoff).get()
       ]);
       const statEl = id => document.getElementById(id);
       if (statEl('stat-games')) statEl('stat-games').textContent = gamesSnap.size;
