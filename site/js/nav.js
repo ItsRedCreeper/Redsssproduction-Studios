@@ -280,6 +280,7 @@ const Nav = (() => {
 
   /* ── Online presence + Auto status (visibility, idle) ── */
   function _setupPresence(user, profile) {
+    sessionStorage.removeItem('_siteNav'); // clear any leftover flag from same-site navigation
     const ref = db.collection('users').doc(user.uid);
     const effective = _computeEffective(profile.status || 'auto');
 
@@ -331,6 +332,8 @@ const Nav = (() => {
 
     function _goOffline() {
       if (_pageClosing) return;
+      // If navigating to another page on this site, skip going offline
+      if (sessionStorage.getItem('_siteNav')) { sessionStorage.removeItem('_siteNav'); return; }
       _pageClosing = true;
       clearTimeout(_awayTimer);
       const rtdbPayload = JSON.stringify({ online: false, effectiveStatus: 'offline' });
@@ -352,6 +355,12 @@ const Nav = (() => {
 
     window.addEventListener('pagehide', _goOffline);
     window.addEventListener('beforeunload', _goOffline);
+
+    // Flag same-site link clicks so _goOffline knows not to write offline
+    document.addEventListener('click', e => {
+      const a = e.target.closest('a[href]');
+      if (a && a.origin === location.origin) sessionStorage.setItem('_siteNav', '1');
+    }, { capture: true });
 
     // Visibility change (tab hidden/shown)
     document.addEventListener('visibilitychange', () => {

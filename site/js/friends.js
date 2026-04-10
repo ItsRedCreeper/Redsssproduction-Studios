@@ -365,8 +365,8 @@ const Friends = (() => {
     if (activity.page === 'messenger') return 'In RedsssMessenger';
     if (activity.page === 'games') return 'Browsing Games';
     if (activity.page === 'support') return 'Viewing Support';
-    if (activity.page === 'home') return 'Online';
-    if (activity.page === 'friends') return 'Viewing Friends';
+    if (activity.page === 'home') return eStatus === 'away' ? 'Away' : 'Online';
+    if (activity.page === 'friends') return eStatus === 'away' ? 'Away' : 'Viewing Friends';
 
     return eStatus === 'away' ? 'Away' : 'Online';
   }
