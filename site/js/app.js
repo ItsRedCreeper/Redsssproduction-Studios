@@ -54,12 +54,7 @@ const App = (() => {
         _setupPresence();
         _listenNotifications();
         _loadFeaturedGames();
-        // Delay stats so the current user's presence write completes first;
-        // then refresh every 30s to stay live
-        setTimeout(() => {
-          _loadCommunityStats();
-          setInterval(_loadCommunityStats, 30 * 1000);
-        }, 1500);
+        _setupCommunityStats();
       } else {
         currentUser = null;
         userProfile = null;
@@ -167,6 +162,12 @@ const App = (() => {
 
     const statusSelect = document.getElementById('profile-status');
     if (statusSelect) statusSelect.value = userProfile.status || 'auto';
+    const statusTextEl = document.getElementById('profile-dd-status-text');
+    if (statusTextEl) {
+      const labels = { online: 'Online', away: 'Away', dnd: 'Do Not Disturb', offline: 'Appear Offline' };
+      statusTextEl.textContent = labels[eStatus] || eStatus;
+      statusTextEl.className = 'profile-dd-status-text ' + eStatus;
+    }
   }
 
   /* ── Profile dropdown toggles ── */
@@ -548,22 +549,34 @@ const App = (() => {
     , 5000);
   }
 
-  /* ── Community stats ── */
-  async function _loadCommunityStats() {
-    try {
-      const cutoff = firebase.firestore.Timestamp.fromDate(new Date(Date.now() - 25 * 1000));
-      const [gamesSnap, membersSnap, onlineSnap] = await Promise.all([
-        db.collection('games').get(),
-        db.collection('users').where('username', '>=', '').get(),
-        db.collection('users').where('lastSeen', '>', cutoff).get()
-      ]);
-      const statEl = id => document.getElementById(id);
-      if (statEl('stat-games')) statEl('stat-games').textContent = gamesSnap.size;
-      if (statEl('stat-members')) statEl('stat-members').textContent = membersSnap.size;
-      if (statEl('stat-online')) statEl('stat-online').textContent = onlineSnap.size;
-    } catch (e) {
-      // stats unavailable — leave as —
+  /* ── Community stats (live) ── */
+  function _setupCommunityStats() {
+    const statEl = id => document.getElementById(id);
+    let _cachedUsers = [];
+
+    function _recountOnline() {
+      const cutoff = Date.now() - 25 * 1000;
+      let count = 0;
+      _cachedUsers.forEach(d => {
+        if (!d.lastSeen) return;
+        const ms = d.lastSeen.toDate ? d.lastSeen.toDate().getTime() : (d.lastSeen.seconds * 1000);
+        if (ms > cutoff) count++;
+      });
+      if (statEl('stat-online')) statEl('stat-online').textContent = count;
     }
+
+    db.collection('games').onSnapshot(snap => {
+      if (statEl('stat-games')) statEl('stat-games').textContent = snap.size;
+    });
+
+    db.collection('users').where('username', '>=', '').onSnapshot(snap => {
+      _cachedUsers = [];
+      snap.forEach(doc => _cachedUsers.push(doc.data()));
+      if (statEl('stat-members')) statEl('stat-members').textContent = snap.size;
+      _recountOnline();
+    });
+
+    setInterval(_recountOnline, 10 * 1000);
   }
 
   return { init };

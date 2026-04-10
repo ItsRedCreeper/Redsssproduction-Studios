@@ -82,6 +82,12 @@ const Nav = (() => {
 
     const statusSelect = document.getElementById('profile-status');
     if (statusSelect) statusSelect.value = profile.status || 'auto';
+    const statusTextEl = document.getElementById('profile-dd-status-text');
+    if (statusTextEl) {
+      const labels = { online: 'Online', away: 'Away', dnd: 'Do Not Disturb', offline: 'Appear Offline' };
+      statusTextEl.textContent = labels[eStatus] || eStatus;
+      statusTextEl.className = 'profile-dd-status-text ' + eStatus;
+    }
   }
 
   /* ── Mark the correct nav link active ── */

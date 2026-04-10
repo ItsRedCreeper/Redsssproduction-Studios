@@ -1062,6 +1062,11 @@ a.nav-link:hover { text-decoration: none; }
 
 .profile-dd-name { font-size: 15px; font-weight: 600; }
 .profile-dd-email { font-size: 12px; color: var(--text-muted); }
+.profile-dd-status-text { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; margin-top: 2px; }
+.profile-dd-status-text.online  { color: #43b581; }
+.profile-dd-status-text.away    { color: #faa61a; }
+.profile-dd-status-text.dnd     { color: #f04747; }
+.profile-dd-status-text.offline { color: var(--text-muted); }
 
 .profile-dd-section { margin-bottom: 12px; }
 .profile-dd-section label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; display: block; }
