@@ -2216,18 +2216,24 @@ body.messenger-page #app {
 .msg-yt-thumb:hover .msg-yt-play { opacity: 1; }
 
 /* ── Emoji / GIF Picker panel ── */
-.picker-toggle-btn {
+.picker-toggle-btn,
+.img-upload-btn {
   background: none;
   border: none;
-  font-size: 20px;
   cursor: pointer;
   padding: 6px 8px;
   border-radius: 8px;
   line-height: 1;
   flex-shrink: 0;
   transition: background .15s;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.picker-toggle-btn:hover { background: var(--bg-tertiary); }
+.picker-toggle-btn { font-size: 20px; }
+.picker-toggle-btn:hover,
+.img-upload-btn:hover { background: var(--bg-tertiary); color: var(--text); }
 
 .picker-panel {
   flex-direction: column;
@@ -2259,30 +2265,71 @@ body.messenger-page #app {
 
 .picker-tab-content {
   flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+/* Emoji category nav */
+.emoji-cat-nav {
+  display: flex;
+  overflow-x: auto;
+  gap: 2px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+.emoji-cat-nav::-webkit-scrollbar { display: none; }
+.emoji-cat-btn {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background .1s;
+  opacity: .55;
+}
+.emoji-cat-btn:hover { background: var(--bg-tertiary); opacity: 1; }
+.emoji-cat-btn.active { background: var(--bg-tertiary); opacity: 1; border-bottom: 2px solid var(--red); }
+
+/* Scrollable emoji area */
+.emoji-scroll-area {
+  flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 6px 8px;
+}
+.emoji-cat-section { margin-bottom: 10px; }
+.emoji-cat-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-muted);
+  padding: 4px 0 4px;
+  position: sticky;
+  top: 0;
+  background: var(--bg-secondary);
+  z-index: 1;
 }
 
 /* Emoji grid */
+.emoji-grid { display: flex; flex-wrap: wrap; }
 .emoji-btn {
   background: none;
   border: none;
   font-size: 22px;
   cursor: pointer;
-  padding: 4px;
+  padding: 3px;
   border-radius: 6px;
   line-height: 1;
   transition: background .1s;
 }
 .emoji-btn:hover { background: var(--bg-tertiary); }
-
-/* GIF grid */
-.gif-upload-row {
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 .gif-empty {
   color: var(--text-muted);
   font-size: 13px;

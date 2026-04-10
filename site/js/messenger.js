@@ -51,6 +51,7 @@ const Messenger = (() => {
 
     // Emoji/GIF picker
     document.getElementById('picker-toggle-btn').addEventListener('click', e => { e.stopPropagation(); _togglePicker(); });
+    document.getElementById('img-upload-btn').addEventListener('click', e => { e.stopPropagation(); document.getElementById('gif-upload-input').click(); });
     document.querySelectorAll('.picker-tab-btn').forEach(btn => {
       btn.addEventListener('click', () => _switchPickerTab(btn.dataset.tab));
     });
@@ -60,7 +61,8 @@ const Messenger = (() => {
     // Close picker on outside click
     document.addEventListener('click', e => {
       if (_pickerOpen && !document.getElementById('picker-panel').contains(e.target) &&
-          e.target.id !== 'picker-toggle-btn') {
+          e.target.id !== 'picker-toggle-btn' &&
+          !e.target.closest('#img-upload-btn')) {
         _closePicker();
       }
     });
@@ -1283,27 +1285,91 @@ const Messenger = (() => {
   }
 
   /* ── Emoji/GIF Picker ── */
-  const _EMOJI_LIST = [
-    '\uD83D\uDE00','\uD83D\uDE03','\uD83D\uDE04','\uD83D\uDE01','\uD83D\uDE06','\uD83E\uDD23',
-    '\uD83D\uDE02','\uD83D\uDE42','\uD83D\uDE0A','\uD83D\uDE07','\uD83D\uDE0D','\uD83E\uDD29',
-    '\uD83D\uDE18','\uD83D\uDE0B','\uD83D\uDE1B','\uD83D\uDE1C','\uD83E\uDD2A','\uD83D\uDE1D',
-    '\uD83E\uDD11','\uD83E\uDD17','\uD83E\uDD14','\uD83D\uDE10','\uD83D\uDE11','\uD83D\uDE36',
-    '\uD83D\uDE0F','\uD83D\uDE12','\uD83D\uDE44','\uD83D\uDE2C','\uD83D\uDE0C','\uD83D\uDE14',
-    '\uD83D\uDE2A','\uD83D\uDE37','\uD83E\uDD12','\uD83E\uDD15','\uD83E\uDD22','\uD83E\uDD2E',
-    '\uD83E\uDD27','\uD83E\uDD75','\uD83E\uDD76','\uD83D\uDE35','\uD83E\uDD2F','\uD83D\uDE02',
-    '\uD83D\uDE0E','\uD83E\uDD78','\uD83E\uDD13','\uD83D\uDE33','\uD83E\uDD7A','\uD83D\uDE26',
-    '\uD83D\uDE28','\uD83D\uDE30','\uD83D\uDE25','\uD83D\uDE22','\uD83D\uDE2D','\uD83D\uDE31',
-    '\uD83D\uDE16','\uD83D\uDE23','\uD83D\uDE1E','\uD83D\uDE13','\uD83D\uDE29','\uD83D\uDE2B',
-    '\uD83E\uDD71','\uD83D\uDE24','\uD83D\uDE21','\uD83D\uDE20','\uD83E\uDD2C','\uD83D\uDE08',
-    '\uD83D\uDC7F','\uD83D\uDCA9','\uD83E\uDD21','\uD83D\uDC7B','\uD83D\uDC7D','\uD83E\uDD16',
-    '\uD83D\uDC4B','\u270B','\uD83D\uDD90\uFE0F','\u270C\uFE0F','\uD83E\uDD1E','\uD83D\uDC4D',
-    '\uD83D\uDC4E','\u270A','\uD83D\uDC4A','\uD83D\uDC4F','\uD83D\uDE4C','\uD83D\uDE4F',
-    '\uD83D\uDCAA','\u2764\uFE0F','\uD83E\uDDE1','\uD83D\uDC9B','\uD83D\uDC9A','\uD83D\uDC99',
-    '\uD83D\uDC9C','\uD83D\uDD25','\u2B50','\u2728','\uD83C\uDF89','\uD83C\uDF88','\uD83C\uDF81',
-    '\uD83C\uDFC6','\uD83C\uDFAE','\uD83C\uDFB5','\uD83C\uDFB6','\uD83D\uDC8E','\uD83D\uDCB0',
-    '\uD83D\uDCF1','\uD83D\uDCBB','\u2705','\u274C','\u2753','\u2757','\uD83D\uDD14','\uD83D\uDD11',
-    '\uD83D\uDC36','\uD83D\uDC31','\uD83D\uDC30','\uD83D\uDC3B','\uD83D\uDC2D','\uD83D\uDC38',
-    '\uD83E\uDD81','\uD83D\uDC27','\uD83D\uDC37','\uD83D\uDC2E','\uD83D\uDC34','\uD83D\uDC2C'
+  const _EMOJI_CATS = [
+    { label: 'Smileys & Emotion', icon: '😀', emojis: [
+      '😀','😃','😄','😁','😆','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😙','😚',
+      '😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒',
+      '🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴',
+      '😵','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺',
+      '😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡',
+      '😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖',
+      '😺','😸','😹','😻','😼','😽','🙀','😿','😾'
+    ]},
+    { label: 'People & Body', icon: '👋', emojis: [
+      '👋','🤚','🖐️','✋','🖖','🫱','🫲','🫳','🫴','🤙','👌','🤌','🤏','✌️','🤞','🤟','🤘',
+      '👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','🤝','👏','🙌','🫶','👐',
+      '🤲','🙏','✍️','💅','🤳','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','👁️','👀','👄','🦷',
+      '🫦','🦴','💋','👤','👥','🫂',
+      '👶','🧒','👦','👧','🧑','👱','👨','🧔','👩','👴','👵','🧓',
+      '👮','🕵️','💂','🥷','👷','🤴','👸','🧙','🧚','🧛','🧜','🧝','🧞','🧟','🧌',
+      '💃','🕺','👼','🤰','🤱','🎅','🤶','🦸','🦹','🧑‍⚕️','🧑‍🎓','🧑‍🏫','🧑‍🍳','🧑‍🌾'
+    ]},
+    { label: 'Animals & Nature', icon: '🐶', emojis: [
+      '🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊',
+      '🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐴','🦄','🐝','🪱','🐛','🦋','🐌','🐞','🐜',
+      '🦟','🦗','🦂','🐢','🦎','🐍','🦕','🦖','🦈','🐬','🐳','🐋','🦭','🐟','🐠','🐡','🐙','🦑',
+      '🦐','🦞','🦀','🐊','🐅','🐆','🦓','🦍','🦣','🐘','🦛','🦏','🐪','🐫','🦒','🦬','🐃','🐂',
+      '🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐈','🐇','🦝','🦨','🦡','🦫','🦦',
+      '🐿️','🦔','🐾',
+      '🌸','🌺','🌻','🌹','🌷','🌼','🍀','🌿','🍃','🍂','🍁','🌲','🌳','🌴','🌵','🎋','🎍','🍄',
+      '🌾','💐','🪸','🌱','☘️','🪨','🪵',
+      '🌈','⛅','🌤️','⛈️','🌩️','🌨️','❄️','⛄','🌊','🌬️','🌀','🌪️','🌫️','🌡️','☀️','🌙','⭐','🌟',
+      '🌠','🌌','🌍','🌎','🌏','🌑','🌒','🌓','🌔','🌕','🌖','🌗','🌘'
+    ]},
+    { label: 'Food & Drink', icon: '🍕', emojis: [
+      '🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍑','🍒','🥭','🍍','🥥','🥝',
+      '🍅','🍆','🥑','🥦','🥬','🥒','🌶️','🫑','🧄','🧅','🥕','🌽','🍠','🥜','🫒','🧅',
+      '🥐','🥯','🍞','🥖','🥨','🧀','🥚','🍳','🥞','🧇','🥓','🥩','🍗','🍖','🌭','🍔','🍟',
+      '🍕','🫓','🥪','🥙','🧆','🌮','🌯','🫔','🥗','🥘','🫕','🍝','🍜','🍲','🍛','🍣','🍱',
+      '🥟','🦪','🍤','🍙','🍚','🍘','🍥','🥮','🍢','🧁','🍰','🎂','🍮','🍭','🍬','🍫','🍿',
+      '🍩','🍪','🌰','🍯','🧃','🥤','🧋','🍵','☕','🫖','🍶','🍺','🍻','🥂','🍷','🥃','🍸',
+      '🍹','🍾','🧉','🧊','🥛','🍼','🫗','🍴','🍽️','🥢','🧂'
+    ]},
+    { label: 'Activities', icon: '⚽', emojis: [
+      '⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🏓','🏸','🥊','🥋','🥅','⛳','🎣',
+      '🤿','🎿','🛷','⛷️','🏂','🪂','🏋️','🤼','🤸','🏄','🧗','🏊','🚴','🧘','🛹','🛼','🛺',
+      '🏆','🥇','🥈','🥉','🎖️','🏅','🎗️','🎟️',
+      '🎮','🕹️','🎲','♟️','🎯','🎳','🎰','🎨','🖼️','🎬','🎤','🎧','🎼','🎵','🎶','🎷','🎸',
+      '🎹','🎺','🎻','🪕','🥁','🪘','🎙️','📻',
+      '🎪','🎭','🎡','🎢','🎠','🎁','🎀','🎈','🎉','🎊','🎋','🎍','🎑','🎃','🎄','🧨','✨','🎆','🎇'
+    ]},
+    { label: 'Travel & Places', icon: '✈️', emojis: [
+      '🚗','🚕','🚙','🚌','🚎','🚐','🚑','🚒','🚓','🚔','🚘','🚖','🚚','🚛','🚜','🏎️','🛻',
+      '🚲','🛵','🏍️','🛺','🚡','🚠','🚟','🚃','🚋','🚞','🚝','🚄','🚅','🚈','🚂','🚆','🚇',
+      '✈️','🛩️','🛫','🛬','💺','🚁','🛸','🚀','🛶','⛵','🚤','🛥️','🛳️','⛴️','🚢',
+      '⛽','🛑','🚦','🚥','🗺️','🧭',
+      '🗿','🗼','🗽','⛪','🕌','🛕','⛩️','🕍','🏛️','🏟️','🏠','🏡','🏢','🏣','🏤','🏥',
+      '🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏗️','🏰','🏯','⛰️','🌋','🗻','🏕️','🏖️','🏜️',
+      '🏝️','🏞️','🌆','🌇','🌉','🌃','🌌','🌁','🗾','🌐','🌍','🌎','🌏'
+    ]},
+    { label: 'Objects', icon: '💡', emojis: [
+      '📱','💻','🖥️','🖨️','⌨️','🖱️','🖲️','💾','💿','📀','📷','📸','📹','🎥','📽️','🎞️',
+      '📺','📻','🧭','⏱️','⏲️','⏰','🕰️','⌛','⏳','📡','🔋','🪫','🔌','💡','🔦','🕯️','🪔',
+      '💸','💵','💴','💶','💷','💰','💳','🪙','💎','⚖️','🪜','🧲','🔧','🔨','⚒️','🛠️',
+      '⛏️','🪚','🔩','🪛','🔑','🗝️','🔐','🔒','🔓',
+      '🎁','📦','📫','📪','📬','📭','📮','🗳️','✏️','✒️','🖋️','🖊️','📝',
+      '📓','📔','📒','📕','📗','📘','📙','📚','📖','🔖','🏷️',
+      '🔍','🔎','🗑️','🩺','🩻','🩹','💊','💉','🩸','🧿','🪬','🧸','🪆','🎭','🎩',
+      '🧵','🧶','🪡','🧷','🪢','🪑','🛋️','🚪','🪞','🪟','🛏️','🛁','🚿','🪥','🧴','🧹','🧺','🧻'
+    ]},
+    { label: 'Symbols', icon: '❤️', emojis: [
+      '❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟',
+      '☮️','✝️','☪️','🕉️','✡️','🔯','🕎','☯️','☦️','🛐','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓',
+      '🔀','🔁','🔂','▶️','⏩','⏭️','⏯️','◀️','⏪','⏮️','🔼','⏫','🔽','⏬','⏸️','⏹️','⏺️','⏏️',
+      '🔔','🔕','📣','📢','💬','💭','🗯️','💯','✅','❎','❌','⭕','🛑','⛔','📛','🚳','🚭','🚯',
+      '🚱','🚷','📵','🔞','☢️','☣️',
+      '⬆️','↗️','➡️','↘️','⬇️','↙️','⬅️','↖️','↕️','↔️','↩️','↪️','⤴️','⤵️','🔄','🔃','♻️','🚫',
+      '🆗','🆕','🆙','🆓','🆒','🆖','🅰️','🅱️','🆎','🆑','🅾️','🆘',
+      '1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','0️⃣','#️⃣','*️⃣','🔟',
+      '🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤','🔺','🔻','🔷','🔶','🔹','🔸','🔲','🔳','▪️','▫️'
+    ]},
+    { label: 'Flags', icon: '🏳️', emojis: [
+      '🏳️','🏴','🏁','🚩','🏳️‍🌈','🏳️‍⚧️','🏴‍☠️',
+      '🇺🇸','🇬🇧','🇨🇦','🇦🇺','🇩🇪','🇫🇷','🇯🇵','🇰🇷','🇨🇳','🇮🇳','🇧🇷','🇲🇽',
+      '🇷🇺','🇮🇹','🇪🇸','🇵🇹','🇳🇱','🇧🇪','🇸🇪','🇳🇴','🇩🇰','🇫🇮','🇵🇱','🇨🇭',
+      '🇦🇹','🇬🇷','🇹🇷','🇸🇦','🇦🇪','🇮🇱','🇿🇦','🇳🇿','🇦🇷','🇨🇴','🇨🇱','🇵🇪',
+      '🇪🇬','🇳🇬','🇰🇪','🇬🇭','🇪🇹','🇨🇩','🇹🇿','🇺🇦','🇸🇬','🇲🇾','🇮🇩','🇹🇭','🇻🇳','🇵🇭'
+    ]}
   ];
 
   function _togglePicker() {
@@ -1338,38 +1404,86 @@ const Messenger = (() => {
   function _renderEmojiTab() {
     const tab = document.getElementById('picker-emoji-tab');
     if (tab.hasChildNodes()) return; // already built
-    _EMOJI_LIST.forEach(em => {
+
+    // Category nav (sticky)
+    const nav = document.createElement('div');
+    nav.className = 'emoji-cat-nav';
+    _EMOJI_CATS.forEach((cat, i) => {
       const btn = document.createElement('button');
-      btn.className = 'emoji-btn';
-      btn.textContent = em;
-      btn.addEventListener('click', () => {
-        const input = document.getElementById('chat-input');
-        const pos = input.selectionStart || input.value.length;
-        const val = input.value;
-        input.value = val.slice(0, pos) + em + val.slice(pos);
-        input.focus();
-        const np = pos + em.length;
-        input.setSelectionRange(np, np);
-      });
-      tab.appendChild(btn);
+      btn.className = 'emoji-cat-btn' + (i === 0 ? ' active' : '');
+      btn.title = cat.label;
+      btn.textContent = cat.icon;
+      btn.dataset.cat = String(i);
+      nav.appendChild(btn);
     });
+    tab.appendChild(nav);
+
+    // Scrollable emoji area
+    const scroll = document.createElement('div');
+    scroll.className = 'emoji-scroll-area';
+
+    _EMOJI_CATS.forEach((cat, i) => {
+      const section = document.createElement('div');
+      section.className = 'emoji-cat-section';
+      section.id = 'emoji-cat-' + i;
+
+      const label = document.createElement('div');
+      label.className = 'emoji-cat-label';
+      label.textContent = cat.label;
+      section.appendChild(label);
+
+      const grid = document.createElement('div');
+      grid.className = 'emoji-grid';
+      cat.emojis.forEach(em => {
+        const btn = document.createElement('button');
+        btn.className = 'emoji-btn';
+        btn.textContent = em;
+        btn.addEventListener('click', () => {
+          const input = document.getElementById('chat-input');
+          const pos = input.selectionStart || input.value.length;
+          const val = input.value;
+          input.value = val.slice(0, pos) + em + val.slice(pos);
+          input.focus();
+          const np = pos + em.length;
+          input.setSelectionRange(np, np);
+        });
+        grid.appendChild(btn);
+      });
+      section.appendChild(grid);
+      scroll.appendChild(section);
+    });
+
+    tab.appendChild(scroll);
+
+    // Scroll to category on nav click
+    nav.querySelectorAll('.emoji-cat-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        nav.querySelectorAll('.emoji-cat-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const section = document.getElementById('emoji-cat-' + btn.dataset.cat);
+        if (section) scroll.scrollTop = section.offsetTop;
+      });
+    });
+
+    // Update active category while scrolling
+    scroll.addEventListener('scroll', () => {
+      let current = 0;
+      _EMOJI_CATS.forEach((_, i) => {
+        const s = document.getElementById('emoji-cat-' + i);
+        if (s && scroll.scrollTop >= s.offsetTop - 4) current = i;
+      });
+      nav.querySelectorAll('.emoji-cat-btn').forEach((b, i) => b.classList.toggle('active', i === current));
+    }, { passive: true });
   }
 
   function _renderGifTab() {
     const tab = document.getElementById('picker-gif-tab');
     const gifs = _allGifs();
-    tab.innerHTML =
-      '<div class="gif-upload-row">' +
-        '<button class="btn btn-primary btn-sm" id="gif-upload-btn">Upload / Send Image</button>' +
-      '</div>' +
-      (gifs.length
-        ? '<div class="gif-grid">' +
-          gifs.map(g => '<img class="gif-item" src="' + esc(g.url) + '" alt="GIF" data-url="' + esc(g.url) + '" loading="lazy">').join('') +
-          '</div>'
-        : '<div class="gif-empty">No GIFs yet — upload one to share with server members!</div>');
-    document.getElementById('gif-upload-btn').addEventListener('click', () => {
-      document.getElementById('gif-upload-input').click();
-    });
+    tab.innerHTML = gifs.length
+      ? '<div class="gif-grid">' +
+        gifs.map(g => '<img class="gif-item" src="' + esc(g.url) + '" alt="GIF" data-url="' + esc(g.url) + '" loading="lazy">').join('') +
+        '</div>'
+      : '<div class="gif-empty">No GIFs yet \u2014 use the \uD83D\uDDBC\uFE0F button in the chat bar to upload one!</div>';
     tab.querySelectorAll('.gif-item').forEach(img => {
       img.addEventListener('click', () => _sendGif(img.dataset.url));
     });
