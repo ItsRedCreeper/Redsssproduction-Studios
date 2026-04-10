@@ -229,7 +229,7 @@ const Friends = (() => {
   // Periodically re-render so lastSeen staleness is re-evaluated even when Firestore doesn't push
   setInterval(() => {
     if (friendProfiles.length) _renderFriendsList(friendProfiles.slice());
-  }, 60 * 1000);
+  }, 10 * 1000);
 
   function _loadFriends() {
     // Watch the current user's friends array
@@ -288,7 +288,7 @@ const Friends = (() => {
                 // Sync offline back to Firestore (beforeunload may not have fired)
                 db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
                 const idx = friendProfiles.findIndex(p => p.uid === uid);
-                if (idx >= 0 && friendProfiles[idx].effectiveStatus !== 'offline') {
+                if (idx >= 0) {
                   friendProfiles[idx] = { ...friendProfiles[idx], effectiveStatus: 'offline' };
                   _renderFriendsList(friendProfiles.slice());
                 }
@@ -313,7 +313,7 @@ const Friends = (() => {
       let ms = null;
       if (profile.lastSeen.toDate) ms = profile.lastSeen.toDate().getTime();
       else if (profile.lastSeen.seconds) ms = profile.lastSeen.seconds * 1000;
-      if (ms !== null && Date.now() - ms > 3 * 60 * 1000) return 'offline';
+      if (ms !== null && Date.now() - ms > 90 * 1000) return 'offline';
     }
     return eStatus;
   }

@@ -129,7 +129,7 @@ const Messenger = (() => {
   // Periodically re-render so lastSeen staleness is re-evaluated even when Firestore doesn't push
   setInterval(() => {
     if (_dmProfiles.size) _renderDMFriendsList();
-  }, 60 * 1000);
+  }, 10 * 1000);
 
   function loadFriends() {
     db.collection('users').doc(currentUser.uid).onSnapshot(doc => {
@@ -186,7 +186,7 @@ const Messenger = (() => {
                 // Sync offline back to Firestore (beforeunload may not have fired)
                 db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
                 const current = _dmProfiles.get(uid);
-                if (current && current.effectiveStatus !== 'offline') {
+                if (current) {
                   _dmProfiles.set(uid, { ...current, effectiveStatus: 'offline' });
                   const cached = profileCache.get(uid);
                   if (cached) profileCache.set(uid, { ...cached, effectiveStatus: 'offline' });
@@ -211,7 +211,7 @@ const Messenger = (() => {
       let ms = null;
       if (profile.lastSeen.toDate) ms = profile.lastSeen.toDate().getTime();
       else if (profile.lastSeen.seconds) ms = profile.lastSeen.seconds * 1000;
-      if (ms !== null && Date.now() - ms > 3 * 60 * 1000) return 'offline';
+      if (ms !== null && Date.now() - ms > 90 * 1000) return 'offline';
     }
     return eStatus;
   }
