@@ -69,6 +69,10 @@
           <option value="offline">Offline</option>
         </select>
       </div>
+      <div class="profile-dd-section">
+        <label>Bio</label>
+        <textarea class="profile-dd-bio" id="profile-dd-bio" maxlength="150" placeholder="About yourself…" rows="3"></textarea>
+      </div>
       <input type="file" id="avatar-upload" accept="image/*" style="display:none">
       <a href="friends.html" class="btn btn-sm btn-full" style="display:block;text-align:center;border:1px solid var(--border);color:var(--text-secondary);margin-bottom:8px;text-decoration:none">Friends</a>
       <button class="btn btn-primary btn-sm btn-full" id="save-profile-btn">Save Changes</button>
@@ -127,12 +131,23 @@
       <div class="chat-messages" id="chat-messages">
         <div class="chat-empty">Select a friend or channel to start chatting</div>
       </div>
+      <input type="file" id="gif-upload-input" accept="image/gif,image/*" style="display:none">
       <div class="chat-input-bar" id="chat-input-bar" style="display:none">
+        <!-- Emoji/GIF Picker panel -->
+        <div class="picker-panel" id="picker-panel" style="display:none">
+          <div class="picker-tabs">
+            <button class="picker-tab-btn active" data-tab="emoji">😀 Emoji</button>
+            <button class="picker-tab-btn" data-tab="gif">🎬 GIFs</button>
+          </div>
+          <div class="picker-tab-content" id="picker-emoji-tab"></div>
+          <div class="picker-tab-content" id="picker-gif-tab" style="display:none"></div>
+        </div>
         <div class="reply-bar" id="reply-bar" style="display:none">
           <span class="reply-label">Replying to <strong id="reply-to-name"></strong>: <span id="reply-to-preview"></span></span>
           <button class="reply-cancel" id="reply-cancel" title="Cancel reply">&#x2715;</button>
         </div>
         <div class="reply-input-row">
+          <button class="picker-toggle-btn" id="picker-toggle-btn" title="Emoji &amp; GIFs">😀</button>
           <input class="chat-input" id="chat-input" placeholder="Type a message..." maxlength="2000">
           <button class="chat-send" id="chat-send">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>

@@ -36,7 +36,7 @@ var CropperUtil = (function () {
         _modal.classList.add('active');
         if (_cropper) _cropper.destroy();
         _cropper = new Cropper(_img, {
-          aspectRatio: _opts.aspectRatio || 1,
+          aspectRatio: ('aspectRatio' in _opts) ? _opts.aspectRatio : 1,
           viewMode: 1,
           dragMode: 'move',
           autoCropArea: 1,
@@ -50,9 +50,10 @@ var CropperUtil = (function () {
 
   function _confirm() {
     if (!_cropper) return;
-    var w = _opts.width  || 256;
-    var h = _opts.height || 256;
-    _cropper.getCroppedCanvas({ width: w, height: h }).toBlob(function (blob) {
+    var canvasOpts = {};
+    if (_opts.width)  canvasOpts.width  = _opts.width;
+    if (_opts.height) canvasOpts.height = _opts.height;
+    _cropper.getCroppedCanvas(canvasOpts).toBlob(function (blob) {
       _cleanup();
       _resolve(blob);
     }, 'image/png');

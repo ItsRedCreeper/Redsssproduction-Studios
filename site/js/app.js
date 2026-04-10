@@ -60,6 +60,7 @@ const App = (() => {
           _loadCommunityStats();
           setInterval(_loadCommunityStats, 30 * 1000);
         }, 1500);
+        _listenOnlineCount();
       } else {
         currentUser = null;
         userProfile = null;
@@ -167,6 +168,9 @@ const App = (() => {
 
     const statusSelect = document.getElementById('profile-status');
     if (statusSelect) statusSelect.value = userProfile.status || 'auto';
+
+    const bioTa = document.getElementById('profile-dd-bio');
+    if (bioTa) bioTa.value = userProfile.description || '';
   }
 
   /* ── Profile dropdown toggles ── */
@@ -236,6 +240,9 @@ const App = (() => {
       }
     }
 
+    var bioInp = document.getElementById('profile-dd-bio');
+    if (bioInp) updates.description = bioInp.value.trim().slice(0, 150);
+
     try {
       var effectiveStatus = _computeEffective(status);
       updates.status = status;
@@ -245,6 +252,7 @@ const App = (() => {
         userProfile.username = updates.username;
         userProfile.usernameLower = updates.usernameLower;
       }
+      if (updates.description !== undefined) userProfile.description = updates.description;
       userProfile.status = status;
       userProfile.effectiveStatus = effectiveStatus;
       _renderUserUI();
@@ -575,25 +583,29 @@ const App = (() => {
     , 5000);
   }
 
-  /* ── Community stats ── */
+  /* ── Community stats (games + member count; online handled by live listener) ── */
   async function _loadCommunityStats() {
     try {
-      const cutoff = firebase.firestore.Timestamp.fromDate(new Date(Date.now() - 25 * 1000));
-      const [gamesSnap, membersSnap, onlineSnap] = await Promise.all([
+      const [gamesSnap, membersSnap] = await Promise.all([
         db.collection('games').get(),
-        db.collection('users').where('username', '>=', '').get(),
-        db.collection('users').where('lastSeen', '>', cutoff).get()
+        db.collection('users').where('username', '>=', '').get()
       ]);
       const statEl = id => document.getElementById(id);
       if (statEl('stat-games')) statEl('stat-games').textContent = gamesSnap.size;
       if (statEl('stat-members')) statEl('stat-members').textContent = membersSnap.size;
-      // Exclude users who explicitly set themselves offline
-      let onlineCount = 0;
-      onlineSnap.forEach(doc => { if (doc.data().effectiveStatus !== 'offline') onlineCount++; });
-      if (statEl('stat-online')) statEl('stat-online').textContent = onlineCount;
     } catch (e) {
       // stats unavailable — leave as —
     }
+  }
+
+  /* ── Live online counter ── */
+  function _listenOnlineCount() {
+    db.collection('users')
+      .where('effectiveStatus', 'in', ['online', 'away', 'dnd'])
+      .onSnapshot(snap => {
+        const el = document.getElementById('stat-online');
+        if (el) el.textContent = snap.size;
+      }, () => { /* stats unavailable */ });
   }
 
   return { init };

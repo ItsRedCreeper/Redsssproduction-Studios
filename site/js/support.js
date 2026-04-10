@@ -166,12 +166,15 @@ const Support = (() => {
   }
 
   /* ── Image handling ── */
-  function _addImages(e, type) {
+  async function _addImages(e, type) {
     const arr = type === 'bug' ? _bugImages : _userImages;
     for (const f of Array.from(e.target.files)) {
       if (arr.length >= 3) break;
       if (!f.type.startsWith('image/')) continue;
-      arr.push(f);
+      let blob;
+      try { blob = await CropperUtil.open(f, { aspectRatio: NaN }); }
+      catch { continue; } // user cancelled this crop
+      arr.push(blob);
     }
     e.target.value = '';
     _renderImages(type);

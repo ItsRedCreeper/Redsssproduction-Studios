@@ -82,6 +82,9 @@ const Nav = (() => {
 
     const statusSelect = document.getElementById('profile-status');
     if (statusSelect) statusSelect.value = profile.status || 'auto';
+
+    const bioTa = document.getElementById('profile-dd-bio');
+    if (bioTa) bioTa.value = profile.description || '';
   }
 
   /* ── Mark the correct nav link active ── */
@@ -207,6 +210,9 @@ const Nav = (() => {
       }
     }
 
+    var bioInp = document.getElementById('profile-dd-bio');
+    if (bioInp) updates.description = bioInp.value.trim().slice(0, 150);
+
     try {
       var effectiveStatus = _computeEffective(status);
       updates.status = status;
@@ -216,6 +222,7 @@ const Nav = (() => {
         profile.username = updates.username;
         profile.usernameLower = updates.usernameLower;
       }
+      if (updates.description !== undefined) profile.description = updates.description;
       profile.status = status;
       profile.effectiveStatus = effectiveStatus;
       _renderUserUI(user, profile);

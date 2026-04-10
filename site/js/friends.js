@@ -410,6 +410,7 @@ const Friends = (() => {
           '<span class="status-dot-inline ' + eStatus + '"></span>' +
           _esc(activity) +
         '</div>' +
+        (f.description ? '<div class="friend-profile-bio">' + _esc(f.description) + '</div>' : '') +
         '<div class="friend-profile-joined">Member since ' + joined + '</div>' +
         '<div class="friend-profile-actions">' +
           '<button class="btn btn-primary" id="friend-message-btn">Message</button>' +

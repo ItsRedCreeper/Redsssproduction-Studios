@@ -18,6 +18,15 @@ const Messenger = (() => {
   let _serverImageBlob = null;
   let _replyState = null; // { uid, username, text, docId } | null
 
+  // Server GIF library — per-server gif lists
+  const _serverGifUnsubs = new Map(); // serverId → unsub fn
+  const _serverGifs     = new Map(); // serverId → [{url, uploadedBy, createdAt}]
+  let _myServerIds = new Set();
+
+  // Picker state
+  let _pickerOpen = false;
+  let _pickerTab  = 'emoji';
+
   /* ── Init — called after login ── */
   function init(user, profile) {
     currentUser = user;
@@ -39,6 +48,22 @@ const Messenger = (() => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
     document.getElementById('reply-cancel').addEventListener('click', _cancelReply);
+
+    // Emoji/GIF picker
+    document.getElementById('picker-toggle-btn').addEventListener('click', e => { e.stopPropagation(); _togglePicker(); });
+    document.querySelectorAll('.picker-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => _switchPickerTab(btn.dataset.tab));
+    });
+    document.getElementById('gif-upload-input').addEventListener('change', e => {
+      if (e.target.files[0]) _uploadAndSendGif(e.target.files[0]);
+    });
+    // Close picker on outside click
+    document.addEventListener('click', e => {
+      if (_pickerOpen && !document.getElementById('picker-panel').contains(e.target) &&
+          e.target.id !== 'picker-toggle-btn') {
+        _closePicker();
+      }
+    });
 
     // Create server
     document.getElementById('create-server-btn').addEventListener('click', () => {
@@ -173,6 +198,7 @@ const Messenger = (() => {
             avatar: data.avatar || '',
             effectiveStatus
           });
+          _patchRenderedMessages(uid);
           _renderDMFriendsList();
         });
         _dmFriendListeners.set(uid, unsub);
@@ -191,6 +217,7 @@ const Messenger = (() => {
                   _dmProfiles.set(uid, { ...current, effectiveStatus: 'offline' });
                   const cached = profileCache.get(uid);
                   if (cached) profileCache.set(uid, { ...cached, effectiveStatus: 'offline' });
+                  _patchRenderedMessages(uid);
                   _renderDMFriendsList();
                 }
               } else if (val && val.online === true) {
@@ -342,12 +369,14 @@ const Messenger = (() => {
         const list = document.getElementById('server-list');
         list.innerHTML = '';
 
-        const publicServers = [];
+        const publicServers  = [];
         const privateServers = [];
+        const newServerIds   = new Set();
 
         snap.forEach(doc => {
           const s = doc.data();
           const entry = { id: doc.id, ...s };
+          newServerIds.add(doc.id);
           if (s.visibility === 'private') {
             privateServers.push(entry);
           } else {
@@ -355,7 +384,8 @@ const Messenger = (() => {
           }
         });
 
-        // Public servers
+        _myServerIds = newServerIds;
+        _syncServerGifListeners(newServerIds);
         if (publicServers.length) {
           const label = document.createElement('div');
           label.className = 'server-label';
@@ -620,6 +650,7 @@ const Messenger = (() => {
     document.getElementById('channel-section').style.display = 'flex';
     document.getElementById('members-sidebar').style.display = 'none';
     document.getElementById('chat-input-bar').style.display = 'none'; // read-only
+    document.getElementById('create-channel-btn').style.display = 'none'; // preview: no creation
     document.getElementById('chat-title').textContent = serverData.name;
 
     // Show preview banner
@@ -729,6 +760,8 @@ const Messenger = (() => {
     document.getElementById('dm-section').style.display = 'none';
     document.getElementById('channel-section').style.display = 'flex';
     document.getElementById('members-sidebar').style.display = '';
+    document.getElementById('create-channel-btn').style.display =
+      (currentUser && currentUser.uid === serverData.owner) ? '' : 'none';
 
     // Track activity
     db.collection('users').doc(currentUser.uid).update({
@@ -832,6 +865,7 @@ const Messenger = (() => {
           avatar: data.avatar || '',
           effectiveStatus: data.effectiveStatus || 'offline'
         });
+        _patchRenderedMessages(uid);
         _renderMembersList();
       });
       serverListeners.set(uid, unsub);
@@ -958,6 +992,7 @@ const Messenger = (() => {
   function renderMessage(data, docId, docRef) {
     const div = document.createElement('div');
     div.className = 'msg';
+    div.dataset.uid = data.uid || '';
 
     // Resolve from cache, fall back to denormalized data for old messages
     const cached = profileCache.get(data.uid);
@@ -984,13 +1019,29 @@ const Messenger = (() => {
       replyQuoteHTML = '<div class="msg-reply-quote"><strong>' + rAuthor + '</strong>: ' + rText + '</div>';
     }
 
-    // Action buttons
-    const replyBtn = '<button class="msg-action-btn reply" title="Reply"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></button>';
-    const editBtn = isOwn ? '<button class="msg-action-btn edit" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' : '';
-    const deleteBtn = isOwn ? '<button class="msg-action-btn delete" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>' : '';
+    // Action buttons (only for text messages or own GIFs)
+    const canDelete = isOwn && docRef;
+    const replyBtn   = '<button class="msg-action-btn reply" title="Reply"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></button>';
+    const editBtn    = (isOwn && docRef && !data.gifUrl) ? '<button class="msg-action-btn edit" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' : '';
+    const deleteBtn  = canDelete ? '<button class="msg-action-btn delete" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>' : '';
     const actionsHTML = '<div class="msg-actions">' + replyBtn + editBtn + deleteBtn + '</div>';
 
     const editedTag = data.edited ? '<span class="msg-edited-tag">(edited)</span>' : '';
+
+    // Content: GIF or text (with links)
+    let contentHTML;
+    if (data.gifUrl) {
+      contentHTML = '<div class="msg-gif-wrap"><img class="msg-gif" src="' + esc(data.gifUrl) + '" alt="GIF" loading="lazy"></div>';
+    } else {
+      const textHTML = _renderMessageText(data.text || '');
+      const ytId = _extractYouTubeId(data.text || '');
+      const ytHTML = ytId
+        ? '<div class="msg-yt-embed"><a class="msg-yt-thumb" href="https://www.youtube.com/watch?v=' + esc(ytId) + '" target="_blank" rel="noopener noreferrer">' +
+          '<img src="https://img.youtube.com/vi/' + esc(ytId) + '/hqdefault.jpg" alt="YouTube" loading="lazy">' +
+          '<div class="msg-yt-play">&#9654;</div></a></div>'
+        : '';
+      contentHTML = '<div class="msg-text">' + textHTML + editedTag + '</div>' + ytHTML;
+    }
 
     div.innerHTML =
       '<div class="msg-avatar">' + avatarContent +
@@ -1002,7 +1053,7 @@ const Messenger = (() => {
           '<span class="msg-author">' + esc(username) + '</span>' +
           '<span class="msg-time">' + time + '</span>' +
         '</div>' +
-        '<div class="msg-text">' + esc(data.text || '') + editedTag + '</div>' +
+        contentHTML +
       '</div>' +
       actionsHTML;
 
@@ -1010,10 +1061,12 @@ const Messenger = (() => {
     div.querySelector('.msg-action-btn.reply').addEventListener('click', () => {
       _setReply(data, docId);
     });
-    if (isOwn && docRef) {
+    if (isOwn && docRef && !data.gifUrl) {
       div.querySelector('.msg-action-btn.edit').addEventListener('click', () => {
         _editMessage(docRef, data.text || '', div);
       });
+    }
+    if (canDelete) {
       div.querySelector('.msg-action-btn.delete').addEventListener('click', () => {
         _deleteMessage(docRef);
       });
@@ -1098,6 +1151,228 @@ const Messenger = (() => {
     const d = document.createElement('div');
     d.textContent = str;
     return d.innerHTML;
+  }
+
+  /* ── Render text with clickable links ── */
+  function _renderMessageText(text) {
+    if (!text) return '';
+    const urlRegex = /(https?:\/\/[^\s<>"{}|\\^[\]`]+)/g;
+    return text.split(urlRegex).map((part, i) => {
+      const d = document.createElement('div');
+      d.textContent = part;
+      if (i % 2 === 1) {
+        return '<a class="msg-link" href="' + d.innerHTML + '" target="_blank" rel="noopener noreferrer">' + d.innerHTML + '</a>';
+      }
+      return d.innerHTML;
+    }).join('');
+  }
+
+  /* ── Extract YouTube video ID from a URL ── */
+  function _extractYouTubeId(text) {
+    if (!text) return null;
+    const m = text.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_\-]{11})/);
+    return m ? m[1] : null;
+  }
+
+  /* ── Patch already-rendered messages when profileCache updates ── */
+  function _patchRenderedMessages(uid) {
+    const cached = profileCache.get(uid);
+    if (!cached) return;
+    const initial = (cached.username || 'U').charAt(0).toUpperCase();
+    const avatarHTML = cached.avatar
+      ? '<img src="' + esc(cached.avatar) + '" alt="">'
+      : initial;
+    document.querySelectorAll('.msg[data-uid="' + uid + '"]').forEach(div => {
+      const av = div.querySelector('.msg-avatar');
+      if (av) {
+        av.innerHTML = avatarHTML + '<span class="status-dot ' + (cached.effectiveStatus || 'offline') + '"></span>';
+      }
+      const author = div.querySelector('.msg-author');
+      if (author) author.textContent = cached.username || 'Unknown';
+    });
+  }
+
+  /* ── Server GIF library sync ── */
+  function _syncServerGifListeners(serverIds) {
+    // Remove listeners for servers we've left
+    _serverGifUnsubs.forEach((unsub, sid) => {
+      if (!serverIds.has(sid)) {
+        unsub();
+        _serverGifUnsubs.delete(sid);
+        _serverGifs.delete(sid);
+      }
+    });
+    // Add listeners for newly joined servers
+    serverIds.forEach(sid => {
+      if (_serverGifUnsubs.has(sid)) return;
+      const unsub = db.collection('servers').doc(sid).collection('gifs')
+        .orderBy('createdAt', 'desc').limit(100)
+        .onSnapshot(snap => {
+          const gifs = [];
+          snap.forEach(d => gifs.push({ id: d.id, ...d.data() }));
+          _serverGifs.set(sid, gifs);
+          // Refresh GIF tab if currently visible
+          if (_pickerOpen && _pickerTab === 'gif') _renderGifTab();
+        });
+      _serverGifUnsubs.set(sid, unsub);
+    });
+  }
+
+  function _allGifs() {
+    const seen = new Set();
+    const result = [];
+    _serverGifs.forEach(gifs => {
+      gifs.forEach(g => {
+        if (!seen.has(g.url)) { seen.add(g.url); result.push(g); }
+      });
+    });
+    return result;
+  }
+
+  /* ── Send a GIF message ── */
+  async function _sendGif(gifUrl) {
+    if (!currentChat) { showToast('Open a chat first.', 'error'); return; }
+    _closePicker();
+    const msgData = {
+      text: '',
+      gifUrl,
+      uid: currentUser.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    try {
+      if (currentChat.type === 'dm') {
+        const convoId = [currentUser.uid, currentChat.friendUid].sort().join('_');
+        await db.collection('dms').doc(convoId).collection('messages').add(msgData);
+      } else if (currentChat.type === 'channel') {
+        await db.collection('servers').doc(currentChat.serverId)
+          .collection('channels').doc(currentChat.channelId)
+          .collection('messages').add(msgData);
+        // Add to server GIF library if not already there
+        const gifCol = db.collection('servers').doc(currentChat.serverId).collection('gifs');
+        const existing = await gifCol.where('url', '==', gifUrl).limit(1).get();
+        if (existing.empty) {
+          await gifCol.add({ url: gifUrl, uploadedBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        }
+      }
+    } catch (err) {
+      console.error('Send GIF failed:', err);
+      showToast('Failed to send GIF.', 'error');
+    }
+  }
+
+  /* ── Upload a new GIF and send it ── */
+  async function _uploadAndSendGif(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    if (file.size > 10 * 1024 * 1024) { showToast('Image must be under 10 MB', 'error'); return; }
+    showToast('Uploading...', 'info');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('upload_preset', CLOUDINARY_PRESET);
+      const res = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/image/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.secure_url) {
+        await _sendGif(data.secure_url);
+      } else {
+        showToast('Upload failed.', 'error');
+      }
+    } catch {
+      showToast('Upload failed.', 'error');
+    }
+    document.getElementById('gif-upload-input').value = '';
+  }
+
+  /* ── Emoji/GIF Picker ── */
+  const _EMOJI_LIST = [
+    '\uD83D\uDE00','\uD83D\uDE03','\uD83D\uDE04','\uD83D\uDE01','\uD83D\uDE06','\uD83E\uDD23',
+    '\uD83D\uDE02','\uD83D\uDE42','\uD83D\uDE0A','\uD83D\uDE07','\uD83D\uDE0D','\uD83E\uDD29',
+    '\uD83D\uDE18','\uD83D\uDE0B','\uD83D\uDE1B','\uD83D\uDE1C','\uD83E\uDD2A','\uD83D\uDE1D',
+    '\uD83E\uDD11','\uD83E\uDD17','\uD83E\uDD14','\uD83D\uDE10','\uD83D\uDE11','\uD83D\uDE36',
+    '\uD83D\uDE0F','\uD83D\uDE12','\uD83D\uDE44','\uD83D\uDE2C','\uD83D\uDE0C','\uD83D\uDE14',
+    '\uD83D\uDE2A','\uD83D\uDE37','\uD83E\uDD12','\uD83E\uDD15','\uD83E\uDD22','\uD83E\uDD2E',
+    '\uD83E\uDD27','\uD83E\uDD75','\uD83E\uDD76','\uD83D\uDE35','\uD83E\uDD2F','\uD83D\uDE02',
+    '\uD83D\uDE0E','\uD83E\uDD78','\uD83E\uDD13','\uD83D\uDE33','\uD83E\uDD7A','\uD83D\uDE26',
+    '\uD83D\uDE28','\uD83D\uDE30','\uD83D\uDE25','\uD83D\uDE22','\uD83D\uDE2D','\uD83D\uDE31',
+    '\uD83D\uDE16','\uD83D\uDE23','\uD83D\uDE1E','\uD83D\uDE13','\uD83D\uDE29','\uD83D\uDE2B',
+    '\uD83E\uDD71','\uD83D\uDE24','\uD83D\uDE21','\uD83D\uDE20','\uD83E\uDD2C','\uD83D\uDE08',
+    '\uD83D\uDC7F','\uD83D\uDCA9','\uD83E\uDD21','\uD83D\uDC7B','\uD83D\uDC7D','\uD83E\uDD16',
+    '\uD83D\uDC4B','\u270B','\uD83D\uDD90\uFE0F','\u270C\uFE0F','\uD83E\uDD1E','\uD83D\uDC4D',
+    '\uD83D\uDC4E','\u270A','\uD83D\uDC4A','\uD83D\uDC4F','\uD83D\uDE4C','\uD83D\uDE4F',
+    '\uD83D\uDCAA','\u2764\uFE0F','\uD83E\uDDE1','\uD83D\uDC9B','\uD83D\uDC9A','\uD83D\uDC99',
+    '\uD83D\uDC9C','\uD83D\uDD25','\u2B50','\u2728','\uD83C\uDF89','\uD83C\uDF88','\uD83C\uDF81',
+    '\uD83C\uDFC6','\uD83C\uDFAE','\uD83C\uDFB5','\uD83C\uDFB6','\uD83D\uDC8E','\uD83D\uDCB0',
+    '\uD83D\uDCF1','\uD83D\uDCBB','\u2705','\u274C','\u2753','\u2757','\uD83D\uDD14','\uD83D\uDD11',
+    '\uD83D\uDC36','\uD83D\uDC31','\uD83D\uDC30','\uD83D\uDC3B','\uD83D\uDC2D','\uD83D\uDC38',
+    '\uD83E\uDD81','\uD83D\uDC27','\uD83D\uDC37','\uD83D\uDC2E','\uD83D\uDC34','\uD83D\uDC2C'
+  ];
+
+  function _togglePicker() {
+    _pickerOpen ? _closePicker() : _openPicker();
+  }
+
+  function _openPicker() {
+    _pickerOpen = true;
+    const panel = document.getElementById('picker-panel');
+    panel.style.display = 'flex';
+    _renderPickerTabContent(_pickerTab);
+  }
+
+  function _closePicker() {
+    _pickerOpen = false;
+    document.getElementById('picker-panel').style.display = 'none';
+  }
+
+  function _switchPickerTab(tab) {
+    _pickerTab = tab;
+    document.querySelectorAll('.picker-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.getElementById('picker-emoji-tab').style.display = tab === 'emoji' ? '' : 'none';
+    document.getElementById('picker-gif-tab').style.display = tab === 'gif' ? '' : 'none';
+    _renderPickerTabContent(tab);
+  }
+
+  function _renderPickerTabContent(tab) {
+    if (tab === 'emoji') _renderEmojiTab();
+    else _renderGifTab();
+  }
+
+  function _renderEmojiTab() {
+    const tab = document.getElementById('picker-emoji-tab');
+    if (tab.hasChildNodes()) return; // already built
+    _EMOJI_LIST.forEach(em => {
+      const btn = document.createElement('button');
+      btn.className = 'emoji-btn';
+      btn.textContent = em;
+      btn.addEventListener('click', () => {
+        const input = document.getElementById('chat-input');
+        const pos = input.selectionStart || input.value.length;
+        const val = input.value;
+        input.value = val.slice(0, pos) + em + val.slice(pos);
+        input.focus();
+        const np = pos + em.length;
+        input.setSelectionRange(np, np);
+      });
+      tab.appendChild(btn);
+    });
+  }
+
+  function _renderGifTab() {
+    const tab = document.getElementById('picker-gif-tab');
+    const gifs = _allGifs();
+    tab.innerHTML =
+      '<div class="gif-upload-row">' +
+        '<button class="btn btn-primary btn-sm" id="gif-upload-btn">Upload / Send Image</button>' +
+      '</div>' +
+      (gifs.length
+        ? '<div class="gif-grid">' +
+          gifs.map(g => '<img class="gif-item" src="' + esc(g.url) + '" alt="GIF" data-url="' + esc(g.url) + '" loading="lazy">').join('') +
+          '</div>'
+        : '<div class="gif-empty">No GIFs yet — upload one to share with server members!</div>');
+    document.getElementById('gif-upload-btn').addEventListener('click', () => {
+      document.getElementById('gif-upload-input').click();
+    });
+    tab.querySelectorAll('.gif-item').forEach(img => {
+      img.addEventListener('click', () => _sendGif(img.dataset.url));
+    });
   }
 
   return { init };
