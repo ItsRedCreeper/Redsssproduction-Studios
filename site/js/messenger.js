@@ -105,6 +105,7 @@ const Messenger = (() => {
   /* ── DM View ── */
   function showDMView() {
     currentServerId = null;
+    _hidePreviewBanner();
     document.querySelectorAll('.server-icon').forEach(s => s.classList.remove('active'));
     document.getElementById('dm-btn').classList.add('active');
 
@@ -487,11 +488,16 @@ const Messenger = (() => {
     }
   }
 
-  /* ── Discover View ── */
-  async function showDiscover() {
+  /* ── Discover View (live + searchable) ── */
+  let _discoverUnsub = null;
+  let _discoverDocs = [];
+
+  function showDiscover() {
     currentServerId = null;
     currentChat = null;
     if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+    if (_serverDocUnsub) { _serverDocUnsub(); _serverDocUnsub = null; }
+    _hidePreviewBanner();
 
     document.querySelectorAll('.server-icon').forEach(s => s.classList.remove('active'));
     document.getElementById('discover-btn').classList.add('active');
@@ -504,78 +510,216 @@ const Messenger = (() => {
     document.getElementById('chat-title').textContent = 'Discover Public Servers';
 
     const messagesEl = document.getElementById('chat-messages');
-    messagesEl.innerHTML = '<div class="chat-empty">Loading servers...</div>';
+    messagesEl.innerHTML =
+      '<div class="discover-search-wrap"><input class="discover-search-input" id="discover-search" placeholder="Search servers..." autocomplete="off"></div>' +
+      '<div class="discover-grid" id="discover-grid"></div>';
 
-    try {
-      const snap = await db.collection('servers')
-        .where('visibility', '==', 'public')
-        .limit(50)
-        .get();
+    document.getElementById('discover-search').addEventListener('input', () => {
+      _renderDiscoverGrid(document.getElementById('discover-search').value.trim().toLowerCase());
+    });
 
-      const docs = [];
-      snap.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
-      docs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+    if (_discoverUnsub) { _discoverUnsub(); _discoverUnsub = null; }
+    _discoverDocs = [];
 
-      if (!docs.length) {
-        messagesEl.innerHTML = '<div class="chat-empty">No public servers yet. Create one!</div>';
-        return;
+    _discoverUnsub = db.collection('servers')
+      .where('visibility', '==', 'public')
+      .onSnapshot(snap => {
+        _discoverDocs = [];
+        snap.forEach(doc => _discoverDocs.push({ id: doc.id, ...doc.data() }));
+        _discoverDocs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+        const q = document.getElementById('discover-search')?.value.trim().toLowerCase() || '';
+        _renderDiscoverGrid(q);
+      });
+  }
+
+  function _renderDiscoverGrid(q) {
+    const grid = document.getElementById('discover-grid');
+    if (!grid) return;
+
+    const filtered = q
+      ? _discoverDocs.filter(s => (s.name || '').toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q))
+      : _discoverDocs;
+
+    if (!filtered.length) {
+      grid.innerHTML = '<div class="chat-empty" style="margin:40px auto">' + (q ? 'No servers match your search.' : 'No public servers yet. Create one!') + '</div>';
+      return;
+    }
+
+    grid.innerHTML = '';
+    filtered.forEach(s => {
+      const membersAlready = (s.members || []).includes(currentUser.uid);
+      const initial = (s.name || 'S').charAt(0).toUpperCase();
+      const imgHtml = s.image
+        ? '<img src="' + esc(s.image) + '" alt="">'
+        : '<span>' + initial + '</span>';
+
+      const card = document.createElement('div');
+      card.className = 'discover-card';
+      card.dataset.id = s.id;
+      card.innerHTML =
+        '<div class="discover-card-img">' + imgHtml + '</div>' +
+        '<div class="discover-card-body">' +
+          '<h4>' + esc(s.name) + '</h4>' +
+          '<p>' + esc(s.description || 'No description') + '</p>' +
+          '<div class="discover-card-meta">' + (s.members || []).length + ' members</div>' +
+          (membersAlready
+            ? '<button class="btn btn-sm discover-open" data-id="' + s.id + '" style="margin-top:8px;border:1px solid var(--border);color:var(--text-muted)">Open Server</button>'
+            : '<button class="btn btn-primary btn-sm discover-join" data-id="' + s.id + '" style="margin-top:8px">Join Server</button>') +
+        '</div>';
+
+      // Click the card body → open or preview
+      card.addEventListener('click', e => {
+        if (e.target.closest('button')) return; // let button handle it
+        if (membersAlready) {
+          openServer(s.id, s);
+        } else {
+          openServerPreview(s.id, s);
+        }
+      });
+
+      // Open Server button (already joined)
+      const openBtn = card.querySelector('.discover-open');
+      if (openBtn) {
+        openBtn.addEventListener('click', e => { e.stopPropagation(); openServer(s.id, s); });
       }
 
-      messagesEl.innerHTML = '<div class="discover-grid"></div>';
-      const grid = messagesEl.querySelector('.discover-grid');
-
-      docs.forEach(s => {
-        const membersAlready = (s.members || []).includes(currentUser.uid);
-        const initial = (s.name || 'S').charAt(0).toUpperCase();
-        const imgHtml = s.image
-          ? '<img src="' + esc(s.image) + '" alt="">'
-          : '<span>' + initial + '</span>';
-
-        const card = document.createElement('div');
-        card.className = 'discover-card';
-        card.innerHTML =
-          '<div class="discover-card-img">' + imgHtml + '</div>' +
-          '<div class="discover-card-body">' +
-            '<h4>' + esc(s.name) + '</h4>' +
-            '<p>' + esc(s.description || 'No description') + '</p>' +
-            '<div class="discover-card-meta">' + (s.members || []).length + ' members</div>' +
-            (membersAlready
-              ? '<button class="btn btn-sm" style="margin-top:8px;border:1px solid var(--border);color:var(--text-muted)" disabled>Joined</button>'
-              : '<button class="btn btn-primary btn-sm discover-join" data-id="' + s.id + '" style="margin-top:8px">Join Server</button>') +
-          '</div>';
-
-        grid.appendChild(card);
-      });
-
-      grid.querySelectorAll('.discover-join').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
+      // Join Server button
+      const joinBtn = card.querySelector('.discover-join');
+      if (joinBtn) {
+        joinBtn.addEventListener('click', async e => {
           e.stopPropagation();
-          const sid = btn.dataset.id;
           try {
-            await db.collection('servers').doc(sid).update({
+            await db.collection('servers').doc(s.id).update({
               members: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
             });
-            btn.textContent = 'Joined';
-            btn.disabled = true;
-            btn.classList.remove('btn-primary');
-            btn.style.color = 'var(--text-muted)';
-            btn.style.border = '1px solid var(--border)';
+            joinBtn.textContent = 'Joined';
+            joinBtn.disabled = true;
+            joinBtn.classList.remove('btn-primary');
+            joinBtn.style.color = 'var(--text-muted)';
+            joinBtn.style.border = '1px solid var(--border)';
             showToast('Joined server!', 'success');
-          } catch {
-            showToast('Failed to join.', 'error');
+          } catch { showToast('Failed to join.', 'error'); }
+        });
+      }
+
+      grid.appendChild(card);
+    });
+  }
+
+  /* ── Preview Mode ── */
+  let _previewServerId = null;
+
+  function openServerPreview(serverId, serverData) {
+    _previewServerId = serverId;
+    if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+
+    document.querySelectorAll('.server-icon').forEach(s => s.classList.remove('active'));
+
+    document.getElementById('sidebar-header').textContent = serverData.name;
+    document.getElementById('dm-section').style.display = 'none';
+    document.getElementById('channel-section').style.display = 'flex';
+    document.getElementById('members-sidebar').style.display = 'none';
+    document.getElementById('chat-input-bar').style.display = 'none'; // read-only
+    document.getElementById('chat-title').textContent = serverData.name;
+
+    // Show preview banner
+    const banner = document.getElementById('preview-banner');
+    banner.style.display = 'flex';
+    document.getElementById('preview-join-btn').onclick = async () => {
+      try {
+        await db.collection('servers').doc(serverId).update({
+          members: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
+        });
+        _hidePreviewBanner();
+        showToast('Joined server!', 'success');
+        openServer(serverId, { ...serverData, members: [...(serverData.members || []), currentUser.uid] });
+      } catch { showToast('Failed to join.', 'error'); }
+    };
+
+    // Load channels read-only — clicking opens channel in preview
+    _loadPreviewChannels(serverId);
+    loadMembers(serverId, serverData.members || []);
+
+    if (_serverDocUnsub) { _serverDocUnsub(); _serverDocUnsub = null; }
+    _serverDocUnsub = db.collection('servers').doc(serverId).onSnapshot(snap => {
+      if (!snap.exists) return;
+      loadMembers(serverId, snap.data().members || []);
+    });
+  }
+
+  function _loadPreviewChannels(serverId) {
+    db.collection('servers').doc(serverId).collection('channels')
+      .orderBy('name')
+      .onSnapshot(snap => {
+        const list = document.getElementById('channel-list');
+        list.innerHTML = '';
+        snap.forEach(doc => {
+          const ch = doc.data();
+          const el = document.createElement('div');
+          el.className = 'channel-item';
+          el.dataset.id = doc.id;
+          el.innerHTML = '<span class="channel-hash">#</span> ' + esc(ch.name);
+          el.addEventListener('click', () => _openPreviewChannel(serverId, doc.id, ch.name));
+          list.appendChild(el);
+        });
+        if (!snap.empty) _openPreviewChannel(serverId, snap.docs[0].id, snap.docs[0].data().name);
+      });
+  }
+
+  function _openPreviewChannel(serverId, channelId, channelName) {
+    if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+    currentChat = null; // no sending
+
+    document.querySelectorAll('.channel-item').forEach(c => c.classList.remove('active'));
+    document.querySelector('.channel-item[data-id="' + channelId + '"]')?.classList.add('active');
+    document.getElementById('chat-title').textContent = '# ' + channelName + ' (Preview)';
+
+    const messagesEl = document.getElementById('chat-messages');
+    messagesEl.innerHTML = '<div class="chat-empty">Loading...</div>';
+
+    let _isNew = true;
+    chatUnsub = db.collection('servers').doc(serverId)
+      .collection('channels').doc(channelId)
+      .collection('messages')
+      .orderBy('createdAt', 'asc')
+      .limitToLast(100)
+      .onSnapshot(snap => {
+        if (_isNew) { _isNew = false; messagesEl.innerHTML = ''; }
+        if (snap.empty) { messagesEl.innerHTML = '<div class="chat-empty">No messages yet.</div>'; return; }
+        const emptyEl = messagesEl.querySelector('.chat-empty');
+        if (emptyEl) emptyEl.remove();
+        const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
+        let hasAdded = false;
+        snap.docChanges().forEach(change => {
+          const { doc, type } = change;
+          if (type === 'added') {
+            const el = renderMessage(doc.data(), doc.id, null); // null docRef = no edit/delete
+            el.dataset.msgId = doc.id;
+            messagesEl.appendChild(el);
+            hasAdded = true;
+          } else if (type === 'modified') {
+            const el = renderMessage(doc.data(), doc.id, null);
+            el.dataset.msgId = doc.id;
+            messagesEl.querySelector('[data-msg-id="' + doc.id + '"]')?.replaceWith(el);
+          } else if (type === 'removed') {
+            messagesEl.querySelector('[data-msg-id="' + doc.id + '"]')?.remove();
           }
         });
+        if (hasAdded && nearBottom) requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
       });
-    } catch (err) {
-      console.error(err);
-      messagesEl.innerHTML = '<div class="chat-empty">Failed to load servers.</div>';
-    }
+  }
+
+  function _hidePreviewBanner() {
+    const banner = document.getElementById('preview-banner');
+    if (banner) banner.style.display = 'none';
+    _previewServerId = null;
   }
 
   let _serverDocUnsub = null;
 
   function openServer(serverId, serverData) {
     currentServerId = serverId;
+    _hidePreviewBanner();
 
     document.querySelectorAll('.server-icon').forEach(s => s.classList.remove('active'));
     const icon = document.querySelector('.server-icon[data-id="' + serverId + '"]');
