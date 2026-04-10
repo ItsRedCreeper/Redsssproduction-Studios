@@ -54,7 +54,12 @@ const App = (() => {
         _setupPresence();
         _listenNotifications();
         _loadFeaturedGames();
-        _loadCommunityStats();
+        // Delay stats so the current user's presence write completes first;
+        // then refresh every 30s to stay live
+        setTimeout(() => {
+          _loadCommunityStats();
+          setInterval(_loadCommunityStats, 30 * 1000);
+        }, 1500);
       } else {
         currentUser = null;
         userProfile = null;
@@ -452,7 +457,7 @@ const App = (() => {
     // Heartbeat — keeps lastSeen fresh so stale detection works
     setInterval(() => {
       ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
-    }, 30000);
+    }, 15000);
   }
 
   function _resetIdleTimer() {
@@ -546,10 +551,10 @@ const App = (() => {
   /* ── Community stats ── */
   async function _loadCommunityStats() {
     try {
-      const cutoff = firebase.firestore.Timestamp.fromDate(new Date(Date.now() - 90 * 1000));
+      const cutoff = firebase.firestore.Timestamp.fromDate(new Date(Date.now() - 45 * 1000));
       const [gamesSnap, membersSnap, onlineSnap] = await Promise.all([
         db.collection('games').get(),
-        db.collection('users').get(),
+        db.collection('users').where('username', '>=', '').get(),
         db.collection('users').where('lastSeen', '>', cutoff).get()
       ]);
       const statEl = id => document.getElementById(id);

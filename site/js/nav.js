@@ -384,7 +384,7 @@ const Nav = (() => {
     // Heartbeat — keeps lastSeen fresh so stale detection works
     setInterval(() => {
       ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
-    }, 30000);
+    }, 15000);
   }
 
   function _resetIdleTimer(user, profile) {

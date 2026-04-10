@@ -313,7 +313,7 @@ const Friends = (() => {
       let ms = null;
       if (profile.lastSeen.toDate) ms = profile.lastSeen.toDate().getTime();
       else if (profile.lastSeen.seconds) ms = profile.lastSeen.seconds * 1000;
-      if (ms !== null && Date.now() - ms > 90 * 1000) return 'offline';
+      if (ms !== null && Date.now() - ms > 45 * 1000) return 'offline';
     }
     return eStatus;
   }
