@@ -299,20 +299,34 @@ const Friends = (() => {
     });
   }
 
+  /* ── Resolve effective status (with lastSeen staleness fallback) ── */
+  function _resolveStatus(profile) {
+    const eStatus = profile.effectiveStatus || 'offline';
+    if (eStatus === 'offline') return 'offline';
+    // If the heartbeat hasn't updated lastSeen in over 3 minutes, treat as offline
+    if (profile.lastSeen) {
+      let ms = null;
+      if (profile.lastSeen.toDate) ms = profile.lastSeen.toDate().getTime();
+      else if (profile.lastSeen.seconds) ms = profile.lastSeen.seconds * 1000;
+      if (ms !== null && Date.now() - ms > 3 * 60 * 1000) return 'offline';
+    }
+    return eStatus;
+  }
+
   function _renderFriendsList(profiles) {
     const list = document.getElementById('friends-list');
 
     // Sort: online first
     const order = { online: 0, away: 1, dnd: 2, offline: 3 };
-    profiles.sort((a, b) => (order[a.effectiveStatus] || 3) - (order[b.effectiveStatus] || 3));
+    profiles.sort((a, b) => (order[_resolveStatus(a)] || 3) - (order[_resolveStatus(b)] || 3));
 
     list.innerHTML = profiles.map(f => {
       const initial = (f.username || 'U').charAt(0).toUpperCase();
       const avatarHtml = f.avatar
         ? '<img src="' + _esc(f.avatar) + '" alt="">'
         : initial;
-      const eStatus = f.effectiveStatus || 'offline';
-      const activity = _resolveActivity(f);
+      const eStatus = _resolveStatus(f);
+      const activity = _resolveActivity(f, eStatus);
 
       return '<div class="friend-item" data-uid="' + f.uid + '">' +
         '<div class="friend-avatar">' + avatarHtml +
@@ -334,8 +348,8 @@ const Friends = (() => {
   }
 
   /* ── Resolve activity text ── */
-  function _resolveActivity(profile) {
-    const eStatus = profile.effectiveStatus || 'offline';
+  function _resolveActivity(profile, eStatus) {
+    if (eStatus === undefined) eStatus = _resolveStatus(profile);
     if (eStatus === 'offline') return 'Offline';
     if (eStatus === 'dnd') return 'Do Not Disturb';
 
@@ -371,8 +385,8 @@ const Friends = (() => {
     const avatarHtml = f.avatar
       ? '<img src="' + _esc(f.avatar) + '" alt="">'
       : '<span class="friend-profile-initial">' + initial + '</span>';
-    const eStatus = f.effectiveStatus || 'offline';
-    const activity = _resolveActivity(f);
+    const eStatus = _resolveStatus(f);
+    const activity = _resolveActivity(f, eStatus);
     const joined = f.createdAt
       ? new Date(f.createdAt.toDate()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
       : 'Unknown';

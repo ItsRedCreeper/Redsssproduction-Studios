@@ -199,6 +199,18 @@ const Messenger = (() => {
     });
   }
 
+  function _resolveStatus(profile) {
+    const eStatus = profile.effectiveStatus || 'offline';
+    if (eStatus === 'offline') return 'offline';
+    if (profile.lastSeen) {
+      let ms = null;
+      if (profile.lastSeen.toDate) ms = profile.lastSeen.toDate().getTime();
+      else if (profile.lastSeen.seconds) ms = profile.lastSeen.seconds * 1000;
+      if (ms !== null && Date.now() - ms > 3 * 60 * 1000) return 'offline';
+    }
+    return eStatus;
+  }
+
   function _renderDMFriendsList() {
     const list = document.getElementById('friends-list');
     const profiles = Array.from(_dmProfiles.values());
@@ -213,7 +225,7 @@ const Messenger = (() => {
       const avatarHtml = f.avatar
         ? '<img src="' + esc(f.avatar) + '" alt="">'
         : initial;
-      const eStatus = f.effectiveStatus || 'offline';
+      const eStatus = _resolveStatus(f);
 
       return '<div class="friend-item" data-uid="' + f.uid + '">' +
         '<div class="friend-avatar">' + avatarHtml +
@@ -221,7 +233,7 @@ const Messenger = (() => {
         '</div>' +
         '<div>' +
           '<div class="friend-name">' + esc(f.username) + '</div>' +
-          '<div class="friend-status">' + _resolveActivity(f) + '</div>' +
+          '<div class="friend-status">' + _resolveActivity(f, eStatus) + '</div>' +
         '</div></div>';
     }).join('');
 
@@ -230,8 +242,8 @@ const Messenger = (() => {
     });
   }
 
-  function _resolveActivity(profile) {
-    const eStatus = profile.effectiveStatus || 'offline';
+  function _resolveActivity(profile, eStatus) {
+    if (eStatus === undefined) eStatus = _resolveStatus(profile);
     if (eStatus === 'offline') return 'Offline';
     if (eStatus === 'dnd') return 'Do Not Disturb';
     const activity = profile.activity || {};

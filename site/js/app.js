@@ -449,10 +449,10 @@ const App = (() => {
     document.addEventListener('keydown', resetIdle, { passive: true });
     _resetIdleTimer();
 
-    // Heartbeat
+    // Heartbeat — keeps lastSeen fresh so stale detection works
     setInterval(() => {
       ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
-    }, 60000);
+    }, 30000);
   }
 
   function _resetIdleTimer() {
