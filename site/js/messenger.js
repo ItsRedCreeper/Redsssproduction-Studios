@@ -303,20 +303,33 @@ const Messenger = (() => {
     const messagesEl = document.getElementById('chat-messages');
     messagesEl.innerHTML = '<div class="chat-empty">Loading...</div>';
 
+    let _isChatNew = true;
     chatUnsub = db.collection('dms').doc(convoId).collection('messages')
       .orderBy('createdAt', 'asc')
       .limitToLast(100)
       .onSnapshot(snap => {
-        if (snap.empty) {
-          messagesEl.innerHTML = '<div class="chat-empty">No messages yet. Say hi!</div>';
-          return;
-        }
-
-        messagesEl.innerHTML = '';
-        snap.forEach(doc => {
-          messagesEl.appendChild(renderMessage(doc.data(), doc.id, doc.ref));
+        if (_isChatNew) { _isChatNew = false; messagesEl.innerHTML = ''; }
+        if (snap.empty) { messagesEl.innerHTML = '<div class="chat-empty">No messages yet. Say hi!</div>'; return; }
+        const emptyEl = messagesEl.querySelector('.chat-empty');
+        if (emptyEl) emptyEl.remove();
+        const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
+        let hasAdded = false;
+        snap.docChanges().forEach(change => {
+          const { doc, type } = change;
+          if (type === 'added') {
+            const el = renderMessage(doc.data(), doc.id, doc.ref);
+            el.dataset.msgId = doc.id;
+            messagesEl.appendChild(el);
+            hasAdded = true;
+          } else if (type === 'modified') {
+            const el = renderMessage(doc.data(), doc.id, doc.ref);
+            el.dataset.msgId = doc.id;
+            messagesEl.querySelector('[data-msg-id="' + doc.id + '"]')?.replaceWith(el);
+          } else if (type === 'removed') {
+            messagesEl.querySelector('[data-msg-id="' + doc.id + '"]')?.remove();
+          }
         });
-        messagesEl.scrollTop = messagesEl.scrollHeight;
+        if (hasAdded && nearBottom) requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
       });
   }
 
@@ -716,22 +729,35 @@ const Messenger = (() => {
     const messagesEl = document.getElementById('chat-messages');
     messagesEl.innerHTML = '<div class="chat-empty">Loading...</div>';
 
+    let _isChatNew = true;
     chatUnsub = db.collection('servers').doc(serverId)
       .collection('channels').doc(channelId)
       .collection('messages')
       .orderBy('createdAt', 'asc')
       .limitToLast(100)
       .onSnapshot(snap => {
-        if (snap.empty) {
-          messagesEl.innerHTML = '<div class="chat-empty">No messages yet. Start the conversation!</div>';
-          return;
-        }
-
-        messagesEl.innerHTML = '';
-        snap.forEach(doc => {
-          messagesEl.appendChild(renderMessage(doc.data(), doc.id, doc.ref));
+        if (_isChatNew) { _isChatNew = false; messagesEl.innerHTML = ''; }
+        if (snap.empty) { messagesEl.innerHTML = '<div class="chat-empty">No messages yet. Start the conversation!</div>'; return; }
+        const emptyEl = messagesEl.querySelector('.chat-empty');
+        if (emptyEl) emptyEl.remove();
+        const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
+        let hasAdded = false;
+        snap.docChanges().forEach(change => {
+          const { doc, type } = change;
+          if (type === 'added') {
+            const el = renderMessage(doc.data(), doc.id, doc.ref);
+            el.dataset.msgId = doc.id;
+            messagesEl.appendChild(el);
+            hasAdded = true;
+          } else if (type === 'modified') {
+            const el = renderMessage(doc.data(), doc.id, doc.ref);
+            el.dataset.msgId = doc.id;
+            messagesEl.querySelector('[data-msg-id="' + doc.id + '"]')?.replaceWith(el);
+          } else if (type === 'removed') {
+            messagesEl.querySelector('[data-msg-id="' + doc.id + '"]')?.remove();
+          }
         });
-        messagesEl.scrollTop = messagesEl.scrollHeight;
+        if (hasAdded && nearBottom) requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
       });
   }
 
@@ -815,9 +841,9 @@ const Messenger = (() => {
     }
 
     // Action buttons
-    const replyBtn = '<button class="msg-action-btn reply" title="Reply">&#x21A9;</button>';
-    const editBtn = isOwn ? '<button class="msg-action-btn edit" title="Edit">&#x270E;</button>' : '';
-    const deleteBtn = isOwn ? '<button class="msg-action-btn delete" title="Delete">&#x1F5D1;</button>' : '';
+    const replyBtn = '<button class="msg-action-btn reply" title="Reply"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></button>';
+    const editBtn = isOwn ? '<button class="msg-action-btn edit" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' : '';
+    const deleteBtn = isOwn ? '<button class="msg-action-btn delete" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>' : '';
     const actionsHTML = '<div class="msg-actions">' + replyBtn + editBtn + deleteBtn + '</div>';
 
     const editedTag = data.edited ? '<span class="msg-edited-tag">(edited)</span>' : '';

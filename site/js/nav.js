@@ -317,7 +317,14 @@ const Nav = (() => {
         presenceRef.on('value', pSnap => {
           const pVal = pSnap.val();
           if (pVal && pVal.online === false) {
-            ref.update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+            if (_pageClosing) {
+              ref.update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+            } else {
+              // Another tab disconnected — re-assert our presence
+              const myEff = _computeEffective(profile.status || 'auto');
+              presenceRef.update({ effectiveStatus: myEff, online: true }).catch(() => {});
+              ref.update({ effectiveStatus: myEff, online: true, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+            }
           }
         });
       });
@@ -394,6 +401,17 @@ const Nav = (() => {
     setInterval(() => {
       ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
     }, 10000);
+
+    // Auto-save status immediately when dropdown changes
+    document.getElementById('profile-status')?.addEventListener('change', () => {
+      const status = document.getElementById('profile-status').value;
+      const effectiveStatus = _computeEffective(status);
+      profile.status = status;
+      profile.effectiveStatus = effectiveStatus;
+      ref.update({ status, effectiveStatus }).catch(() => {});
+      if (presenceRef) presenceRef.update({ effectiveStatus, online: effectiveStatus !== 'offline' }).catch(() => {});
+      _renderUserUI(user, profile);
+    });
   }
 
   function _resetIdleTimer(user, profile) {

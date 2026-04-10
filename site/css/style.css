@@ -1321,6 +1321,11 @@ a.nav-link:hover { text-decoration: none; }
   align-items: center;
   justify-content: center;
   gap: 6px;
+  flex-wrap: wrap;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  text-align: center;
 }
 
 .status-dot-inline {
@@ -1444,6 +1449,9 @@ body.messenger-page #app {
   font-weight: 700;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-search { padding: 10px; }
@@ -1534,6 +1542,7 @@ body.messenger-page #app {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 160px;
 }
 
 /* Channel items */
@@ -1646,6 +1655,9 @@ body.messenger-page #app {
   border-bottom: 1px solid var(--border);
   background: var(--bg-secondary);
   flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-messages {

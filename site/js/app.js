@@ -390,7 +390,14 @@ const App = (() => {
         presenceRef.on('value', pSnap => {
           const pVal = pSnap.val();
           if (pVal && pVal.online === false) {
-            ref.update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+            if (_pageClosing) {
+              ref.update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+            } else {
+              // Another tab disconnected — re-assert our presence
+              const myEff = _computeEffective(userProfile.status || 'auto');
+              presenceRef.update({ effectiveStatus: myEff, online: true }).catch(() => {});
+              ref.update({ effectiveStatus: myEff, online: true, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+            }
           }
         });
       });
@@ -467,6 +474,17 @@ const App = (() => {
     setInterval(() => {
       ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
     }, 10000);
+
+    // Auto-save status immediately when dropdown changes
+    document.getElementById('profile-status')?.addEventListener('change', () => {
+      const status = document.getElementById('profile-status').value;
+      const effectiveStatus = _computeEffective(status);
+      userProfile.status = status;
+      userProfile.effectiveStatus = effectiveStatus;
+      ref.update({ status, effectiveStatus }).catch(() => {});
+      if (presenceRef) presenceRef.update({ effectiveStatus, online: effectiveStatus !== 'offline' }).catch(() => {});
+      _renderUserUI();
+    });
   }
 
   function _resetIdleTimer() {
@@ -569,7 +587,10 @@ const App = (() => {
       const statEl = id => document.getElementById(id);
       if (statEl('stat-games')) statEl('stat-games').textContent = gamesSnap.size;
       if (statEl('stat-members')) statEl('stat-members').textContent = membersSnap.size;
-      if (statEl('stat-online')) statEl('stat-online').textContent = onlineSnap.size;
+      // Exclude users who explicitly set themselves offline
+      let onlineCount = 0;
+      onlineSnap.forEach(doc => { if (doc.data().effectiveStatus !== 'offline') onlineCount++; });
+      if (statEl('stat-online')) statEl('stat-online').textContent = onlineCount;
     } catch (e) {
       // stats unavailable — leave as —
     }
