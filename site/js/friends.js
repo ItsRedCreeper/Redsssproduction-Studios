@@ -8,7 +8,6 @@ const Friends = (() => {
   let userProfile = null;
   let friendProfiles = [];
   let _myFriendUids = []; // keep in sync with live listener
-  let _selectedUid = null;  // uid of the friend currently shown in the detail panel
   const _rtdbOffline = new Set(); // uids RTDB has confirmed offline (takes priority over Firestore)
 
   function init(user, profile) {
@@ -239,16 +238,6 @@ const Friends = (() => {
       const friendUids = doc.data().friends || [];
       _myFriendUids = friendUids; // keep in sync for search button state
 
-      // Update any open search results: if a request was accepted, change button to Friends
-      document.querySelectorAll('#friend-search-results .friends-add-btn[data-uid]').forEach(btn => {
-        if (friendUids.includes(btn.dataset.uid)) {
-          btn.textContent = 'Friends';
-          btn.disabled = true;
-          btn.style.opacity = '.5';
-          btn.style.cursor = 'default';
-        }
-      });
-
       if (!friendUids.length) {
         _friendListeners.forEach(unsub => unsub());
         _friendListeners.clear();
@@ -355,16 +344,12 @@ const Friends = (() => {
     }).join('');
 
     list.querySelectorAll('.friend-item').forEach(el => {
-      if (el.dataset.uid === _selectedUid) el.classList.add('active');
       el.addEventListener('click', () => {
         list.querySelectorAll('.friend-item').forEach(f => f.classList.remove('active'));
         el.classList.add('active');
-        _selectedUid = el.dataset.uid;
         _selectFriend(el.dataset.uid);
       });
     });
-    // Keep detail panel live — re-render with latest data
-    if (_selectedUid) _selectFriend(_selectedUid);
   }
 
   /* ── Resolve activity text ── */
