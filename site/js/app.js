@@ -457,7 +457,7 @@ const App = (() => {
     // Heartbeat — keeps lastSeen fresh so stale detection works
     setInterval(() => {
       ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
-    }, 15000);
+    }, 10000);
   }
 
   function _resetIdleTimer() {
@@ -551,7 +551,7 @@ const App = (() => {
   /* ── Community stats ── */
   async function _loadCommunityStats() {
     try {
-      const cutoff = firebase.firestore.Timestamp.fromDate(new Date(Date.now() - 45 * 1000));
+      const cutoff = firebase.firestore.Timestamp.fromDate(new Date(Date.now() - 25 * 1000));
       const [gamesSnap, membersSnap, onlineSnap] = await Promise.all([
         db.collection('games').get(),
         db.collection('users').where('username', '>=', '').get(),
