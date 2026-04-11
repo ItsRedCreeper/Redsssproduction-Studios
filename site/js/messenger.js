@@ -224,6 +224,20 @@ const Messenger = (() => {
                 }
               } else if (val && val.online === true) {
                 _rtdbOfflineSet.delete(uid);
+                // Re-read the stored profile with the override removed and re-render
+                const cur = _dmProfiles.get(uid);
+                if (cur && cur.effectiveStatus === 'offline') {
+                  // The Firestore doc likely already has the real status; re-apply it
+                  db.collection('users').doc(uid).get().then(docSnap => {
+                    if (!docSnap.exists) return;
+                    const d = docSnap.data();
+                    const realStatus = d.effectiveStatus || 'offline';
+                    _dmProfiles.set(uid, { ...cur, effectiveStatus: realStatus });
+                    profileCache.set(uid, { username: d.username, avatar: d.avatar || '', effectiveStatus: realStatus });
+                    _patchRenderedMessages(uid);
+                    _renderDMFriendsList();
+                  }).catch(() => {});
+                }
               }
             };
             presRef.on('value', rtdbHandler);
@@ -241,7 +255,7 @@ const Messenger = (() => {
       let ms = null;
       if (profile.lastSeen.toDate) ms = profile.lastSeen.toDate().getTime();
       else if (profile.lastSeen.seconds) ms = profile.lastSeen.seconds * 1000;
-      if (ms !== null && Date.now() - ms > 25 * 1000) return 'offline';
+      if (ms !== null && Date.now() - ms > 30 * 1000) return 'offline';
     }
     return eStatus;
   }
@@ -832,6 +846,14 @@ const Messenger = (() => {
   const _memberProfiles  = new Map(); // uid → profile (for current server)
   let   _currentMemberServerId = null;
 
+  const _rtdbMemberListeners = new Map();   // uid → RTDB off fn
+  const _rtdbMemberOffline = new Set();      // uids RTDB confirmed offline
+
+  // Periodically re-render member list for staleness checks
+  setInterval(() => {
+    if (_memberProfiles.size) _renderMembersList();
+  }, 10 * 1000);
+
   function loadMembers(serverId, memberUids) {
     // Tear down listeners from a previous server
     if (_currentMemberServerId !== serverId) {
@@ -839,6 +861,9 @@ const Messenger = (() => {
         _memberListeners.get(_currentMemberServerId).forEach(unsub => unsub());
         _memberListeners.delete(_currentMemberServerId);
       }
+      _rtdbMemberListeners.forEach(off => off());
+      _rtdbMemberListeners.clear();
+      _rtdbMemberOffline.clear();
       _memberProfiles.clear();
       _currentMemberServerId = serverId;
     }
@@ -852,6 +877,8 @@ const Messenger = (() => {
         unsub();
         serverListeners.delete(uid);
         _memberProfiles.delete(uid);
+        const rtdbOff = _rtdbMemberListeners.get(uid);
+        if (rtdbOff) { rtdbOff(); _rtdbMemberListeners.delete(uid); }
       }
     });
 
@@ -861,16 +888,55 @@ const Messenger = (() => {
       const unsub = db.collection('users').doc(uid).onSnapshot(d => {
         if (!d.exists) return;
         const data = d.data();
-        _memberProfiles.set(uid, { uid, ...data });
+        const effectiveStatus = _rtdbMemberOffline.has(uid) ? 'offline' : (data.effectiveStatus || 'offline');
+        _memberProfiles.set(uid, { uid, ...data, effectiveStatus });
         profileCache.set(uid, {
           username: data.username,
           avatar: data.avatar || '',
-          effectiveStatus: data.effectiveStatus || 'offline'
+          effectiveStatus
         });
         _patchRenderedMessages(uid);
         _renderMembersList();
       });
       serverListeners.set(uid, unsub);
+
+      // RTDB presence listener for member
+      if (!_rtdbMemberListeners.has(uid)) {
+        try {
+          const presRef = firebase.database().ref('presence/' + uid);
+          const rtdbHandler = snap => {
+            const val = snap.val();
+            if (val && val.online === false) {
+              _rtdbMemberOffline.add(uid);
+              db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+              const cur = _memberProfiles.get(uid);
+              if (cur) {
+                _memberProfiles.set(uid, { ...cur, effectiveStatus: 'offline' });
+                const cached = profileCache.get(uid);
+                if (cached) profileCache.set(uid, { ...cached, effectiveStatus: 'offline' });
+                _patchRenderedMessages(uid);
+                _renderMembersList();
+              }
+            } else if (val && val.online === true) {
+              _rtdbMemberOffline.delete(uid);
+              const cur = _memberProfiles.get(uid);
+              if (cur && cur.effectiveStatus === 'offline') {
+                db.collection('users').doc(uid).get().then(docSnap => {
+                  if (!docSnap.exists) return;
+                  const d = docSnap.data();
+                  const realStatus = d.effectiveStatus || 'offline';
+                  _memberProfiles.set(uid, { ...cur, effectiveStatus: realStatus });
+                  profileCache.set(uid, { username: d.username, avatar: d.avatar || '', effectiveStatus: realStatus });
+                  _patchRenderedMessages(uid);
+                  _renderMembersList();
+                }).catch(() => {});
+              }
+            }
+          };
+          presRef.on('value', rtdbHandler);
+          _rtdbMemberListeners.set(uid, () => presRef.off('value', rtdbHandler));
+        } catch (e) { /* RTDB unavailable */ }
+      }
     });
   }
 
@@ -880,11 +946,11 @@ const Messenger = (() => {
     if (!list) return;
     const profiles = Array.from(_memberProfiles.values());
     const order = { online: 0, away: 1, dnd: 2, offline: 3 };
-    profiles.sort((a, b) => (order[a.effectiveStatus] || 3) - (order[b.effectiveStatus] || 3));
+    profiles.sort((a, b) => (order[_resolveStatus(a)] || 3) - (order[_resolveStatus(b)] || 3));
     list.innerHTML = profiles.map(m => {
       const initial = (m.username || 'U').charAt(0).toUpperCase();
       const avatarHtml = m.avatar ? '<img src="' + esc(m.avatar) + '" alt="">' : initial;
-      const eStatus = m.effectiveStatus || 'offline';
+      const eStatus = _resolveStatus(m);
       return '<div class="member-item">' +
         '<div class="member-avatar">' + avatarHtml +
           '<span class="status-dot ' + eStatus + '"></span>' +

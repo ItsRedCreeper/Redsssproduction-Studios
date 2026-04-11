@@ -294,6 +294,17 @@ const Friends = (() => {
                 }
               } else if (val && val.online === true) {
                 _rtdbOffline.delete(uid);
+                // Re-read the stored profile with the override removed and re-render
+                const idx = friendProfiles.findIndex(p => p.uid === uid);
+                if (idx >= 0 && friendProfiles[idx].effectiveStatus === 'offline') {
+                  db.collection('users').doc(uid).get().then(docSnap => {
+                    if (!docSnap.exists) return;
+                    const d = docSnap.data();
+                    const realStatus = d.effectiveStatus || 'offline';
+                    friendProfiles[idx] = { ...friendProfiles[idx], ...d, effectiveStatus: realStatus };
+                    _renderFriendsList(friendProfiles.slice());
+                  }).catch(() => {});
+                }
               }
             };
             presRef.on('value', rtdbHandler);
@@ -308,12 +319,11 @@ const Friends = (() => {
   function _resolveStatus(profile) {
     const eStatus = profile.effectiveStatus || 'offline';
     if (eStatus === 'offline') return 'offline';
-    // If the heartbeat hasn't updated lastSeen in over 3 minutes, treat as offline
     if (profile.lastSeen) {
       let ms = null;
       if (profile.lastSeen.toDate) ms = profile.lastSeen.toDate().getTime();
       else if (profile.lastSeen.seconds) ms = profile.lastSeen.seconds * 1000;
-      if (ms !== null && Date.now() - ms > 25 * 1000) return 'offline';
+      if (ms !== null && Date.now() - ms > 30 * 1000) return 'offline';
     }
     return eStatus;
   }

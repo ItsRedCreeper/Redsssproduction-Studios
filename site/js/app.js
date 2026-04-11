@@ -598,13 +598,32 @@ const App = (() => {
     }
   }
 
-  /* ── Live online counter ── */
+  /* ── Live online counter (with lastSeen staleness protection) ── */
   function _listenOnlineCount() {
+    const STALE_MS = 30 * 1000;   // treat as offline if heartbeat > 30s ago
+    const CLEANUP_MS = 60 * 1000; // write offline to Firestore if > 60s stale
     db.collection('users')
       .where('effectiveStatus', 'in', ['online', 'away', 'dnd'])
       .onSnapshot(snap => {
+        const now = Date.now();
+        let count = 0;
+        snap.forEach(doc => {
+          const data = doc.data();
+          let lastMs = 0;
+          if (data.lastSeen) {
+            if (data.lastSeen.toDate) lastMs = data.lastSeen.toDate().getTime();
+            else if (data.lastSeen.seconds) lastMs = data.lastSeen.seconds * 1000;
+          }
+          const age = now - lastMs;
+          if (age <= STALE_MS) {
+            count++;
+          } else if (age > CLEANUP_MS && doc.id !== currentUser.uid) {
+            // Clean up stale Firestore entry so it doesn't linger
+            db.collection('users').doc(doc.id).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+          }
+        });
         const el = document.getElementById('stat-online');
-        if (el) el.textContent = snap.size;
+        if (el) el.textContent = count;
       }, () => { /* stats unavailable */ });
   }
 
