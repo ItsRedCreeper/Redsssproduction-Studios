@@ -583,19 +583,17 @@ const App = (() => {
     , 5000);
   }
 
-  /* ── Community stats (games + member count; online handled by live listener) ── */
-  async function _loadCommunityStats() {
-    try {
-      const [gamesSnap, membersSnap] = await Promise.all([
-        db.collection('games').get(),
-        db.collection('users').where('username', '>=', '').get()
-      ]);
-      const statEl = id => document.getElementById(id);
-      if (statEl('stat-games')) statEl('stat-games').textContent = gamesSnap.size;
-      if (statEl('stat-members')) statEl('stat-members').textContent = membersSnap.size;
-    } catch (e) {
-      // stats unavailable — leave as —
-    }
+  /* ── Community stats (games one-time, members live) ── */
+  function _loadCommunityStats() {
+    const statEl = id => document.getElementById(id);
+    // Games count — one-time
+    db.collection('games').get().then(snap => {
+      if (statEl('stat-games')) statEl('stat-games').textContent = snap.size;
+    }).catch(() => {});
+    // Members count — live
+    db.collection('users').where('username', '>=', '').onSnapshot(snap => {
+      if (statEl('stat-members')) statEl('stat-members').textContent = snap.size;
+    }, () => {});
   }
 
   /* ── Live online counter (with lastSeen staleness protection) ── */

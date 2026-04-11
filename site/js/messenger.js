@@ -20,6 +20,8 @@ const Messenger = (() => {
   let _stagedFiles = [];         // File objects awaiting send
   let _stagedObjectUrls = [];    // Blob URLs for staging previews
   let _lightboxScale = 1;        // Current lightbox zoom
+  let _lightboxPanX = 0, _lightboxPanY = 0;
+  let _lightboxDrag = false, _lightboxDragStart = { x: 0, y: 0 }, _lightboxPanStart = { x: 0, y: 0 };
 
   // Server GIF library — per-server gif lists
   const _serverGifUnsubs = new Map(); // serverId → unsub fn
@@ -71,13 +73,52 @@ const Messenger = (() => {
       }
     });
 
-    // Lightbox wiring
+    // Lightbox wiring (pan + zoom)
     const lbOverlay = document.getElementById('lightbox');
+    const lbImg = document.getElementById('lightbox-img');
+    const lbWrap = lbOverlay.querySelector('.lightbox-img-wrap');
     document.getElementById('lightbox-close').addEventListener('click', _closeLightbox);
     document.getElementById('lightbox-zoom-in').addEventListener('click', () => _lightboxZoom(0.5));
     document.getElementById('lightbox-zoom-out').addEventListener('click', () => _lightboxZoom(-0.5));
-    lbOverlay.addEventListener('click', e => { if (e.target === lbOverlay || e.target === lbOverlay.querySelector('.lightbox-img-wrap')) _closeLightbox(); });
-    lbOverlay.addEventListener('wheel', e => { e.preventDefault(); _lightboxZoom(e.deltaY < 0 ? 0.25 : -0.25); }, { passive: false });
+    lbOverlay.addEventListener('click', e => {
+      if (e.target === lbOverlay || e.target === lbWrap) _closeLightbox();
+    });
+    lbOverlay.addEventListener('wheel', e => {
+      e.preventDefault();
+      _lightboxZoom(e.deltaY < 0 ? 0.25 : -0.25);
+    }, { passive: false });
+    // Drag-to-pan
+    lbImg.addEventListener('mousedown', e => {
+      if (_lightboxScale <= 1) return;
+      e.preventDefault();
+      _lightboxDrag = true;
+      _lightboxDragStart = { x: e.clientX, y: e.clientY };
+      _lightboxPanStart = { x: _lightboxPanX, y: _lightboxPanY };
+      lbImg.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mousemove', e => {
+      if (!_lightboxDrag) return;
+      _lightboxPanX = _lightboxPanStart.x + (e.clientX - _lightboxDragStart.x);
+      _lightboxPanY = _lightboxPanStart.y + (e.clientY - _lightboxDragStart.y);
+      _applyLightboxTransform();
+    });
+    window.addEventListener('mouseup', () => {
+      if (_lightboxDrag) { _lightboxDrag = false; lbImg.style.cursor = ''; }
+    });
+    // Touch-to-pan
+    lbImg.addEventListener('touchstart', e => {
+      if (_lightboxScale <= 1 || e.touches.length !== 1) return;
+      _lightboxDrag = true;
+      _lightboxDragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      _lightboxPanStart = { x: _lightboxPanX, y: _lightboxPanY };
+    }, { passive: true });
+    lbImg.addEventListener('touchmove', e => {
+      if (!_lightboxDrag || e.touches.length !== 1) return;
+      _lightboxPanX = _lightboxPanStart.x + (e.touches[0].clientX - _lightboxDragStart.x);
+      _lightboxPanY = _lightboxPanStart.y + (e.touches[0].clientY - _lightboxDragStart.y);
+      _applyLightboxTransform();
+    }, { passive: true });
+    lbImg.addEventListener('touchend', () => { _lightboxDrag = false; });
 
     // Delegated lightbox trigger for images in messages
     document.getElementById('chat-messages').addEventListener('click', e => {
@@ -1167,9 +1208,7 @@ const Messenger = (() => {
       const textHTML = _renderMessageText(data.text);
       const ytId = _extractYouTubeId(data.text);
       const ytHTML = ytId
-        ? '<div class="msg-yt-embed"><a class="msg-yt-thumb" href="https://www.youtube.com/watch?v=' + esc(ytId) + '" target="_blank" rel="noopener noreferrer">' +
-          '<img src="https://img.youtube.com/vi/' + esc(ytId) + '/hqdefault.jpg" alt="YouTube" loading="lazy">' +
-          '<div class="msg-yt-play">&#9654;</div></a></div>'
+        ? '<div class="msg-yt-embed"><iframe class="msg-yt-iframe" src="https://www.youtube.com/embed/' + esc(ytId) + '?rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen loading="lazy"></iframe></div>'
         : '';
       contentHTML += '<div class="msg-text">' + textHTML + editedTag + '</div>' + ytHTML;
     }
@@ -1263,21 +1302,32 @@ const Messenger = (() => {
     textarea.value = currentText;
     textarea.rows = 1;
 
-    const hint = document.createElement('div');
-    hint.className = 'msg-edit-actions';
-    hint.innerHTML =
-      '<span class="msg-edit-hint">Enter to save &nbsp;·&nbsp; Esc to cancel</span>';
+    const actions = document.createElement('div');
+    actions.className = 'msg-edit-actions';
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'msg-edit-save';
+    saveBtn.textContent = 'Save';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'msg-edit-cancel';
+    cancelBtn.textContent = 'Cancel';
+    const hint = document.createElement('span');
+    hint.className = 'msg-edit-hint';
+    hint.textContent = 'Enter to save · Esc to cancel';
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    actions.appendChild(hint);
 
     const original = msgTextEl.innerHTML;
     msgTextEl.innerHTML = '';
     msgTextEl.appendChild(textarea);
-    msgTextEl.appendChild(hint);
+    msgTextEl.appendChild(actions);
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
     async function save() {
       const newText = textarea.value.trim();
-      if (!newText || newText === currentText) { cancel(); return; }
+      if (!newText) { cancel(); return; }
+      if (newText === currentText) { cancel(); return; }
       try {
         await docRef.update({ text: newText, edited: true });
       } catch {
@@ -1290,6 +1340,8 @@ const Messenger = (() => {
       msgTextEl.innerHTML = original;
     }
 
+    saveBtn.addEventListener('click', save);
+    cancelBtn.addEventListener('click', cancel);
     textarea.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
       if (e.key === 'Escape') { cancel(); }
@@ -1723,10 +1775,12 @@ const Messenger = (() => {
   /* ── Lightbox ── */
   function _openLightbox(src) {
     _lightboxScale = 1;
+    _lightboxPanX = 0;
+    _lightboxPanY = 0;
     const overlay = document.getElementById('lightbox');
     const img = document.getElementById('lightbox-img');
     img.src = src;
-    img.style.transform = 'scale(1)';
+    _applyLightboxTransform();
     document.getElementById('lightbox-zoom-level').textContent = '100%';
     overlay.classList.add('open');
   }
@@ -1734,12 +1788,21 @@ const Messenger = (() => {
   function _closeLightbox() {
     document.getElementById('lightbox').classList.remove('open');
     _lightboxScale = 1;
+    _lightboxPanX = 0;
+    _lightboxPanY = 0;
   }
 
   function _lightboxZoom(delta) {
     _lightboxScale = Math.min(5, Math.max(0.25, _lightboxScale + delta));
-    document.getElementById('lightbox-img').style.transform = 'scale(' + _lightboxScale + ')';
+    if (_lightboxScale <= 1) { _lightboxPanX = 0; _lightboxPanY = 0; }
+    _applyLightboxTransform();
     document.getElementById('lightbox-zoom-level').textContent = Math.round(_lightboxScale * 100) + '%';
+    document.getElementById('lightbox-img').style.cursor = _lightboxScale > 1 ? 'grab' : '';
+  }
+
+  function _applyLightboxTransform() {
+    document.getElementById('lightbox-img').style.transform =
+      'translate(' + _lightboxPanX + 'px, ' + _lightboxPanY + 'px) scale(' + _lightboxScale + ')';
   }
 
   return { init };

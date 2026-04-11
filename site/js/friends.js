@@ -116,10 +116,11 @@ const Friends = (() => {
         return;
       }
 
-      // Check if request already exists
+      // Check if a pending request already exists (denied ones are ignored so you can re-send)
       const existing = await db.collection('friend_requests')
         .where('from', '==', currentUser.uid)
         .where('to', '==', targetUid)
+        .where('status', '==', 'pending')
         .limit(1)
         .get();
 

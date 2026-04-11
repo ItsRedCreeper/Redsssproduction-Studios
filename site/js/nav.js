@@ -384,6 +384,7 @@ const Nav = (() => {
         _awayTimer = null;
         _pageClosing = false;
         ref.update({ effectiveStatus: 'online', lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+        if (presenceRef) presenceRef.update({ effectiveStatus: 'online', online: true }).catch(() => {});
         profile.effectiveStatus = 'online';
         _renderUserUI(user, profile);
         _resetIdleTimer(user, profile);
@@ -393,6 +394,7 @@ const Nav = (() => {
       _awayTimer = setTimeout(() => {
         if (_pageClosing) return;
         ref.update({ effectiveStatus: 'away', lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+        if (presenceRef) presenceRef.update({ effectiveStatus: 'away', online: true }).catch(() => {});
         profile.effectiveStatus = 'away';
         _renderUserUI(user, profile);
       }, 600);
@@ -404,9 +406,10 @@ const Nav = (() => {
     document.addEventListener('keydown', resetIdle, { passive: true });
     _resetIdleTimer(user, profile);
 
-    // Heartbeat — keeps lastSeen fresh so stale detection works
+    // Heartbeat — keeps lastSeen + effectiveStatus fresh so stale detection works
     setInterval(() => {
-      ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+      ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp(), effectiveStatus: profile.effectiveStatus || 'online' }).catch(() => {});
+      if (presenceRef) presenceRef.update({ effectiveStatus: profile.effectiveStatus || 'online', online: (profile.effectiveStatus || 'online') !== 'offline' }).catch(() => {});
     }, 10000);
 
     // Auto-save status immediately when dropdown changes
