@@ -17,6 +17,9 @@ const Messenger = (() => {
   const profileCache = new Map();
   let _serverImageBlob = null;
   let _replyState = null; // { uid, username, text, docId } | null
+  let _stagedFiles = [];         // File objects awaiting send
+  let _stagedObjectUrls = [];    // Blob URLs for staging previews
+  let _lightboxScale = 1;        // Current lightbox zoom
 
   // Server GIF library — per-server gif lists
   const _serverGifUnsubs = new Map(); // serverId → unsub fn
@@ -56,7 +59,8 @@ const Messenger = (() => {
       btn.addEventListener('click', () => _switchPickerTab(btn.dataset.tab));
     });
     document.getElementById('gif-upload-input').addEventListener('change', e => {
-      if (e.target.files[0]) _uploadAndSendGif(e.target.files[0]);
+      if (e.target.files.length) _addStagedFiles(e.target.files);
+      e.target.value = '';
     });
     // Close picker on outside click
     document.addEventListener('click', e => {
@@ -65,6 +69,20 @@ const Messenger = (() => {
           !e.target.closest('#img-upload-btn')) {
         _closePicker();
       }
+    });
+
+    // Lightbox wiring
+    const lbOverlay = document.getElementById('lightbox');
+    document.getElementById('lightbox-close').addEventListener('click', _closeLightbox);
+    document.getElementById('lightbox-zoom-in').addEventListener('click', () => _lightboxZoom(0.5));
+    document.getElementById('lightbox-zoom-out').addEventListener('click', () => _lightboxZoom(-0.5));
+    lbOverlay.addEventListener('click', e => { if (e.target === lbOverlay || e.target === lbOverlay.querySelector('.lightbox-img-wrap')) _closeLightbox(); });
+    lbOverlay.addEventListener('wheel', e => { e.preventDefault(); _lightboxZoom(e.deltaY < 0 ? 0.25 : -0.25); }, { passive: false });
+
+    // Delegated lightbox trigger for images in messages
+    document.getElementById('chat-messages').addEventListener('click', e => {
+      const t = e.target.closest('.lightbox-trigger');
+      if (t) _openLightbox(t.dataset.src || t.src);
     });
 
     // Create server
@@ -1012,22 +1030,52 @@ const Messenger = (() => {
     if (!currentChat) return;
     const input = document.getElementById('chat-input');
     const text = input.value.trim();
-    if (!text || text.length > 2000) return;
+    const hasImages = _stagedFiles.length > 0;
+    if (!text && !hasImages) return;
+    if (text.length > 2000) return;
 
     input.value = '';
 
+    // Upload staged images first
+    let imageUrls = [];
+    if (hasImages) {
+      showToast('Uploading...', 'info');
+      try {
+        imageUrls = await Promise.all(_stagedFiles.map(async f => {
+          const fd = new FormData();
+          fd.append('file', f);
+          fd.append('upload_preset', CLOUDINARY_PRESET);
+          const res = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/image/upload', { method: 'POST', body: fd });
+          const d = await res.json();
+          if (!d.secure_url) throw new Error('Upload failed');
+          return d.secure_url;
+        }));
+      } catch {
+        showToast('Upload failed.', 'error');
+        return;
+      }
+      // Clear staging
+      _stagedObjectUrls.forEach(u => URL.revokeObjectURL(u));
+      _stagedFiles = [];
+      _stagedObjectUrls = [];
+      _renderStagedPreviews();
+    }
+
     const msgData = {
-      text,
       uid: currentUser.uid,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     };
+    if (text) msgData.text = text;
+    if (imageUrls.length) msgData.images = imageUrls;
 
     if (_replyState) {
       msgData.replyTo = {
         docId: _replyState.docId,
         uid: _replyState.uid,
         username: _replyState.username,
-        text: _replyState.text
+        text: _replyState.text,
+        images: _replyState.images || [],
+        gifUrl: _replyState.gifUrl || ''
       };
       _cancelReply();
     }
@@ -1038,8 +1086,11 @@ const Messenger = (() => {
         await db.collection('dms').doc(convoId).collection('messages').add(msgData);
 
         // Notify friend
+        const notifText = imageUrls.length
+          ? userProfile.username + ' sent ' + (imageUrls.length === 1 ? 'an image' : imageUrls.length + ' images')
+          : userProfile.username + ': ' + (text.length > 60 ? text.slice(0, 60) + '...' : text);
         await db.collection('users').doc(currentChat.friendUid).collection('notifications').add({
-          message: userProfile.username + ': ' + (text.length > 60 ? text.slice(0, 60) + '...' : text),
+          message: notifText,
           type: 'dm',
           fromUid: currentUser.uid,
           read: false,
@@ -1079,36 +1130,55 @@ const Messenger = (() => {
 
     const isOwn = currentUser && data.uid === currentUser.uid;
 
-    // Reply quote block
+    // Reply quote block (show [image] / [GIF] when no text)
     let replyQuoteHTML = '';
     if (data.replyTo) {
       const rAuthor = esc(data.replyTo.username || 'Unknown');
-      const rText = esc((data.replyTo.text || '').slice(0, 100));
-      replyQuoteHTML = '<div class="msg-reply-quote"><strong>' + rAuthor + '</strong>: ' + rText + '</div>';
+      let rText = (data.replyTo.text || '').slice(0, 100);
+      if (!rText) {
+        if (data.replyTo.gifUrl) rText = '[GIF]';
+        else if (data.replyTo.images && data.replyTo.images.length)
+          rText = data.replyTo.images.length === 1 ? '[image]' : '[' + data.replyTo.images.length + ' images]';
+        else rText = '[message]';
+      } else if (data.replyTo.images && data.replyTo.images.length) {
+        rText += ' [+' + (data.replyTo.images.length === 1 ? 'image' : data.replyTo.images.length + ' images') + ']';
+      } else if (data.replyTo.gifUrl) {
+        rText += ' [GIF]';
+      }
+      replyQuoteHTML = '<div class="msg-reply-quote"><strong>' + rAuthor + '</strong>: ' + esc(rText) + '</div>';
     }
 
-    // Action buttons (only for text messages or own GIFs)
+    // Action buttons — disable edit if images-only message
     const canDelete = isOwn && docRef;
+    const canEdit   = isOwn && docRef && !data.gifUrl && !(data.images && data.images.length && !data.text);
     const replyBtn   = '<button class="msg-action-btn reply" title="Reply"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></button>';
-    const editBtn    = (isOwn && docRef && !data.gifUrl) ? '<button class="msg-action-btn edit" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' : '';
+    const editBtn    = canEdit ? '<button class="msg-action-btn edit" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' : '';
     const deleteBtn  = canDelete ? '<button class="msg-action-btn delete" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>' : '';
     const actionsHTML = '<div class="msg-actions">' + replyBtn + editBtn + deleteBtn + '</div>';
 
     const editedTag = data.edited ? '<span class="msg-edited-tag">(edited)</span>' : '';
 
-    // Content: GIF or text (with links)
-    let contentHTML;
+    // Content: build each part (text, GIF, images) independently
+    let contentHTML = '';
     if (data.gifUrl) {
-      contentHTML = '<div class="msg-gif-wrap"><img class="msg-gif" src="' + esc(data.gifUrl) + '" alt="GIF" loading="lazy"></div>';
-    } else {
-      const textHTML = _renderMessageText(data.text || '');
-      const ytId = _extractYouTubeId(data.text || '');
+      contentHTML += '<div class="msg-gif-wrap"><img class="msg-gif lightbox-trigger" src="' + esc(data.gifUrl) + '" alt="GIF" loading="lazy" data-src="' + esc(data.gifUrl) + '"></div>';
+    }
+    if (data.text) {
+      const textHTML = _renderMessageText(data.text);
+      const ytId = _extractYouTubeId(data.text);
       const ytHTML = ytId
         ? '<div class="msg-yt-embed"><a class="msg-yt-thumb" href="https://www.youtube.com/watch?v=' + esc(ytId) + '" target="_blank" rel="noopener noreferrer">' +
           '<img src="https://img.youtube.com/vi/' + esc(ytId) + '/hqdefault.jpg" alt="YouTube" loading="lazy">' +
           '<div class="msg-yt-play">&#9654;</div></a></div>'
         : '';
-      contentHTML = '<div class="msg-text">' + textHTML + editedTag + '</div>' + ytHTML;
+      contentHTML += '<div class="msg-text">' + textHTML + editedTag + '</div>' + ytHTML;
+    }
+    if (data.images && data.images.length) {
+      contentHTML += '<div class="msg-images' + (data.images.length === 1 ? ' single' : '') + '">' +
+        data.images.map(url =>
+          '<img class="msg-image lightbox-trigger" src="' + esc(url) + '" alt="" loading="lazy" data-src="' + esc(url) + '">'
+        ).join('') +
+        '</div>';
     }
 
     div.innerHTML =
@@ -1129,14 +1199,14 @@ const Messenger = (() => {
     div.querySelector('.msg-action-btn.reply').addEventListener('click', () => {
       _setReply(data, docId);
     });
-    if (isOwn && docRef && !data.gifUrl) {
+    if (canEdit) {
       div.querySelector('.msg-action-btn.edit').addEventListener('click', () => {
         _editMessage(docRef, data.text || '', div);
       });
     }
     if (canDelete) {
       div.querySelector('.msg-action-btn.delete').addEventListener('click', () => {
-        _deleteMessage(docRef);
+        _deleteMessage(docRef, data);
       });
     }
 
@@ -1147,8 +1217,29 @@ const Messenger = (() => {
   function _setReply(data, docId) {
     const cached = profileCache.get(data.uid);
     const username = cached ? cached.username : (data.username || 'Unknown');
-    const preview = (data.text || '').slice(0, 80) + ((data.text || '').length > 80 ? '…' : '');
-    _replyState = { uid: data.uid, username, text: data.text || '', docId };
+
+    // Build display text for reply bar
+    let displayText = data.text || '';
+    if (!displayText) {
+      if (data.gifUrl) displayText = '[GIF]';
+      else if (data.images && data.images.length)
+        displayText = data.images.length === 1 ? '[image]' : '[' + data.images.length + ' images]';
+      else displayText = '[message]';
+    } else if (data.images && data.images.length) {
+      displayText += ' [+' + (data.images.length === 1 ? 'image' : data.images.length + ' images') + ']';
+    } else if (data.gifUrl) {
+      displayText += ' [GIF]';
+    }
+
+    const preview = displayText.slice(0, 80) + (displayText.length > 80 ? '\u2026' : '');
+    _replyState = {
+      uid: data.uid,
+      username,
+      text: data.text || '',
+      docId,
+      images: data.images || [],
+      gifUrl: data.gifUrl || ''
+    };
     document.getElementById('reply-to-name').textContent = username;
     document.getElementById('reply-to-preview').textContent = preview;
     document.getElementById('reply-bar').style.display = 'flex';
@@ -1205,13 +1296,50 @@ const Messenger = (() => {
     });
   }
 
-  async function _deleteMessage(docRef) {
-    if (!confirm('Delete this message?')) return;
-    try {
-      await docRef.delete();
-    } catch {
-      showToast('Failed to delete message.', 'error');
-    }
+  /* ── Custom confirm dialog ── */
+  function _showConfirm({ title, avatar, username, preview, onConfirm }) {
+    const overlay = document.getElementById('confirm-modal');
+    overlay.querySelector('.confirm-modal-title').textContent = title;
+    const initial = (username || 'U').charAt(0).toUpperCase();
+    overlay.querySelector('.confirm-msg-avatar').innerHTML = avatar
+      ? '<img src="' + esc(avatar) + '" alt="">'
+      : initial;
+    overlay.querySelector('.confirm-msg-author').textContent = username || 'Unknown';
+    overlay.querySelector('.confirm-msg-text').textContent = preview || '';
+    overlay.classList.add('open');
+
+    // Clone buttons to remove old listeners
+    const ok = overlay.querySelector('#confirm-modal-ok');
+    const cancel = overlay.querySelector('#confirm-modal-cancel');
+    const okNew = ok.cloneNode(true);
+    const cancelNew = cancel.cloneNode(true);
+    ok.replaceWith(okNew);
+    cancel.replaceWith(cancelNew);
+
+    const close = () => overlay.classList.remove('open');
+    okNew.addEventListener('click', () => { close(); onConfirm(); });
+    cancelNew.addEventListener('click', close);
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); }, { once: true });
+  }
+
+  async function _deleteMessage(docRef, data) {
+    const cached = data && profileCache.get(data.uid);
+    const username = (cached && cached.username) || (data && data.username) || 'Unknown';
+    const avatar   = (cached && cached.avatar)   || (data && data.avatar)   || '';
+    let preview = (data && data.text) || '';
+    if (!preview && data && data.images && data.images.length) preview = '[image]';
+    if (!preview && data && data.gifUrl) preview = '[GIF]';
+
+    _showConfirm({
+      title: 'Delete Message',
+      avatar,
+      username,
+      preview,
+      onConfirm: async () => {
+        try { await docRef.delete(); }
+        catch { showToast('Failed to delete message.', 'error'); }
+      }
+    });
   }
 
   /* ── Utility ── */
@@ -1553,6 +1681,65 @@ const Messenger = (() => {
     tab.querySelectorAll('.gif-item').forEach(img => {
       img.addEventListener('click', () => _sendGif(img.dataset.url));
     });
+  }
+
+  /* ── Image Attachment Staging ── */
+  function _addStagedFiles(fileList) {
+    const arr = Array.from(fileList);
+    for (const f of arr) {
+      if (_stagedFiles.length >= 4) { showToast('Max 4 images per message', 'warn'); break; }
+      if (!f.type.startsWith('image/')) continue;
+      if (f.size > 10 * 1024 * 1024) { showToast('Image too large (max 10 MB)', 'error'); continue; }
+      _stagedFiles.push(f);
+      _stagedObjectUrls.push(URL.createObjectURL(f));
+    }
+    _renderStagedPreviews();
+  }
+
+  function _renderStagedPreviews() {
+    const bar = document.getElementById('attachment-staging');
+    if (!_stagedFiles.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+    bar.style.display = 'flex';
+    bar.innerHTML = _stagedObjectUrls.map((url, i) =>
+      '<div class="attachment-thumb-wrap">' +
+        '<img class="attachment-thumb" src="' + url + '" alt="">' +
+        '<button class="attachment-remove" data-idx="' + i + '" title="Remove">\u00d7</button>' +
+      '</div>'
+    ).join('') +
+    '<span class="attachment-count">' + _stagedFiles.length + '/4</span>';
+
+    bar.querySelectorAll('.attachment-remove').forEach(btn => {
+      btn.addEventListener('click', () => _removeStagedFile(parseInt(btn.dataset.idx)));
+    });
+  }
+
+  function _removeStagedFile(idx) {
+    URL.revokeObjectURL(_stagedObjectUrls[idx]);
+    _stagedFiles.splice(idx, 1);
+    _stagedObjectUrls.splice(idx, 1);
+    _renderStagedPreviews();
+  }
+
+  /* ── Lightbox ── */
+  function _openLightbox(src) {
+    _lightboxScale = 1;
+    const overlay = document.getElementById('lightbox');
+    const img = document.getElementById('lightbox-img');
+    img.src = src;
+    img.style.transform = 'scale(1)';
+    document.getElementById('lightbox-zoom-level').textContent = '100%';
+    overlay.classList.add('open');
+  }
+
+  function _closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+    _lightboxScale = 1;
+  }
+
+  function _lightboxZoom(delta) {
+    _lightboxScale = Math.min(5, Math.max(0.25, _lightboxScale + delta));
+    document.getElementById('lightbox-img').style.transform = 'scale(' + _lightboxScale + ')';
+    document.getElementById('lightbox-zoom-level').textContent = Math.round(_lightboxScale * 100) + '%';
   }
 
   return { init };

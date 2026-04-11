@@ -131,7 +131,7 @@
       <div class="chat-messages" id="chat-messages">
         <div class="chat-empty">Select a friend or channel to start chatting</div>
       </div>
-      <input type="file" id="gif-upload-input" accept="image/gif,image/*" style="display:none">
+      <input type="file" id="gif-upload-input" accept="image/*" multiple style="display:none">
       <div class="chat-input-bar" id="chat-input-bar" style="display:none">
         <!-- Emoji/GIF Picker panel -->
         <div class="picker-panel" id="picker-panel" style="display:none">
@@ -142,6 +142,8 @@
           <div class="picker-tab-content" id="picker-emoji-tab"></div>
           <div class="picker-tab-content" id="picker-gif-tab" style="display:none"></div>
         </div>
+        <!-- Attachment staging area -->
+        <div class="attachment-staging" id="attachment-staging" style="display:none"></div>
         <div class="reply-bar" id="reply-bar" style="display:none">
           <span class="reply-label">Replying to <strong id="reply-to-name"></strong>: <span id="reply-to-preview"></span></span>
           <button class="reply-cancel" id="reply-cancel" title="Cancel reply">&#x2715;</button>
@@ -211,6 +213,38 @@
         <button class="btn" id="cancel-channel-btn">Cancel</button>
         <button class="btn btn-primary" id="confirm-channel-btn">Create</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Delete / Confirm Modal -->
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal confirm-modal">
+      <h3 class="confirm-modal-title">Delete Message</h3>
+      <div class="confirm-msg-card">
+        <div class="confirm-msg-avatar"></div>
+        <div class="confirm-msg-info">
+          <div class="confirm-msg-author"></div>
+          <div class="confirm-msg-text"></div>
+        </div>
+      </div>
+      <p class="confirm-modal-note">This action cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="btn" id="confirm-modal-cancel">Cancel</button>
+        <button class="btn confirm-modal-ok" id="confirm-modal-ok">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lightbox -->
+  <div id="lightbox" class="lightbox-overlay">
+    <button class="lightbox-close" id="lightbox-close" title="Close">✕</button>
+    <div class="lightbox-controls">
+      <button class="lightbox-ctrl-btn" id="lightbox-zoom-out" title="Zoom out">−</button>
+      <span class="lightbox-zoom-level" id="lightbox-zoom-level">100%</span>
+      <button class="lightbox-ctrl-btn" id="lightbox-zoom-in" title="Zoom in">+</button>
+    </div>
+    <div class="lightbox-img-wrap">
+      <img class="lightbox-img" id="lightbox-img" src="" alt="">
     </div>
   </div>
 
