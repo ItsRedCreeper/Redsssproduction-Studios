@@ -12,6 +12,7 @@ const Messenger = (() => {
   let chatUnsub = null;
   let currentChat = null;   // { type: 'dm', friendUid } | { type: 'channel', serverId, channelId }
   let currentServerId = null;
+  let currentServerOwner = null;
 
   // Profile cache — uid → { username, avatar, effectiveStatus }
   const profileCache = new Map();
@@ -783,9 +784,14 @@ const Messenger = (() => {
     db.collection('servers').doc(serverId).collection('channels')
       .orderBy('name')
       .onSnapshot(snap => {
+        let docs = [];
+        snap.forEach(d => docs.push(d));
+        const allHaveOrder = docs.length > 0 && docs.every(d => d.data().order !== undefined);
+        if (allHaveOrder) docs.sort((a, b) => a.data().order - b.data().order);
+
         const list = document.getElementById('channel-list');
         list.innerHTML = '';
-        snap.forEach(doc => {
+        docs.forEach(doc => {
           const ch = doc.data();
           const el = document.createElement('div');
           el.className = 'channel-item';
@@ -794,7 +800,7 @@ const Messenger = (() => {
           el.addEventListener('click', () => _openPreviewChannel(serverId, doc.id, ch.name));
           list.appendChild(el);
         });
-        if (!snap.empty) _openPreviewChannel(serverId, snap.docs[0].id, snap.docs[0].data().name);
+        if (docs.length > 0) _openPreviewChannel(serverId, docs[0].id, docs[0].data().name);
       });
   }
 
@@ -851,6 +857,7 @@ const Messenger = (() => {
 
   function openServer(serverId, serverData) {
     currentServerId = serverId;
+    currentServerOwner = serverData.owner || null;
     _hidePreviewBanner();
 
     document.querySelectorAll('.server-icon').forEach(s => s.classList.remove('active'));
@@ -882,24 +889,59 @@ const Messenger = (() => {
   }
 
   function loadChannels(serverId) {
+    const isOwner = !!(currentUser && currentUser.uid === currentServerOwner);
     db.collection('servers').doc(serverId).collection('channels')
       .orderBy('name')
       .onSnapshot(snap => {
+        // Sort by 'order' if set, else keep name order
+        let docs = [];
+        snap.forEach(d => docs.push(d));
+        const allHaveOrder = docs.length > 0 && docs.every(d => d.data().order !== undefined);
+        if (allHaveOrder) docs.sort((a, b) => a.data().order - b.data().order);
+
         const list = document.getElementById('channel-list');
         list.innerHTML = '';
-        snap.forEach(doc => {
+        docs.forEach((doc, idx) => {
           const ch = doc.data();
           const el = document.createElement('div');
           el.className = 'channel-item';
           el.dataset.id = doc.id;
-          el.innerHTML = '<span class="channel-hash">#</span> ' + esc(ch.name);
-          el.addEventListener('click', () => openChannel(serverId, doc.id, ch.name));
+
+          let orderBtns = '';
+          if (isOwner) {
+            const upBtn = idx > 0 ? '<button class="ch-order-btn ch-up" data-idx="' + idx + '" title="Move up">↑</button>' : '';
+            const dnBtn = idx < docs.length - 1 ? '<button class="ch-order-btn ch-dn" data-idx="' + idx + '" title="Move down">↓</button>' : '';
+            orderBtns = '<span class="ch-order-btns">' + upBtn + dnBtn + '</span>';
+          }
+          el.innerHTML = '<span class="channel-hash">#</span> ' + esc(ch.name) + orderBtns;
+          el.addEventListener('click', e => {
+            if (e.target.classList.contains('ch-order-btn')) return;
+            openChannel(serverId, doc.id, ch.name);
+          });
           list.appendChild(el);
         });
 
+        if (isOwner) {
+          list.querySelectorAll('.ch-order-btn').forEach(btn => {
+            btn.addEventListener('click', async e => {
+              e.stopPropagation();
+              const idx = parseInt(btn.dataset.idx);
+              const swapIdx = btn.classList.contains('ch-up') ? idx - 1 : idx + 1;
+              // Assign base order from current positions, then swap
+              const ordered = docs.map((d, i) => ({ id: d.id, order: d.data().order !== undefined ? d.data().order : i }));
+              [ordered[idx], ordered[swapIdx]] = [ordered[swapIdx], ordered[idx]];
+              const batch = db.batch();
+              ordered.forEach((item, i) => {
+                batch.update(db.collection('servers').doc(serverId).collection('channels').doc(item.id), { order: i });
+              });
+              await batch.commit().catch(() => showToast('Failed to reorder.', 'error'));
+            });
+          });
+        }
+
         // Auto-open first channel
         if (!snap.empty && !currentChat) {
-          const first = snap.docs[0];
+          const first = docs[0];
           openChannel(serverId, first.id, first.data().name);
         }
       });
@@ -914,8 +956,10 @@ const Messenger = (() => {
     }
 
     try {
+      const existingSnap = await db.collection('servers').doc(currentServerId).collection('channels').get();
       await db.collection('servers').doc(currentServerId).collection('channels').add({
         name,
+        order: existingSnap.size,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       document.getElementById('channel-name-input').value = '';
@@ -1036,11 +1080,15 @@ const Messenger = (() => {
       const initial = (m.username || 'U').charAt(0).toUpperCase();
       const avatarHtml = m.avatar ? '<img src="' + esc(m.avatar) + '" alt="">' : initial;
       const eStatus = _resolveStatus(m);
+      const activity = _resolveActivity(m, eStatus);
       return '<div class="member-item">' +
         '<div class="member-avatar">' + avatarHtml +
           '<span class="status-dot ' + eStatus + '"></span>' +
         '</div>' +
-        '<span class="member-name">' + esc(m.username) + '</span></div>';
+        '<div class="member-info">' +
+          '<span class="member-name">' + esc(m.username) + '</span>' +
+          '<span class="member-activity">' + esc(activity) + '</span>' +
+        '</div></div>';
     }).join('');
   }
 
@@ -1242,6 +1290,7 @@ const Messenger = (() => {
       let rText = (data.replyTo.text || '').slice(0, 100);
       if (!rText) {
         if (data.replyTo.gifUrl) rText = '[GIF]';
+        else if (data.replyTo.videoUrl) rText = '[video]';
         else if (data.replyTo.images && data.replyTo.images.length)
           rText = data.replyTo.images.length === 1 ? '[image]' : '[' + data.replyTo.images.length + ' images]';
         else rText = '[message]';
@@ -1249,8 +1298,10 @@ const Messenger = (() => {
         rText += ' [+' + (data.replyTo.images.length === 1 ? 'image' : data.replyTo.images.length + ' images') + ']';
       } else if (data.replyTo.gifUrl) {
         rText += ' [GIF]';
+      } else if (data.replyTo.videoUrl) {
+        rText += ' [video]';
       }
-      replyQuoteHTML = '<div class="msg-reply-quote"><strong>' + rAuthor + '</strong>: ' + esc(rText) + '</div>';
+      replyQuoteHTML = '<div class="msg-reply-quote" data-reply-id="' + esc(data.replyTo.docId) + '"><strong>' + rAuthor + '</strong>: ' + esc(rText) + '</div>';
     }
 
     // Action buttons — disable edit if images-only message
@@ -1316,6 +1367,12 @@ const Messenger = (() => {
       });
     }
 
+    // Reply quote click → jump to original message
+    const quoteEl = div.querySelector('.msg-reply-quote[data-reply-id]');
+    if (quoteEl) {
+      quoteEl.addEventListener('click', () => _jumpToMessage(quoteEl.dataset.replyId));
+    }
+
     return div;
   }
 
@@ -1328,6 +1385,7 @@ const Messenger = (() => {
     let displayText = data.text || '';
     if (!displayText) {
       if (data.gifUrl) displayText = '[GIF]';
+      else if (data.videoUrl) displayText = '[video]';
       else if (data.images && data.images.length)
         displayText = data.images.length === 1 ? '[image]' : '[' + data.images.length + ' images]';
       else displayText = '[message]';
@@ -1335,6 +1393,8 @@ const Messenger = (() => {
       displayText += ' [+' + (data.images.length === 1 ? 'image' : data.images.length + ' images') + ']';
     } else if (data.gifUrl) {
       displayText += ' [GIF]';
+    } else if (data.videoUrl) {
+      displayText += ' [video]';
     }
 
     const preview = displayText.slice(0, 80) + (displayText.length > 80 ? '\u2026' : '');
@@ -1344,7 +1404,8 @@ const Messenger = (() => {
       text: data.text || '',
       docId,
       images: data.images || [],
-      gifUrl: data.gifUrl || ''
+      gifUrl: data.gifUrl || '',
+      videoUrl: data.videoUrl || ''
     };
     document.getElementById('reply-to-name').textContent = username;
     document.getElementById('reply-to-preview').textContent = preview;
@@ -1357,6 +1418,14 @@ const Messenger = (() => {
     document.getElementById('reply-bar').style.display = 'none';
     document.getElementById('reply-to-name').textContent = '';
     document.getElementById('reply-to-preview').textContent = '';
+  }
+
+  function _jumpToMessage(docId) {
+    const target = document.querySelector('[data-msg-id="' + docId + '"]');
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('msg-highlight');
+    setTimeout(() => target.classList.remove('msg-highlight'), 2000);
   }
 
   /* ── Edit / Delete ── */
@@ -1478,6 +1547,7 @@ const Messenger = (() => {
     let preview = (data && data.text) || '';
     if (!preview && data && data.images && data.images.length) preview = '[image]';
     if (!preview && data && data.gifUrl) preview = '[GIF]';
+    if (!preview && data && data.videoUrl) preview = '[video]';
 
     _showConfirm({
       title: 'Delete Message',

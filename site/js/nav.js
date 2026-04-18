@@ -39,6 +39,7 @@ const Nav = (() => {
         _setupEvents(user, profile);
         _setupPresence(user, profile);
         _listenNotifications(user);
+        _listenFriendRequests(user);
 
         // Track activity
         db.collection('users').doc(user.uid).update({
@@ -283,6 +284,23 @@ const Nav = (() => {
       await db.collection('users').doc(user.uid)
         .collection('notifications').doc(notifId).update({ read: true });
     } catch { /* ignore */ }
+  }
+
+  function _listenFriendRequests(user) {
+    db.collection('friend_requests')
+      .where('to', '==', user.uid)
+      .where('status', '==', 'pending')
+      .onSnapshot(snap => {
+        const badge = document.getElementById('friend-req-badge');
+        if (!badge) return;
+        const count = snap.size;
+        if (count > 0) {
+          badge.textContent = count > 9 ? '9+' : count;
+          badge.style.display = 'flex';
+        } else {
+          badge.style.display = 'none';
+        }
+      });
   }
 
   /* ── Online presence + Auto status (visibility, idle) ── */

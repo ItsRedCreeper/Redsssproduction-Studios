@@ -161,9 +161,30 @@ a.nav-link:hover { text-decoration: none; }
   transition: var(--transition);
   flex-shrink: 0;
   text-decoration: none;
+  position: relative;
 }
 .nav-friends-btn:hover { color: var(--text); background: var(--bg-hover); text-decoration: none; }
 .nav-friends-btn.active { color: var(--red); background: var(--bg-tertiary); }
+
+/* Friend request badge on nav icon */
+.friend-req-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ed4245;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 99px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  border: 2px solid var(--bg-primary);
+  pointer-events: none;
+}
 
 .notif-bell.ringing {
   animation: ring .4s ease infinite alternate;
@@ -1298,24 +1319,42 @@ a.nav-link:hover { text-decoration: none; }
   font-size: 15px;
 }
 
-/* Friend Profile Card */
-.friend-profile {
-  text-align: left;
+/* Friend Profile Card — redesigned */
+.friend-profile-card {
   width: 100%;
-  padding: 0;
+  max-width: 480px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.friend-profile-banner {
+  height: 80px;
+  background: linear-gradient(135deg, var(--red-dark) 0%, #8b0000 100%);
+}
+
+.friend-profile-body {
+  padding: 0 24px 24px;
+  position: relative;
+}
+
+.friend-profile-avatar-wrap {
+  margin-top: -44px;
+  margin-bottom: 12px;
 }
 
 .friend-profile-avatar {
-  width: 96px;
-  height: 96px;
+  width: 88px;
+  height: 88px;
   border-radius: 50%;
   background: var(--red-dark);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 0 16px 0;
   position: relative;
   overflow: visible;
+  border: 4px solid var(--bg-secondary);
 }
 
 .friend-profile-avatar img {
@@ -1331,30 +1370,107 @@ a.nav-link:hover { text-decoration: none; }
   bottom: 2px;
   right: 2px;
   border-width: 3px;
-  border-color: var(--bg-tertiary);
+  border-color: var(--bg-secondary);
 }
 
 .friend-profile-initial {
-  font-size: 36px;
-  font-weight: 600;
+  font-size: 32px;
+  font-weight: 700;
   color: #fff;
+}
+
+.friend-profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.friend-profile-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .friend-profile-name {
   font-size: 22px;
   font-weight: 700;
-  margin-bottom: 6px;
+  margin: 0;
 }
 
-.friend-profile-status {
-  font-size: 15px;
+.friend-status-pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 99px;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+}
+.friend-status-pill.online  { background: rgba(87,242,135,.15); color: var(--status-online); }
+.friend-status-pill.away    { background: rgba(250,168,26,.15);  color: var(--status-away); }
+.friend-status-pill.dnd     { background: rgba(237,66,69,.15);   color: var(--status-dnd); }
+.friend-status-pill.offline { background: rgba(116,127,141,.15); color: var(--text-muted); }
+
+.friend-profile-activity {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
   color: var(--text-secondary);
-  margin-bottom: 16px;
+}
+.friend-profile-activity svg { flex-shrink: 0; opacity: .7; }
+
+.friend-profile-bio-card {
+  background: var(--bg-primary);
+  border-radius: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+}
+.friend-profile-bio-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.friend-profile-bio-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.friend-profile-meta {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 100%;
+  font-size: 13px;
+  color: var(--text-muted);
 }
+.friend-profile-meta svg { flex-shrink: 0; }
+
+.friend-profile-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.friend-join-action-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.friend-join-action-btn:hover { background: var(--bg-primary); }
+
+.friend-unfriend-btn {
+  background: transparent;
+  border: 1px solid rgba(237,66,69,.5);
+  color: var(--red);
+  margin-left: auto;
+}
+.friend-unfriend-btn:hover { background: rgba(237,66,69,.1); }
 
 .status-dot-inline {
   display: inline-block;
@@ -1368,25 +1484,9 @@ a.nav-link:hover { text-decoration: none; }
 .status-dot-inline.dnd     { background: var(--status-dnd); }
 .status-dot-inline.offline { background: var(--status-offline); }
 
-.friend-profile-joined {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-bottom: 20px;
-}
-
-.friend-profile-bio {
-  font-size: 14px;
-  color: var(--text-secondary);
-  text-align: center;
-  margin: 0 0 12px;
-  max-width: 300px;
-  word-break: break-word;
-}
-
-.friend-profile-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
+/* Sent requests section */
+.friends-sent {
+  margin-bottom: 8px;
 }
 
 /* ───────────────────────────────────────────────
@@ -1599,6 +1699,27 @@ body.messenger-page #app {
 .channel-item:hover { background: var(--bg-hover); color: var(--text); }
 .channel-item.active { background: var(--bg-tertiary); color: var(--text); }
 .channel-hash { color: var(--text-muted); font-weight: 700; }
+
+/* Channel reorder buttons (owner only) */
+.ch-order-btns {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity .15s;
+}
+.channel-item:hover .ch-order-btns { opacity: 1; }
+.ch-order-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.ch-order-btn:hover { background: var(--bg-tertiary); color: var(--text); }
 
 /* Add friend form */
 .add-friend-form {
@@ -1841,7 +1962,9 @@ body.messenger-page #app {
   border-width: 1.5px;
 }
 
+.member-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .member-name { font-size: 13px; color: var(--text-secondary); }
+.member-activity { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .member-item.online .member-name { color: var(--text); }
 
 /* ─── Messenger Modals ─── */
@@ -2154,6 +2277,17 @@ body.messenger-page #app {
   white-space: nowrap;
 }
 .msg-reply-quote strong { color: var(--text-primary); }
+.msg-reply-quote[data-reply-id]:hover { opacity: .75; }
+
+/* Message jump highlight animation */
+@keyframes msgHighlight {
+  0%   { background: rgba(255, 59, 59, .22); }
+  100% { background: transparent; }
+}
+.msg-highlight {
+  animation: msgHighlight 2s ease forwards;
+  border-radius: 6px;
+}
 
 /* ── Inline edit ── */
 .msg-edit-wrapper {

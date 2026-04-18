@@ -26,6 +26,7 @@ const Friends = (() => {
     // Load data
     _loadFriends();
     _loadPendingRequests();
+    _loadSentRequests();
   }
 
   /* ── Toggle Add Friend panel ── */
@@ -138,15 +139,6 @@ const Friends = (() => {
         status: 'pending'
       });
 
-      // Notify target
-      await db.collection('users').doc(targetUid).collection('notifications').add({
-        message: userProfile.username + ' sent you a friend request!',
-        type: 'friend_request',
-        fromUid: currentUser.uid,
-        read: false,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-
       btnEl.textContent = 'Sent';
       btnEl.disabled = true;
       showToast('Friend request sent!', 'success');
@@ -221,6 +213,51 @@ const Friends = (() => {
       await db.collection('friend_requests').doc(requestId).update({ status: 'denied' });
       showToast('Request denied.', 'info');
     } catch { showToast('Failed.', 'error'); }
+  }
+
+  /* ── Load sent requests (real-time) ── */
+  function _loadSentRequests() {
+    db.collection('friend_requests')
+      .where('from', '==', currentUser.uid)
+      .where('status', '==', 'pending')
+      .onSnapshot(snap => {
+        const container = document.getElementById('sent-list');
+        const badge = document.getElementById('sent-count');
+
+        if (badge) {
+          badge.textContent = snap.size;
+          badge.style.display = snap.size > 0 ? 'inline-flex' : 'none';
+        }
+
+        if (snap.empty) {
+          container.innerHTML = '<div class="friends-search-hint">No sent requests</div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        snap.forEach(doc => {
+          const req = doc.data();
+          const div = document.createElement('div');
+          div.className = 'pending-item';
+          div.innerHTML =
+            '<span>' + _esc(req.toUsername) + '</span>' +
+            '<div class="pending-actions">' +
+              '<button class="pending-deny" data-id="' + doc.id + '">Cancel</button>' +
+            '</div>';
+          container.appendChild(div);
+        });
+
+        container.querySelectorAll('.pending-deny').forEach(btn => {
+          btn.addEventListener('click', () => _cancelFriendRequest(btn.dataset.id));
+        });
+      });
+  }
+
+  async function _cancelFriendRequest(requestId) {
+    try {
+      await db.collection('friend_requests').doc(requestId).update({ status: 'cancelled' });
+      showToast('Request cancelled.', 'info');
+    } catch { showToast('Failed to cancel.', 'error'); }
   }
 
   /* ── Load friends list (real-time, per-friend listeners) ── */
@@ -415,27 +452,59 @@ const Friends = (() => {
     const activity = _resolveActivity(f, eStatus);
     const joined = f.createdAt
       ? new Date(f.createdAt.toDate()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-      : 'Unknown';
+      : null;
 
-    // Show Join Friend button if they're in a game
     const activityObj = f.activity || {};
     const showJoin = activityObj.page === 'games' && activityObj.game;
 
+    // Activity icon SVG
+    let activityIcon = '';
+    if (activityObj.page === 'games' && activityObj.game) {
+      activityIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/><path d="M7 12h3"/><path d="M14 10v4"/><path d="M17 12h.01"/></svg>';
+    } else if (activityObj.page === 'messenger') {
+      activityIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    } else {
+      activityIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    }
+
+    const statusLabels = { online: 'Online', away: 'Away', dnd: 'Do Not Disturb', offline: 'Offline' };
+    const statusLabel = statusLabels[eStatus] || 'Offline';
+
     main.innerHTML =
-      '<div class="friend-profile">' +
-        '<div class="friend-profile-avatar">' + avatarHtml +
-          '<span class="status-dot ' + eStatus + '"></span>' +
-        '</div>' +
-        '<h2 class="friend-profile-name">' + _esc(f.username) + '</h2>' +
-        '<div class="friend-profile-status">' +
-          '<span class="status-dot-inline ' + eStatus + '"></span>' +
-          _esc(activity) +
-        '</div>' +
-        (f.description ? '<div class="friend-profile-bio">' + _esc(f.description) + '</div>' : '') +
-        '<div class="friend-profile-joined">Member since ' + joined + '</div>' +
-        '<div class="friend-profile-actions">' +
-          '<button class="btn btn-primary" id="friend-message-btn">Message</button>' +
-          (showJoin ? '<button class="btn" id="friend-join-btn" style="border:1px solid var(--border);color:var(--text)">Join Friend</button>' : '') +
+      '<div class="friend-profile-card">' +
+        '<div class="friend-profile-banner"></div>' +
+        '<div class="friend-profile-body">' +
+          '<div class="friend-profile-avatar-wrap">' +
+            '<div class="friend-profile-avatar">' + avatarHtml +
+              '<span class="status-dot ' + eStatus + '"></span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="friend-profile-info">' +
+            '<div class="friend-profile-top">' +
+              '<h2 class="friend-profile-name">' + _esc(f.username) + '</h2>' +
+              '<span class="friend-status-pill ' + eStatus + '">' + statusLabel + '</span>' +
+            '</div>' +
+            '<div class="friend-profile-activity">' +
+              activityIcon + '<span>' + _esc(activity) + '</span>' +
+            '</div>' +
+            (f.description
+              ? '<div class="friend-profile-bio-card">' +
+                  '<div class="friend-profile-bio-label">About</div>' +
+                  '<div class="friend-profile-bio-text">' + _esc(f.description) + '</div>' +
+                '</div>'
+              : '') +
+            (joined
+              ? '<div class="friend-profile-meta">' +
+                  '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' +
+                  '<span>Member since ' + joined + '</span>' +
+                '</div>'
+              : '') +
+            '<div class="friend-profile-actions">' +
+              '<button class="btn btn-primary" id="friend-message-btn">Message</button>' +
+              (showJoin ? '<button class="btn friend-join-action-btn" id="friend-join-btn">Join Game</button>' : '') +
+              '<button class="btn friend-unfriend-btn" id="friend-unfriend-btn">Unfriend</button>' +
+            '</div>' +
+          '</div>' +
         '</div>' +
       '</div>';
 
@@ -447,6 +516,30 @@ const Friends = (() => {
       document.getElementById('friend-join-btn').addEventListener('click', () => {
         window.location.href = 'games.html?join=' + uid;
       });
+    }
+
+    document.getElementById('friend-unfriend-btn').addEventListener('click', () => {
+      _unfriend(uid, f.username);
+    });
+  }
+
+  async function _unfriend(uid, username) {
+    if (!confirm('Unfriend ' + username + '? This cannot be undone.')) return;
+    try {
+      const batch = db.batch();
+      batch.update(db.collection('users').doc(currentUser.uid), {
+        friends: firebase.firestore.FieldValue.arrayRemove(uid)
+      });
+      batch.update(db.collection('users').doc(uid), {
+        friends: firebase.firestore.FieldValue.arrayRemove(currentUser.uid)
+      });
+      await batch.commit();
+      document.getElementById('friends-main').innerHTML =
+        '<div class="friends-empty">Select a friend to view their profile</div>';
+      showToast('Unfriended ' + username + '.', 'info');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to unfriend.', 'error');
     }
   }
 
