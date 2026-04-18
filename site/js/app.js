@@ -53,6 +53,7 @@ const App = (() => {
         _renderUserUI();
         _setupPresence();
         _listenNotifications();
+        _listenFriendRequests();
         _loadFeaturedGames();
         // Delay stats so the current user's presence write completes first;
         // then refresh every 30s to stay live
@@ -312,6 +313,20 @@ const App = (() => {
       await db.collection('users').doc(currentUser.uid)
         .collection('notifications').doc(notifId).update({ read: true });
     } catch { /* ignore */ }
+  }
+
+  /* ── Friend request badge ── */
+  function _listenFriendRequests() {
+    db.collection('friend_requests')
+      .where('to', '==', currentUser.uid)
+      .onSnapshot(snap => {
+        const badge = document.getElementById('friend-req-badge');
+        if (!badge) return;
+        let count = 0;
+        snap.forEach(d => { if (d.data().status === 'pending') count++; });
+        badge.textContent = count > 9 ? '9+' : count;
+        badge.style.display = count > 0 ? 'flex' : 'none';
+      });
   }
 
   /* ── Featured games on home page ── */
