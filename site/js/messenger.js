@@ -33,6 +33,11 @@ const Messenger = (() => {
   const _serverImages      = new Map();
   // Server Video library
   const _serverVideoUnsubs = new Map();
+  // DM media libraries — all friend convos
+  const _dmMediaImages = new Map(); // convoId → [{id, url, ...}]
+  const _dmMediaVideos = new Map();
+  const _dmMediaGifs   = new Map();
+  const _dmMediaUnsubs = new Map(); // convoId → combined unsub fn
   const _serverVideos      = new Map();
   // Staged video
   let _stagedVideo    = null;
@@ -245,10 +250,15 @@ const Messenger = (() => {
         _rtdbDMListeners.forEach(off => off());
         _rtdbDMListeners.clear();
         _dmProfiles.clear();
+        _syncDMMediaListeners(new Set());
         document.getElementById('friends-list').innerHTML =
           '<div class="sidebar-empty">No friends yet</div>';
         return;
       }
+
+      // Sync DM media listeners for all friend convos
+      const _dmConvoIds = new Set(friendUids.map(uid => [currentUser.uid, uid].sort().join('_')));
+      _syncDMMediaListeners(_dmConvoIds);
 
       // Remove stale listeners
       _dmFriendListeners.forEach((unsub, uid) => {
@@ -1223,6 +1233,15 @@ const Messenger = (() => {
       if (currentChat.type === 'dm') {
         const convoId = [currentUser.uid, currentChat.friendUid].sort().join('_');
         await db.collection('dms').doc(convoId).collection('messages').add(msgData);
+        // Save images + videos to DM library so both participants can reuse them in the picker
+        if (imageUrls.length) {
+          const imgCol = db.collection('dms').doc(convoId).collection('images');
+          imageUrls.forEach(url => imgCol.add({ url, uploadedBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {}));
+        }
+        if (videoUrl) {
+          db.collection('dms').doc(convoId).collection('videos')
+            .add({ url: videoUrl, uploadedBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+        }
 
         // Notify friend
         const notifText = videoUrl
@@ -1301,7 +1320,18 @@ const Messenger = (() => {
       } else if (data.replyTo.videoUrl) {
         rText += ' [video]';
       }
-      replyQuoteHTML = '<div class="msg-reply-quote" data-reply-id="' + esc(data.replyTo.docId) + '"><strong>' + rAuthor + '</strong>: ' + esc(rText) + '</div>';
+      replyQuoteHTML = (function() {
+        const replyCached = profileCache.get(data.replyTo.uid);
+        const replyAvatar = (replyCached && replyCached.avatar)
+          ? '<img src="' + esc(replyCached.avatar) + '" alt="">'
+          : esc((data.replyTo.username || 'U').charAt(0).toUpperCase());
+        return '<div class="msg-reply-quote" data-reply-id="' + esc(data.replyTo.docId) + '">' +
+          '<span class="reply-curve-line"></span>' +
+          '<span class="reply-avatar-mini">' + replyAvatar + '</span>' +
+          '<span class="reply-name">' + rAuthor + '</span>' +
+          '<span class="reply-text">' + esc(rText) + '</span>' +
+          '</div>';
+      })();
     }
 
     // Action buttons — disable edit if images-only message
@@ -1636,11 +1666,8 @@ const Messenger = (() => {
   function _allGifs() {
     const seen = new Set();
     const result = [];
-    _serverGifs.forEach(gifs => {
-      gifs.forEach(g => {
-        if (!seen.has(g.url)) { seen.add(g.url); result.push(g); }
-      });
-    });
+    _serverGifs.forEach(gifs => gifs.forEach(g => { if (!seen.has(g.url)) { seen.add(g.url); result.push(g); } }));
+    _dmMediaGifs.forEach(gifs => gifs.forEach(g => { if (!seen.has(g.url)) { seen.add(g.url); result.push(g); } }));
     return result;
   }
 
@@ -2030,25 +2057,53 @@ const Messenger = (() => {
     });
   }
 
+  function _syncDMMediaListeners(convoIds) {
+    _dmMediaUnsubs.forEach((unsub, cid) => {
+      if (!convoIds.has(cid)) {
+        unsub();
+        _dmMediaUnsubs.delete(cid);
+        _dmMediaImages.delete(cid);
+        _dmMediaVideos.delete(cid);
+        _dmMediaGifs.delete(cid);
+      }
+    });
+    convoIds.forEach(cid => {
+      if (_dmMediaUnsubs.has(cid)) return;
+      const unsubImgs = db.collection('dms').doc(cid).collection('images')
+        .orderBy('createdAt', 'desc').limit(100)
+        .onSnapshot(snap => {
+          _dmMediaImages.set(cid, snap.docs.map(d => ({ id: d.id, ...d.data() })));
+          if (_pickerOpen && _pickerTab === 'images') _renderImagesTab();
+        });
+      const unsubVids = db.collection('dms').doc(cid).collection('videos')
+        .orderBy('createdAt', 'desc').limit(50)
+        .onSnapshot(snap => {
+          _dmMediaVideos.set(cid, snap.docs.map(d => ({ id: d.id, ...d.data() })));
+          if (_pickerOpen && _pickerTab === 'videos') _renderVideosTab();
+        });
+      const unsubGifs = db.collection('dms').doc(cid).collection('gifs')
+        .orderBy('createdAt', 'desc').limit(100)
+        .onSnapshot(snap => {
+          _dmMediaGifs.set(cid, snap.docs.map(d => ({ id: d.id, ...d.data() })));
+          if (_pickerOpen && _pickerTab === 'gif') _renderGifTab();
+        });
+      _dmMediaUnsubs.set(cid, () => { unsubImgs(); unsubVids(); unsubGifs(); });
+    });
+  }
+
   function _allImages() {
     const seen = new Set();
     const result = [];
-    _serverImages.forEach(imgs => {
-      imgs.forEach(i => {
-        if (!seen.has(i.url)) { seen.add(i.url); result.push(i); }
-      });
-    });
+    _serverImages.forEach(imgs => imgs.forEach(i => { if (!seen.has(i.url)) { seen.add(i.url); result.push(i); } }));
+    _dmMediaImages.forEach(imgs => imgs.forEach(i => { if (!seen.has(i.url)) { seen.add(i.url); result.push(i); } }));
     return result;
   }
 
   function _allVideos() {
     const seen = new Set();
     const result = [];
-    _serverVideos.forEach(vids => {
-      vids.forEach(v => {
-        if (!seen.has(v.url)) { seen.add(v.url); result.push(v); }
-      });
-    });
+    _serverVideos.forEach(vids => vids.forEach(v => { if (!seen.has(v.url)) { seen.add(v.url); result.push(v); } }));
+    _dmMediaVideos.forEach(vids => vids.forEach(v => { if (!seen.has(v.url)) { seen.add(v.url); result.push(v); } }));
     return result;
   }
 

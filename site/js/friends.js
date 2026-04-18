@@ -8,6 +8,9 @@ const Friends = (() => {
   let userProfile = null;
   let friendProfiles = [];
   let _myFriendUids = []; // keep in sync with live listener
+  let _selectedFriendUid = null; // currently open profile
+  let _selectedFriendTab = 'about'; // active tab
+  let _showOnlineOnly = false;
   const _rtdbOffline = new Set(); // uids RTDB has confirmed offline (takes priority over Firestore)
 
   function init(user, profile) {
@@ -22,6 +25,16 @@ const Friends = (() => {
 
     // Filter friends
     document.getElementById('friends-filter').addEventListener('input', _filterFriends);
+
+    // Online-only toggle
+    const onlineToggle = document.getElementById('online-only-toggle');
+    if (onlineToggle) {
+      onlineToggle.addEventListener('click', () => {
+        _showOnlineOnly = !_showOnlineOnly;
+        onlineToggle.classList.toggle('active', _showOnlineOnly);
+        _renderFriendsList(friendProfiles.slice());
+      });
+    }
 
     // Load data
     _loadFriends();
@@ -313,6 +326,8 @@ const Friends = (() => {
             friendProfiles.push(profile);
           }
           _renderFriendsList(friendProfiles.slice());
+          // Live-update the profile panel if this friend is currently open
+          if (uid === _selectedFriendUid) _updateFriendProfileLive(uid);
         });
         _friendListeners.set(uid, unsub);
         // RTDB presence listener — detects hard browser close / shutdown
@@ -379,9 +394,21 @@ const Friends = (() => {
   function _renderFriendsList(profiles) {
     const list = document.getElementById('friends-list');
 
+    // Online-only filter
+    if (_showOnlineOnly) {
+      profiles = profiles.filter(f => _resolveStatus(f) !== 'offline');
+    }
+
     // Sort: online first
     const order = { online: 0, away: 1, dnd: 2, offline: 3 };
     profiles.sort((a, b) => (order[_resolveStatus(a)] || 3) - (order[_resolveStatus(b)] || 3));
+
+    if (!profiles.length) {
+      list.innerHTML = _showOnlineOnly
+        ? '<div class="friends-search-hint">No friends online</div>'
+        : '<div class="friends-search-hint">No friends yet. Add some!</div>';
+      return;
+    }
 
     list.innerHTML = profiles.map(f => {
       const initial = (f.username || 'U').charAt(0).toUpperCase();
@@ -402,6 +429,7 @@ const Friends = (() => {
     }).join('');
 
     list.querySelectorAll('.friend-item').forEach(el => {
+      if (el.dataset.uid === _selectedFriendUid) el.classList.add('active');
       el.addEventListener('click', () => {
         list.querySelectorAll('.friend-item').forEach(f => f.classList.remove('active'));
         el.classList.add('active');
@@ -439,7 +467,53 @@ const Friends = (() => {
   }
 
   /* ── Select friend → show profile ── */
+  /* ── In-app confirm modal ── */
+  function _fShowConfirm({ title, message, confirmLabel, danger, onConfirm }) {
+    const overlay = document.getElementById('friends-confirm-modal');
+    document.getElementById('fconfirm-title').textContent = title || 'Confirm';
+    document.getElementById('fconfirm-message').textContent = message || '';
+    const okBtn = document.getElementById('fconfirm-ok');
+    okBtn.textContent = confirmLabel || 'Confirm';
+    okBtn.className = 'btn ' + (danger ? 'friend-unfriend-btn' : 'btn-primary');
+    overlay.classList.add('open');
+
+    const okNew = okBtn.cloneNode(true);
+    const cancel = document.getElementById('fconfirm-cancel');
+    const cancelNew = cancel.cloneNode(true);
+    okBtn.replaceWith(okNew);
+    cancel.replaceWith(cancelNew);
+
+    const close = () => overlay.classList.remove('open');
+    okNew.addEventListener('click', () => { close(); onConfirm(); });
+    cancelNew.addEventListener('click', close);
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); }, { once: true });
+  }
+
+  /* ── Format last seen timestamp ── */
+  function _formatLastSeen(lastSeen) {
+    let ms = null;
+    if (lastSeen && lastSeen.toDate) ms = lastSeen.toDate().getTime();
+    else if (lastSeen && lastSeen.seconds) ms = lastSeen.seconds * 1000;
+    if (ms === null) return 'recently';
+    const diff = Date.now() - ms;
+    const mins = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    if (mins < 2) return 'just now';
+    if (mins < 60) return mins + ' minute' + (mins === 1 ? '' : 's') + ' ago';
+    if (hours < 24) return hours + ' hour' + (hours === 1 ? '' : 's') + ' ago';
+    if (days < 7) return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+    return 'a while ago';
+  }
+
+  /* ── Select friend → show profile ── */
   function _selectFriend(uid) {
+    _selectedFriendUid = uid;
+    _selectedFriendTab = 'about';
+    _renderFriendProfile(uid);
+  }
+
+  function _renderFriendProfile(uid) {
     const f = friendProfiles.find(p => p.uid === uid);
     if (!f) return;
 
@@ -450,14 +524,16 @@ const Friends = (() => {
       : '<span class="friend-profile-initial">' + initial + '</span>';
     const eStatus = _resolveStatus(f);
     const activity = _resolveActivity(f, eStatus);
-    const joined = f.createdAt
-      ? new Date(f.createdAt.toDate()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-      : null;
-
     const activityObj = f.activity || {};
     const showJoin = activityObj.page === 'games' && activityObj.game;
 
-    // Activity icon SVG
+    const joined = f.createdAt
+      ? new Date(f.createdAt.toDate()).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })
+      : null;
+
+    const statusLabels = { online: 'Online', away: 'Away', dnd: 'Do Not Disturb', offline: 'Offline' };
+
+    // Activity icon
     let activityIcon = '';
     if (activityObj.page === 'games' && activityObj.game) {
       activityIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/><path d="M7 12h3"/><path d="M14 10v4"/><path d="M17 12h.01"/></svg>';
@@ -467,29 +543,38 @@ const Friends = (() => {
       activityIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
     }
 
-    const statusLabels = { online: 'Online', away: 'Away', dnd: 'Do Not Disturb', offline: 'Offline' };
-    const statusLabel = statusLabels[eStatus] || 'Offline';
-
     main.innerHTML =
       '<div class="friend-profile-card">' +
         '<div class="friend-profile-banner"></div>' +
         '<div class="friend-profile-body">' +
           '<div class="friend-profile-avatar-wrap">' +
-            '<div class="friend-profile-avatar">' + avatarHtml +
-              '<span class="status-dot ' + eStatus + '"></span>' +
+            '<div class="friend-profile-avatar" id="fp-avatar-wrap">' + avatarHtml +
+              '<span class="status-dot ' + eStatus + '" id="fp-status-dot"></span>' +
             '</div>' +
           '</div>' +
           '<div class="friend-profile-info">' +
             '<div class="friend-profile-top">' +
               '<h2 class="friend-profile-name">' + _esc(f.username) + '</h2>' +
-              '<span class="friend-status-pill ' + eStatus + '">' + statusLabel + '</span>' +
+              '<span class="friend-status-pill ' + eStatus + '" id="fp-status-pill">' + (statusLabels[eStatus] || 'Offline') + '</span>' +
             '</div>' +
             '<div class="friend-profile-activity">' +
-              activityIcon + '<span>' + _esc(activity) + '</span>' +
+              activityIcon + '<span id="fp-activity-text">' + _esc(activity) + '</span>' +
             '</div>' +
+            (eStatus === 'offline' && f.lastSeen
+              ? '<div class="friend-profile-lastseen" id="fp-last-seen">Last seen ' + _formatLastSeen(f.lastSeen) + '</div>'
+              : '<div class="friend-profile-lastseen" id="fp-last-seen" style="display:none"></div>') +
+          '</div>' +
+        '</div>' +
+        '<div class="friend-tabs">' +
+          '<button class="friend-tab' + (_selectedFriendTab === 'about' ? ' active' : '') + '" data-tab="about">About</button>' +
+          '<button class="friend-tab' + (_selectedFriendTab === 'mutual-friends' ? ' active' : '') + '" data-tab="mutual-friends">Mutual Friends</button>' +
+          '<button class="friend-tab' + (_selectedFriendTab === 'mutual-servers' ? ' active' : '') + '" data-tab="mutual-servers">Mutual Servers</button>' +
+        '</div>' +
+        '<div class="friend-tab-panels">' +
+          '<div class="friend-tab-panel' + (_selectedFriendTab === 'about' ? ' active' : '') + '" data-panel="about">' +
             (f.description
               ? '<div class="friend-profile-bio-card">' +
-                  '<div class="friend-profile-bio-label">About</div>' +
+                  '<div class="friend-profile-bio-label">Description</div>' +
                   '<div class="friend-profile-bio-text">' + _esc(f.description) + '</div>' +
                 '</div>'
               : '') +
@@ -499,48 +584,196 @@ const Friends = (() => {
                   '<span>Member since ' + joined + '</span>' +
                 '</div>'
               : '') +
+            '<div class="friend-note-card">' +
+              '<div class="friend-profile-bio-label">Note</div>' +
+              '<textarea class="friend-note-area" id="friend-note-area" maxlength="200" placeholder="Add a private note about this person..."></textarea>' +
+              '<button class="btn btn-sm friend-note-save" id="friend-note-save">Save Note</button>' +
+            '</div>' +
             '<div class="friend-profile-actions">' +
               '<button class="btn btn-primary" id="friend-message-btn">Message</button>' +
-              (showJoin ? '<button class="btn friend-join-action-btn" id="friend-join-btn">Join Game</button>' : '') +
+              '<button class="btn friend-join-action-btn" id="friend-join-btn" style="display:' + (showJoin ? '' : 'none') + '">Join Game</button>' +
               '<button class="btn friend-unfriend-btn" id="friend-unfriend-btn">Unfriend</button>' +
             '</div>' +
+          '</div>' +
+          '<div class="friend-tab-panel' + (_selectedFriendTab === 'mutual-friends' ? ' active' : '') + '" data-panel="mutual-friends">' +
+            '<div class="mutual-list" id="mutual-friends-list"><div class="friends-search-hint">Loading...</div></div>' +
+          '</div>' +
+          '<div class="friend-tab-panel' + (_selectedFriendTab === 'mutual-servers' ? ' active' : '') + '" data-panel="mutual-servers">' +
+            '<div class="mutual-list" id="mutual-servers-list"><div class="friends-search-hint">Loading...</div></div>' +
           '</div>' +
         '</div>' +
       '</div>';
 
+    // Tab switching
+    main.querySelectorAll('.friend-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _selectedFriendTab = btn.dataset.tab;
+        main.querySelectorAll('.friend-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === _selectedFriendTab));
+        main.querySelectorAll('.friend-tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === _selectedFriendTab));
+        if (_selectedFriendTab === 'mutual-friends') _loadMutualFriends(uid);
+        if (_selectedFriendTab === 'mutual-servers') _loadMutualServers(uid);
+      });
+    });
+
+    // Button actions
     document.getElementById('friend-message-btn').addEventListener('click', () => {
       window.location.href = 'messenger.html?dm=' + uid;
     });
-
-    if (showJoin) {
-      document.getElementById('friend-join-btn').addEventListener('click', () => {
-        window.location.href = 'games.html?join=' + uid;
-      });
-    }
-
+    document.getElementById('friend-join-btn').addEventListener('click', () => {
+      window.location.href = 'games.html?join=' + uid;
+    });
     document.getElementById('friend-unfriend-btn').addEventListener('click', () => {
       _unfriend(uid, f.username);
     });
+    document.getElementById('friend-note-save').addEventListener('click', () => {
+      _saveFriendNote(uid);
+    });
+
+    // Load note
+    _loadFriendNote(uid);
+
+    // If tabs other than about are active, load their content
+    if (_selectedFriendTab === 'mutual-friends') _loadMutualFriends(uid);
+    if (_selectedFriendTab === 'mutual-servers') _loadMutualServers(uid);
   }
 
-  async function _unfriend(uid, username) {
-    if (!confirm('Unfriend ' + username + '? This cannot be undone.')) return;
-    try {
-      const batch = db.batch();
-      batch.update(db.collection('users').doc(currentUser.uid), {
-        friends: firebase.firestore.FieldValue.arrayRemove(uid)
-      });
-      batch.update(db.collection('users').doc(uid), {
-        friends: firebase.firestore.FieldValue.arrayRemove(currentUser.uid)
-      });
-      await batch.commit();
-      document.getElementById('friends-main').innerHTML =
-        '<div class="friends-empty">Select a friend to view their profile</div>';
-      showToast('Unfriended ' + username + '.', 'info');
-    } catch (err) {
-      console.error(err);
-      showToast('Failed to unfriend.', 'error');
+  /* ── Live update selected friend profile (preserves tabs + note) ── */
+  function _updateFriendProfileLive(uid) {
+    const f = friendProfiles.find(p => p.uid === uid);
+    if (!f) return;
+    const eStatus = _resolveStatus(f);
+    const activity = _resolveActivity(f, eStatus);
+    const statusLabels = { online: 'Online', away: 'Away', dnd: 'Do Not Disturb', offline: 'Offline' };
+
+    const dot = document.getElementById('fp-status-dot');
+    if (dot) dot.className = 'status-dot ' + eStatus;
+
+    const pill = document.getElementById('fp-status-pill');
+    if (pill) { pill.className = 'friend-status-pill ' + eStatus; pill.textContent = statusLabels[eStatus] || 'Offline'; }
+
+    const actEl = document.getElementById('fp-activity-text');
+    if (actEl) actEl.textContent = activity;
+
+    const lsEl = document.getElementById('fp-last-seen');
+    if (lsEl) {
+      if (eStatus === 'offline' && f.lastSeen) {
+        lsEl.textContent = 'Last seen ' + _formatLastSeen(f.lastSeen);
+        lsEl.style.display = '';
+      } else {
+        lsEl.style.display = 'none';
+      }
     }
+
+    const joinBtn = document.getElementById('friend-join-btn');
+    if (joinBtn) {
+      const activityObj = f.activity || {};
+      joinBtn.style.display = (activityObj.page === 'games' && activityObj.game) ? '' : 'none';
+    }
+  }
+
+  /* ── Mutual friends ── */
+  async function _loadMutualFriends(uid) {
+    const container = document.getElementById('mutual-friends-list');
+    if (!container) return;
+    try {
+      const theirDoc = await db.collection('users').doc(uid).get();
+      const theirFriends = ((theirDoc.data() || {}).friends) || [];
+      const mutual = _myFriendUids.filter(f => theirFriends.includes(f));
+      if (!mutual.length) {
+        container.innerHTML = '<div class="friends-search-hint">No mutual friends</div>';
+        return;
+      }
+      const profiles = mutual.map(fid => friendProfiles.find(p => p.uid === fid)).filter(Boolean);
+      container.innerHTML = profiles.map(m => {
+        const initial = (m.username || 'U').charAt(0).toUpperCase();
+        const av = m.avatar ? '<img src="' + _esc(m.avatar) + '" alt="">' : initial;
+        const s = _resolveStatus(m);
+        return '<div class="mutual-item"><div class="friend-avatar" style="flex-shrink:0">' + av +
+          '<span class="status-dot ' + s + '"></span></div>' +
+          '<span class="friend-name">' + _esc(m.username) + '</span></div>';
+      }).join('');
+    } catch {
+      container.innerHTML = '<div class="friends-search-hint">Failed to load</div>';
+    }
+  }
+
+  /* ── Mutual servers ── */
+  async function _loadMutualServers(uid) {
+    const container = document.getElementById('mutual-servers-list');
+    if (!container) return;
+    try {
+      const snap = await db.collection('servers')
+        .where('members', 'array-contains', currentUser.uid)
+        .get();
+      const mutual = [];
+      snap.forEach(doc => {
+        const s = doc.data();
+        if ((s.members || []).includes(uid)) mutual.push({ id: doc.id, ...s });
+      });
+      if (!mutual.length) {
+        container.innerHTML = '<div class="friends-search-hint">No mutual servers</div>';
+        return;
+      }
+      container.innerHTML = mutual.map(s => {
+        const icon = s.image ? '<img src="' + _esc(s.image) + '" alt="">' : (s.name || 'S').charAt(0).toUpperCase();
+        return '<div class="mutual-item"><div class="mutual-server-icon">' + icon + '</div>' +
+          '<span class="friend-name">' + _esc(s.name) + '</span></div>';
+      }).join('');
+    } catch {
+      container.innerHTML = '<div class="friends-search-hint">Failed to load</div>';
+    }
+  }
+
+  /* ── Friend notes ── */
+  async function _loadFriendNote(uid) {
+    const area = document.getElementById('friend-note-area');
+    if (!area) return;
+    try {
+      const doc = await db.collection('users').doc(currentUser.uid).get();
+      const notes = ((doc.data() || {}).friendNotes) || {};
+      area.value = notes[uid] || '';
+    } catch { /* ignore */ }
+  }
+
+  async function _saveFriendNote(uid) {
+    const area = document.getElementById('friend-note-area');
+    if (!area) return;
+    const note = area.value.slice(0, 200);
+    try {
+      await db.collection('users').doc(currentUser.uid).update({
+        ['friendNotes.' + uid]: note
+      });
+      showToast('Note saved.', 'success');
+    } catch { showToast('Failed to save note.', 'error'); }
+  }
+
+  /* ── Unfriend ── */
+  function _unfriend(uid, username) {
+    _fShowConfirm({
+      title: 'Unfriend ' + _esc(username) + '?',
+      message: 'You will no longer be friends. This cannot be undone.',
+      confirmLabel: 'Unfriend',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const batch = db.batch();
+          batch.update(db.collection('users').doc(currentUser.uid), {
+            friends: firebase.firestore.FieldValue.arrayRemove(uid)
+          });
+          batch.update(db.collection('users').doc(uid), {
+            friends: firebase.firestore.FieldValue.arrayRemove(currentUser.uid)
+          });
+          await batch.commit();
+          _selectedFriendUid = null;
+          document.getElementById('friends-main').innerHTML =
+            '<div class="friends-empty">Select a friend to view their profile</div>';
+          showToast('Unfriended ' + username + '.', 'info');
+        } catch (err) {
+          console.error(err);
+          showToast('Failed to unfriend.', 'error');
+        }
+      }
+    });
   }
 
   function _esc(str) {

@@ -118,6 +118,10 @@
         <div class="friends-section-title">All Friends</div>
         <div class="friends-filter">
           <input class="form-input" id="friends-filter" placeholder="Filter friends...">
+          <button class="btn online-only-toggle" id="online-only-toggle" title="Show online only">
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+            Online
+          </button>
         </div>
         <div class="friends-list-scroll" id="friends-list"></div>
       </div>
@@ -151,6 +155,18 @@
     </div>
   </footer>
 
+  </div>
+
+  <!-- Friends Confirm Modal -->
+  <div class="modal-overlay" id="friends-confirm-modal">
+    <div class="modal">
+      <h3 class="modal-title" id="fconfirm-title">Confirm</h3>
+      <p class="modal-body" id="fconfirm-message"></p>
+      <div class="modal-actions">
+        <button class="btn" id="fconfirm-cancel">Cancel</button>
+        <button class="btn btn-danger" id="fconfirm-ok">Confirm</button>
+      </div>
+    </div>
   </div>
 
   <!-- Toast Container -->

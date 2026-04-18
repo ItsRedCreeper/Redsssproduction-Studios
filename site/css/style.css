@@ -1293,8 +1293,8 @@ a.nav-link:hover { text-decoration: none; }
   line-height: 1;
 }
 
-.friends-filter { padding: 4px 12px 8px; flex-shrink: 0; }
-.friends-filter input { font-size: 13px; }
+.friends-filter { padding: 4px 12px 8px; flex-shrink: 0; display: flex; gap: 8px; align-items: center; }
+.friends-filter .form-input { flex: 1; font-size: 13px; }
 
 .friends-list-scroll {
   flex: 1;
@@ -1322,7 +1322,7 @@ a.nav-link:hover { text-decoration: none; }
 /* Friend Profile Card — redesigned */
 .friend-profile-card {
   width: 100%;
-  max-width: 480px;
+  max-width: 680px;
   border-radius: 12px;
   overflow: hidden;
   background: var(--bg-secondary);
@@ -1456,6 +1456,112 @@ a.nav-link:hover { text-decoration: none; }
   flex-wrap: wrap;
   padding-top: 4px;
 }
+
+/* Profile tabs */
+.friend-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+}
+.friend-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: var(--transition);
+  margin-bottom: -1px;
+  white-space: nowrap;
+}
+.friend-tab:hover { color: var(--text); }
+.friend-tab.active { color: var(--text); border-bottom-color: var(--red); }
+
+.friend-tab-panels { }
+.friend-tab-panel {
+  display: none;
+  padding: 20px 24px 24px;
+  flex-direction: column;
+  gap: 14px;
+}
+.friend-tab-panel.active { display: flex; }
+
+/* Mutual items */
+.mutual-list { display: flex; flex-direction: column; }
+.mutual-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.mutual-item:last-child { border-bottom: none; }
+.mutual-server-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--red-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.mutual-server-icon img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Last seen */
+.friend-profile-lastseen { font-size: 12px; color: var(--text-muted); }
+
+/* Friend note */
+.friend-note-card {
+  background: var(--bg-primary);
+  border-radius: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.friend-note-area {
+  width: 100%;
+  min-height: 64px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.friend-note-area:focus { outline: none; border-color: var(--red); }
+.friend-note-save { align-self: flex-start; }
+
+/* Online-only toggle */
+.online-only-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 99px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+.online-only-toggle svg { color: var(--text-muted); transition: var(--transition); }
+.online-only-toggle.active { border-color: var(--status-online); color: var(--status-online); }
+.online-only-toggle.active svg { color: var(--status-online); }
 
 .friend-join-action-btn {
   background: transparent;
@@ -2264,20 +2370,47 @@ body.messenger-page #app {
 
 /* ── Reply quote inside message ── */
 .msg-reply-quote {
-  background: var(--bg-tertiary);
-  border-left: 3px solid var(--accent);
-  border-radius: 0 4px 4px 0;
-  padding: 4px 8px;
-  margin-bottom: 4px;
-  font-size: 12px;
-  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+  font-size: 13px;
   cursor: pointer;
+  max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: none;
+  border: none;
+  padding: 0;
 }
-.msg-reply-quote strong { color: var(--text-primary); }
-.msg-reply-quote[data-reply-id]:hover { opacity: .75; }
+.reply-curve-line {
+  flex-shrink: 0;
+  width: 26px;
+  height: 12px;
+  border-top: 2px solid rgba(255,255,255,.2);
+  border-left: 2px solid rgba(255,255,255,.2);
+  border-top-left-radius: 6px;
+  align-self: flex-end;
+  margin-bottom: 1px;
+}
+.reply-avatar-mini {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--red-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+.reply-avatar-mini img { width: 100%; height: 100%; object-fit: cover; }
+.reply-name { font-weight: 600; color: var(--text-secondary); font-size: 13px; white-space: nowrap; flex-shrink: 0; }
+.reply-text { color: var(--text-muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-reply-quote:hover .reply-name { color: var(--text); }
+.msg-reply-quote:hover .reply-text { color: var(--text-secondary); }
 
 /* Message jump highlight animation */
 @keyframes msgHighlight {
