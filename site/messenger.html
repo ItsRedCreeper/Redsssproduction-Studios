@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RedsssMessenger — RedsssProduction Studios</title>
+  <title>RedsssProduction Studios - Messenger</title>
   <link rel="icon" href="images/logo.jpg">
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
@@ -142,10 +142,22 @@
         <!-- Emoji/GIF Picker panel -->
         <div class="picker-panel" id="picker-panel" style="display:none">
           <div class="picker-tabs">
-            <button class="picker-tab-btn active" data-tab="emoji">😀 Emoji</button>
-            <button class="picker-tab-btn" data-tab="gif">🎬 GIFs</button>
-            <button class="picker-tab-btn" data-tab="images">🖼️ Images</button>
-            <button class="picker-tab-btn" data-tab="videos">🎬 Videos</button>
+            <button class="picker-tab-btn active" data-tab="emoji">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+              Emoji
+            </button>
+            <button class="picker-tab-btn" data-tab="gif">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
+              GIFs
+            </button>
+            <button class="picker-tab-btn" data-tab="images">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              Images
+            </button>
+            <button class="picker-tab-btn" data-tab="videos">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+              Videos
+            </button>
           </div>
           <div class="picker-tab-content" id="picker-emoji-tab"></div>
           <div class="picker-tab-content" id="picker-gif-tab" style="display:none"></div>
@@ -159,7 +171,9 @@
           <button class="reply-cancel" id="reply-cancel" title="Cancel reply">&#x2715;</button>
         </div>
         <div class="reply-input-row">
-          <button class="picker-toggle-btn" id="picker-toggle-btn" title="Emoji &amp; GIFs">😀</button>
+          <button class="picker-toggle-btn" id="picker-toggle-btn" title="Emoji &amp; GIFs">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </button>
           <button class="img-upload-btn" id="img-upload-btn" title="Upload Image / GIF">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
           </button>

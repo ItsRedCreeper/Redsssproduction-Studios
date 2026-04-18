@@ -1286,10 +1286,11 @@ a.nav-link:hover { text-decoration: none; }
 .friends-main {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-start;
   background: var(--bg-tertiary);
   overflow-y: auto;
+  padding: 32px;
 }
 
 .friends-empty {
@@ -1299,9 +1300,9 @@ a.nav-link:hover { text-decoration: none; }
 
 /* Friend Profile Card */
 .friend-profile {
-  text-align: center;
-  max-width: 360px;
-  padding: 40px;
+  text-align: left;
+  width: 100%;
+  padding: 0;
 }
 
 .friend-profile-avatar {
@@ -1312,7 +1313,7 @@ a.nav-link:hover { text-decoration: none; }
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 16px;
+  margin: 0 0 16px 0;
   position: relative;
   overflow: visible;
 }
@@ -1346,18 +1347,13 @@ a.nav-link:hover { text-decoration: none; }
 }
 
 .friend-profile-status {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text-secondary);
-  margin-bottom: 8px;
+  margin-bottom: 16px;
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
-  flex-wrap: wrap;
-  max-width: 100%;
-  overflow-wrap: break-word;
-  word-break: break-word;
-  text-align: center;
+  width: 100%;
 }
 
 .status-dot-inline {
@@ -2167,6 +2163,8 @@ body.messenger-page #app {
   padding: 8px 12px;
   margin-top: 4px;
   box-shadow: 0 0 0 3px rgba(255,59,59,.08);
+  width: 100%;
+  box-sizing: border-box;
 }
 .msg-edit-label {
   font-size: 11px;
@@ -2524,14 +2522,18 @@ body.messenger-page #app {
 }
 .picker-tab-btn {
   flex: 1;
-  padding: 8px;
+  padding: 8px 6px;
   background: none;
   border: none;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   font-weight: 500;
   transition: background .15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
 }
 .picker-tab-btn:hover { background: var(--bg-tertiary); color: var(--text); }
 .picker-tab-btn.active { color: var(--red); border-bottom: 2px solid var(--red); }
@@ -2668,33 +2670,6 @@ body.messenger-page #app {
   text-transform: uppercase;
   letter-spacing: .05em;
 }
-
-/* ── Friend activity card ── */
-.friend-activity-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 14px;
-  margin-bottom: 16px;
-  text-align: left;
-  width: 100%;
-  box-sizing: border-box;
-}
-.friend-activity-card-label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  color: var(--text-muted);
-  margin-bottom: 8px;
-}
-.friend-activity-card-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.friend-activity-icon { font-size: 22px; line-height: 1; flex-shrink: 0; }
-.friend-activity-name { font-size: 14px; font-weight: 500; color: var(--text); }
 
 /* ── Site Footer ── */
 .site-footer {

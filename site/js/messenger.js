@@ -1830,7 +1830,7 @@ const Messenger = (() => {
       ? '<div class="gif-grid">' +
         gifs.map(g => '<img class="gif-item" src="' + esc(g.url) + '" alt="GIF" data-url="' + esc(g.url) + '" loading="lazy">').join('') +
         '</div>'
-      : '<div class="gif-empty">No GIFs yet \u2014 use the \uD83D\uDDBC\uFE0F button in the chat bar to upload one!</div>';
+      : '<div class="gif-empty">No GIFs yet — use the image button in the chat bar to upload one!</div>';
     tab.querySelectorAll('.gif-item').forEach(img => {
       img.addEventListener('click', () => _sendGif(img.dataset.url));
     });
@@ -1862,7 +1862,7 @@ const Messenger = (() => {
           '</div>'
         ).join('') +
         '</div>'
-      : '<div class="gif-empty">No videos yet \u2014 use the \ud83c\udfa5 button in the chat bar to upload one!</div>';
+      : '<div class="gif-empty">No videos yet — use the video button in the chat bar to upload one!</div>';
     tab.querySelectorAll('.video-picker-item').forEach(el => {
       el.addEventListener('click', () => _sendVideoFromPicker(el.dataset.url));
     });

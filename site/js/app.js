@@ -597,6 +597,8 @@ const App = (() => {
   }
 
   /* ── Live online counter (with lastSeen staleness protection) ── */
+  let _lastDisplayedOnline = -1;
+  let _onlineDecreaseTimer = null;
   function _listenOnlineCount() {
     const STALE_MS = 30 * 1000;   // treat as offline if heartbeat > 30s ago
     const CLEANUP_MS = 60 * 1000; // write offline to Firestore if > 60s stale
@@ -621,7 +623,19 @@ const App = (() => {
           }
         });
         const el = document.getElementById('stat-online');
-        if (el) el.textContent = count;
+        if (!el) return;
+        clearTimeout(_onlineDecreaseTimer);
+        if (_lastDisplayedOnline === -1 || count >= _lastDisplayedOnline) {
+          // First update or increase: show immediately
+          _lastDisplayedOnline = count;
+          el.textContent = count;
+        } else {
+          // Decrease: wait 3s before committing to avoid flicker
+          _onlineDecreaseTimer = setTimeout(() => {
+            _lastDisplayedOnline = count;
+            el.textContent = count;
+          }, 3000);
+        }
       }, () => { /* stats unavailable */ });
   }
 
