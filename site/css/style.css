@@ -148,6 +148,23 @@ a.nav-link:hover { text-decoration: none; }
 
 .notif-bell:hover { color: var(--text); }
 
+/* Friends nav icon */
+.nav-friends-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: none;
+  transition: var(--transition);
+  flex-shrink: 0;
+  text-decoration: none;
+}
+.nav-friends-btn:hover { color: var(--text); background: var(--bg-hover); text-decoration: none; }
+.nav-friends-btn.active { color: var(--red); background: var(--bg-tertiary); }
+
 .notif-bell.ringing {
   animation: ring .4s ease infinite alternate;
 }
