@@ -285,13 +285,18 @@ const Friends = (() => {
             const rtdbHandler = snap => {
               const val = snap.val();
               if (val && val.online === false) {
-                _rtdbOffline.add(uid);
-                // Sync offline back to Firestore (beforeunload may not have fired)
-                db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
-                const idx = friendProfiles.findIndex(p => p.uid === uid);
-                if (idx >= 0) {
-                  friendProfiles[idx] = { ...friendProfiles[idx], effectiveStatus: 'offline' };
-                  _renderFriendsList(friendProfiles.slice());
+                const fProf = friendProfiles.find(p => p.uid === uid);
+                const friendIsAuto = !fProf || !fProf.status || fProf.status === 'auto';
+                // Only sync effective offline to Firestore for auto-status users;
+                // manual-status users keep their chosen status even when browser is closed.
+                if (friendIsAuto) {
+                  _rtdbOffline.add(uid);
+                  db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+                  const idx = friendProfiles.findIndex(p => p.uid === uid);
+                  if (idx >= 0) {
+                    friendProfiles[idx] = { ...friendProfiles[idx], effectiveStatus: 'offline' };
+                    _renderFriendsList(friendProfiles.slice());
+                  }
                 }
               } else if (val && val.online === true) {
                 _rtdbOffline.delete(uid);

@@ -270,16 +270,20 @@ const Messenger = (() => {
             const rtdbHandler = snap => {
               const val = snap.val();
               if (val && val.online === false) {
-                _rtdbOfflineSet.add(uid);
-                // Sync offline back to Firestore (beforeunload may not have fired)
-                db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
                 const current = _dmProfiles.get(uid);
-                if (current) {
-                  _dmProfiles.set(uid, { ...current, effectiveStatus: 'offline' });
-                  const cached = profileCache.get(uid);
-                  if (cached) profileCache.set(uid, { ...cached, effectiveStatus: 'offline' });
-                  _patchRenderedMessages(uid);
-                  _renderDMFriendsList();
+                const friendIsAuto = !current || !current.status || current.status === 'auto';
+                // Only sync effective offline to Firestore for auto-status users;
+                // manual-status users keep their chosen status even when browser is closed.
+                if (friendIsAuto) {
+                  _rtdbOfflineSet.add(uid);
+                  db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+                  if (current) {
+                    _dmProfiles.set(uid, { ...current, effectiveStatus: 'offline' });
+                    const cached = profileCache.get(uid);
+                    if (cached) profileCache.set(uid, { ...cached, effectiveStatus: 'offline' });
+                    _patchRenderedMessages(uid);
+                    _renderDMFriendsList();
+                  }
                 }
               } else if (val && val.online === true) {
                 _rtdbOfflineSet.delete(uid);

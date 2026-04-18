@@ -315,10 +315,12 @@ const Nav = (() => {
       presenceRef = rtdb.ref('presence/' + user.uid);
       rtdb.ref('.info/connected').on('value', snap => {
         if (!snap.val()) return;
-        presenceRef.onDisconnect().update({ effectiveStatus: 'offline', online: false })
+        // Include statusMode so observer clients (messenger/friends) know whether to
+      // sync effectiveStatus:'offline' back to Firestore for this user.
+      presenceRef.onDisconnect().update({ effectiveStatus: 'offline', online: false, statusMode: profile.status || 'auto' })
           .then(() => {
             // Guard: don't write online:true if _goOffline already ran
-            if (!_pageClosing) presenceRef.update({ effectiveStatus: effective, online: true });
+            if (!_pageClosing) presenceRef.update({ effectiveStatus: effective, online: true, statusMode: profile.status || 'auto' });
           });
         // Sync RTDB offline flag to Firestore for other clients
         presenceRef.on('value', pSnap => {
@@ -350,24 +352,23 @@ const Nav = (() => {
       if (sessionStorage.getItem('_siteNav')) { sessionStorage.removeItem('_siteNav'); return; }
       _pageClosing = true;
       clearTimeout(_awayTimer);
-      const rtdbPayload = JSON.stringify({ online: false, effectiveStatus: 'offline' });
-      const fsPayload = JSON.stringify({ fields: { online: { booleanValue: false }, effectiveStatus: { stringValue: 'offline' } } });
+      const isAuto = (profile.status || 'auto') === 'auto';
+      const rtdbPayload = JSON.stringify({ online: false, effectiveStatus: 'offline', statusMode: profile.status || 'auto' });
       const hdrs = { 'Content-Type': 'application/json' };
       if (_cachedToken) hdrs['Authorization'] = 'Bearer ' + _cachedToken;
-      // keepalive fetch — spec-guaranteed to complete even after page unload
+      // RTDB keepalive — always mark RTDB offline so observer clients detect the disconnect
       try { fetch(_rtdbRestUrl + (_cachedToken ? '?auth=' + _cachedToken : ''), { method: 'PATCH', body: rtdbPayload, headers: { 'Content-Type': 'application/json' }, keepalive: true }); } catch(e) {}
-      try { fetch(_fsRestUrl, { method: 'PATCH', body: fsPayload, headers: hdrs, keepalive: true }); } catch(e) {}
-      // RTDB SDK write — works if WebSocket still open
-      if (presenceRef) presenceRef.update({ online: false, effectiveStatus: 'offline' }).catch(() => {});
-      // Firestore SDK write — fallback for browsers where keepalive fetch may not complete on full close
-      // Always write 'offline' — the user's status preference is stored in 'status'
-      // and restored on next login via _computeEffective. This ensures manual-status
-      // users (DND, Away, etc.) correctly appear offline when they close the browser.
-      ref.update({
-        online: false,
-        effectiveStatus: 'offline',
-        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
-      }).catch(() => {});
+      // RTDB SDK write
+      if (presenceRef) presenceRef.update({ online: false, effectiveStatus: 'offline', statusMode: profile.status || 'auto' }).catch(() => {});
+      // Firestore — auto users: write offline. Manual users: only update lastSeen so their
+      // chosen status persists even after the browser is fully closed.
+      if (isAuto) {
+        const fsPayload = JSON.stringify({ fields: { online: { booleanValue: false }, effectiveStatus: { stringValue: 'offline' } } });
+        try { fetch(_fsRestUrl, { method: 'PATCH', body: fsPayload, headers: hdrs, keepalive: true }); } catch(e) {}
+        ref.update({ online: false, effectiveStatus: 'offline', lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+      } else {
+        ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+      }
     }
 
     window.addEventListener('pagehide', _goOffline);
@@ -409,10 +410,18 @@ const Nav = (() => {
     document.addEventListener('keydown', resetIdle, { passive: true });
     _resetIdleTimer(user, profile);
 
-    // Heartbeat — keeps lastSeen + effectiveStatus fresh so stale detection works
+    // Heartbeat — keeps lastSeen fresh; also refreshes effectiveStatus for auto users.
+    // Manual users only update lastSeen so their chosen status is never overwritten.
     setInterval(() => {
-      ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp(), effectiveStatus: profile.effectiveStatus || 'online' }).catch(() => {});
-      if (presenceRef) presenceRef.update({ effectiveStatus: profile.effectiveStatus || 'online', online: (profile.effectiveStatus || 'online') !== 'offline' }).catch(() => {});
+      const curStatus = profile.status || 'auto';
+      const curEff = profile.effectiveStatus || 'online';
+      if (curStatus === 'auto') {
+        ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp(), effectiveStatus: curEff }).catch(() => {});
+        if (presenceRef) presenceRef.update({ effectiveStatus: curEff, online: curEff !== 'offline', statusMode: 'auto' }).catch(() => {});
+      } else {
+        ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+        if (presenceRef) presenceRef.update({ statusMode: curStatus, online: true }).catch(() => {});
+      }
     }, 10000);
 
     // Auto-save status immediately when dropdown changes
@@ -422,7 +431,7 @@ const Nav = (() => {
       profile.status = status;
       profile.effectiveStatus = effectiveStatus;
       ref.update({ status, effectiveStatus }).catch(() => {});
-      if (presenceRef) presenceRef.update({ effectiveStatus, online: effectiveStatus !== 'offline' }).catch(() => {});
+      if (presenceRef) presenceRef.update({ effectiveStatus, online: effectiveStatus !== 'offline', statusMode: status }).catch(() => {});
       _renderUserUI(user, profile);
     });
   }
