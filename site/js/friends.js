@@ -165,30 +165,31 @@ const Friends = (() => {
   function _loadPendingRequests() {
     db.collection('friend_requests')
       .where('to', '==', currentUser.uid)
-      .where('status', '==', 'pending')
       .onSnapshot(snap => {
         const container = document.getElementById('pending-list');
         const badge = document.getElementById('pending-count');
         const section = document.getElementById('friends-pending-section');
 
-        badge.textContent = snap.size;
-        badge.style.display = snap.size > 0 ? 'inline-flex' : 'none';
+        const pending = [];
+        snap.forEach(d => { if (d.data().status === 'pending') pending.push({ id: d.id, ...d.data() }); });
 
-        if (snap.empty) {
+        badge.textContent = pending.length;
+        badge.style.display = pending.length > 0 ? 'inline-flex' : 'none';
+
+        if (!pending.length) {
           container.innerHTML = '<div class="friends-search-hint">No pending requests</div>';
           return;
         }
 
         container.innerHTML = '';
-        snap.forEach(doc => {
-          const req = doc.data();
+        pending.forEach(req => {
           const div = document.createElement('div');
           div.className = 'pending-item';
           div.innerHTML =
             '<span>' + _esc(req.fromUsername) + '</span>' +
             '<div class="pending-actions">' +
-              '<button class="pending-accept" data-id="' + doc.id + '" data-uid="' + req.from + '">Accept</button>' +
-              '<button class="pending-deny" data-id="' + doc.id + '">Deny</button>' +
+              '<button class="pending-accept" data-id="' + req.id + '" data-uid="' + req.from + '">Accept</button>' +
+              '<button class="pending-deny" data-id="' + req.id + '">Deny</button>' +
             '</div>';
           container.appendChild(div);
         });
@@ -232,30 +233,31 @@ const Friends = (() => {
   function _loadSentRequests() {
     db.collection('friend_requests')
       .where('from', '==', currentUser.uid)
-      .where('status', '==', 'pending')
       .onSnapshot(snap => {
         const container = document.getElementById('sent-list');
         const badge = document.getElementById('sent-count');
 
+        const sent = [];
+        snap.forEach(d => { if (d.data().status === 'pending') sent.push({ id: d.id, ...d.data() }); });
+
         if (badge) {
-          badge.textContent = snap.size;
-          badge.style.display = snap.size > 0 ? 'inline-flex' : 'none';
+          badge.textContent = sent.length;
+          badge.style.display = sent.length > 0 ? 'inline-flex' : 'none';
         }
 
-        if (snap.empty) {
+        if (!sent.length) {
           container.innerHTML = '<div class="friends-search-hint">No sent requests</div>';
           return;
         }
 
         container.innerHTML = '';
-        snap.forEach(doc => {
-          const req = doc.data();
+        sent.forEach(req => {
           const div = document.createElement('div');
           div.className = 'pending-item';
           div.innerHTML =
             '<span>' + _esc(req.toUsername) + '</span>' +
             '<div class="pending-actions">' +
-              '<button class="pending-deny" data-id="' + doc.id + '">Cancel</button>' +
+              '<button class="pending-deny" data-id="' + req.id + '">Cancel</button>' +
             '</div>';
           container.appendChild(div);
         });

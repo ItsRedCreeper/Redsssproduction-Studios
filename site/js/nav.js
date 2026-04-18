@@ -289,11 +289,11 @@ const Nav = (() => {
   function _listenFriendRequests(user) {
     db.collection('friend_requests')
       .where('to', '==', user.uid)
-      .where('status', '==', 'pending')
       .onSnapshot(snap => {
         const badge = document.getElementById('friend-req-badge');
         if (!badge) return;
-        const count = snap.size;
+        let count = 0;
+        snap.forEach(d => { if (d.data().status === 'pending') count++; });
         if (count > 0) {
           badge.textContent = count > 9 ? '9+' : count;
           badge.style.display = 'flex';
