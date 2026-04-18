@@ -40,6 +40,12 @@ const Friends = (() => {
     _loadFriends();
     _loadPendingRequests();
     _loadSentRequests();
+
+    // Handle ?view=UID to show any user's full profile
+    const viewUid = new URLSearchParams(window.location.search).get('view');
+    if (viewUid && viewUid !== currentUser.uid) {
+      _viewUserProfile(viewUid);
+    }
   }
 
   /* ── Toggle Add Friend panel ── */
@@ -101,8 +107,8 @@ const Friends = (() => {
           const alreadyFriend = _myFriendUids.includes(doc.id);
 
           div.innerHTML =
-            '<div class="friend-avatar">' + avatarHtml + '</div>' +
-            '<span class="friend-name">' + _esc(u.username) + '</span>' +
+            '<div class="friend-avatar search-clickable" data-uid="' + doc.id + '">' + avatarHtml + '</div>' +
+            '<span class="friend-name search-clickable" data-uid="' + doc.id + '">' + _esc(u.username) + '</span>' +
             (alreadyFriend
               ? '<button class="btn btn-sm friends-add-btn" disabled style="opacity:.5;cursor:default">Friends</button>'
               : '<button class="btn btn-primary btn-sm friends-add-btn" data-uid="' + doc.id + '" data-name="' + _esc(u.username) + '">Add</button>');
@@ -111,6 +117,10 @@ const Friends = (() => {
 
         results.querySelectorAll('.friends-add-btn:not([disabled])').forEach(btn => {
           btn.addEventListener('click', () => _sendFriendRequest(btn.dataset.uid, btn.dataset.name, btn));
+        });
+        results.querySelectorAll('.search-clickable').forEach(el => {
+          el.style.cursor = 'pointer';
+          el.addEventListener('click', () => _viewUserProfile(el.dataset.uid));
         });
       } catch (err) {
         console.error(err);
@@ -637,6 +647,156 @@ const Friends = (() => {
     // If tabs other than about are active, load their content
     if (_selectedFriendTab === 'mutual-friends') _loadMutualFriends(uid);
     if (_selectedFriendTab === 'mutual-servers') _loadMutualServers(uid);
+  }
+
+  /* ── View any user's full profile (not necessarily a friend) ── */
+  async function _viewUserProfile(uid) {
+    const main = document.getElementById('friends-main');
+    main.innerHTML = '<div class="friends-empty">Loading profile...</div>';
+
+    // Check if this uid is already a friend — if so, use _selectFriend directly
+    const existingFriend = friendProfiles.find(p => p.uid === uid);
+    if (existingFriend) {
+      _selectFriend(uid);
+      return;
+    }
+
+    // Fetch user from Firestore
+    let f;
+    try {
+      const doc = await db.collection('users').doc(uid).get();
+      if (!doc.exists) {
+        main.innerHTML = '<div class="friends-empty">User not found</div>';
+        return;
+      }
+      f = { uid: doc.id, ...doc.data() };
+    } catch (err) {
+      console.error(err);
+      main.innerHTML = '<div class="friends-empty">Failed to load profile</div>';
+      return;
+    }
+
+    const initial = (f.username || 'U').charAt(0).toUpperCase();
+    const avatarHtml = f.avatar
+      ? '<img src="' + _esc(f.avatar) + '" alt="">'
+      : '<span class="friend-profile-initial">' + initial + '</span>';
+    const eStatus = f.effectiveStatus || 'offline';
+    const isFriend = _myFriendUids.includes(uid);
+
+    const statusLabels = { online: 'Online', away: 'Away', dnd: 'Do Not Disturb', offline: 'Offline' };
+
+    // Activity
+    let activityText = '';
+    const activityObj = f.activity || {};
+    if (activityObj.page === 'games' && activityObj.game) activityText = 'Playing ' + activityObj.game;
+    else if (activityObj.page === 'messenger' && activityObj.dm) activityText = 'Chatting with ' + activityObj.dm;
+    else if (activityObj.page === 'messenger' && activityObj.server) activityText = 'In ' + activityObj.server;
+    else if (activityObj.page === 'messenger') activityText = 'On Messenger';
+    else if (activityObj.page === 'friends') activityText = 'On Friends page';
+    else if (activityObj.page === 'games') activityText = 'Browsing Games';
+    if (eStatus === 'offline') activityText = 'Offline';
+
+    const joined = f.createdAt
+      ? new Date(f.createdAt.toDate()).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })
+      : null;
+
+    const lastSeenText = (eStatus === 'offline' && f.lastSeen) ? _formatLastSeen(f.lastSeen) : null;
+
+    // Activity icon
+    let activityIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    if (activityObj.page === 'games' && activityObj.game) {
+      activityIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/><path d="M7 12h3"/><path d="M14 10v4"/><path d="M17 12h.01"/></svg>';
+    } else if (activityObj.page === 'messenger') {
+      activityIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    }
+
+    main.innerHTML =
+      '<div class="friend-profile-card">' +
+        '<div class="friend-profile-banner"></div>' +
+        '<div class="friend-profile-body">' +
+          '<div class="friend-profile-avatar-wrap">' +
+            '<div class="friend-profile-avatar">' + avatarHtml +
+              '<span class="status-dot ' + eStatus + '"></span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="friend-profile-info">' +
+            '<div class="friend-profile-top">' +
+              '<h2 class="friend-profile-name">' + _esc(f.username) + '</h2>' +
+              '<span class="friend-status-pill ' + eStatus + '">' + (statusLabels[eStatus] || 'Offline') + '</span>' +
+            '</div>' +
+            '<div class="friend-profile-activity">' +
+              activityIcon + '<span>' + _esc(activityText) + '</span>' +
+            '</div>' +
+            (lastSeenText
+              ? '<div class="friend-profile-lastseen">Last seen ' + _esc(lastSeenText) + '</div>'
+              : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="friend-tab-panels">' +
+          '<div class="friend-tab-panel active" data-panel="about">' +
+            (f.description
+              ? '<div class="friend-profile-bio-card">' +
+                  '<div class="friend-profile-bio-label">Description</div>' +
+                  '<div class="friend-profile-bio-text">' + _esc(f.description) + '</div>' +
+                '</div>'
+              : '') +
+            (joined
+              ? '<div class="friend-profile-meta">' +
+                  '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' +
+                  '<span>Member since ' + joined + '</span>' +
+                '</div>'
+              : '') +
+            '<div class="friend-profile-actions">' +
+              (isFriend
+                ? '<button class="btn btn-sm" disabled style="opacity:.5;cursor:default">Already Friends</button>'
+                : '<button class="btn btn-primary" id="view-add-friend-btn">Add Friend</button>') +
+              '<button class="btn" id="view-dm-btn">Message</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    // Wire Add Friend
+    const addBtn = document.getElementById('view-add-friend-btn');
+    if (addBtn) {
+      addBtn.addEventListener('click', async () => {
+        addBtn.disabled = true;
+        addBtn.textContent = 'Sending...';
+        try {
+          const existing = await db.collection('friend_requests')
+            .where('from', '==', currentUser.uid)
+            .where('to', '==', uid)
+            .get();
+          let hasPending = false;
+          existing.forEach(d => { if (d.data().status === 'pending') hasPending = true; });
+          if (hasPending) {
+            showToast('Request already sent.', 'info');
+            addBtn.textContent = 'Sent';
+            return;
+          }
+          await db.collection('friend_requests').add({
+            from: currentUser.uid,
+            fromUsername: userProfile.username,
+            to: uid,
+            toUsername: f.username,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            status: 'pending'
+          });
+          addBtn.textContent = 'Sent!';
+          showToast('Friend request sent!', 'success');
+        } catch (err) {
+          console.error(err);
+          addBtn.textContent = 'Add Friend';
+          addBtn.disabled = false;
+          showToast('Failed to send request.', 'error');
+        }
+      });
+    }
+
+    // Wire DM
+    document.getElementById('view-dm-btn').addEventListener('click', () => {
+      window.location.href = 'messenger.html?dm=' + uid;
+    });
   }
 
   /* ── Live update selected friend profile (preserves tabs + note) ── */

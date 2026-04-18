@@ -196,16 +196,33 @@ const Messenger = (() => {
     const _dmParam = new URLSearchParams(window.location.search).get('dm');
     if (_dmParam) {
       // Wait for the friend's profile to arrive then open their DM
+      let _dmResolved = false;
       const _waitForDM = setInterval(() => {
         const prof = _dmProfiles.get(_dmParam);
         if (prof) {
+          _dmResolved = true;
           clearInterval(_waitForDM);
           showDMView();
           openDM(_dmParam, prof);
         }
       }, 100);
-      // Give up after 5 seconds
-      setTimeout(() => clearInterval(_waitForDM), 5000);
+      // After 3 seconds, if not found in friends, fetch from Firestore (non-friend DM)
+      setTimeout(async () => {
+        clearInterval(_waitForDM);
+        if (_dmResolved) return;
+        try {
+          const doc = await db.collection('users').doc(_dmParam).get();
+          if (doc.exists) {
+            const u = doc.data();
+            const prof = { username: u.username || 'User', avatar: u.avatar || '', effectiveStatus: u.effectiveStatus || 'offline' };
+            _dmProfiles.set(_dmParam, prof);
+            profileCache.set(_dmParam, prof);
+            showDMView();
+            openDM(_dmParam, prof);
+            _renderDMFriendsList();
+          }
+        } catch { /* ignore */ }
+      }, 3000);
     }
   }
 
@@ -1409,7 +1426,174 @@ const Messenger = (() => {
       quoteEl.addEventListener('click', () => _jumpToMessage(quoteEl.dataset.replyId));
     }
 
+    // Avatar / username click → user mini-profile popup
+    if (data.uid && data.uid !== currentUser.uid) {
+      const avatarEl = div.querySelector('.msg-avatar');
+      const authorEl = div.querySelector('.msg-author');
+      if (avatarEl) avatarEl.addEventListener('click', (e) => { e.stopPropagation(); _showUserPopup(data.uid, avatarEl); });
+      if (authorEl) authorEl.addEventListener('click', (e) => { e.stopPropagation(); _showUserPopup(data.uid, authorEl); });
+    }
+
     return div;
+  }
+
+  /* ── User Mini-Profile Popup ── */
+  async function _showUserPopup(uid, anchorEl) {
+    const overlay = document.getElementById('user-popup-overlay');
+    const popup = document.getElementById('user-popup');
+
+    // Fetch user data — prefer cache, fall back to Firestore
+    let u = profileCache.get(uid);
+    let fullData = null;
+    try {
+      const doc = await db.collection('users').doc(uid).get();
+      if (doc.exists) {
+        fullData = doc.data();
+        u = {
+          username: fullData.username || (u ? u.username : 'Unknown'),
+          avatar: fullData.avatar || (u ? u.avatar : ''),
+          effectiveStatus: fullData.effectiveStatus || (u ? u.effectiveStatus : 'offline')
+        };
+      }
+    } catch { /* use cache */ }
+    if (!u) return;
+
+    const initial = (u.username || 'U').charAt(0).toUpperCase();
+    const avatarHtml = u.avatar
+      ? '<img src="' + esc(u.avatar) + '" alt="">'
+      : '<span class="user-popup-initial">' + initial + '</span>';
+    const eStatus = u.effectiveStatus || 'offline';
+    const statusLabels = { online: 'Online', away: 'Away', dnd: 'Do Not Disturb', offline: 'Offline' };
+
+    // Activity
+    let activityText = '';
+    if (fullData && fullData.activity) {
+      const a = fullData.activity;
+      if (a.page === 'games' && a.game) activityText = 'Playing ' + a.game;
+      else if (a.page === 'messenger' && a.dm) activityText = 'Chatting with ' + a.dm;
+      else if (a.page === 'messenger' && a.server) activityText = 'In ' + a.server;
+      else if (a.page === 'messenger') activityText = 'On Messenger';
+      else if (a.page === 'friends') activityText = 'On Friends';
+      else if (a.page === 'games') activityText = 'Browsing Games';
+    }
+
+    // Description
+    const desc = fullData && fullData.description ? fullData.description : '';
+
+    // Check friendship
+    let isFriend = false;
+    try {
+      const myDoc = await db.collection('users').doc(currentUser.uid).get();
+      const myFriends = (myDoc.data() || {}).friends || [];
+      isFriend = myFriends.includes(uid);
+    } catch { /* ignore */ }
+
+    popup.innerHTML =
+      '<div class="user-popup-banner"></div>' +
+      '<div class="user-popup-body">' +
+        '<div class="user-popup-avatar-wrap">' +
+          '<div class="user-popup-avatar">' + avatarHtml +
+            '<span class="status-dot ' + eStatus + '"></span>' +
+          '</div>' +
+        '</div>' +
+        '<h3 class="user-popup-name">' + esc(u.username) + '</h3>' +
+        '<span class="user-popup-status ' + eStatus + '">' + (statusLabels[eStatus] || 'Offline') + '</span>' +
+        (activityText ? '<div class="user-popup-activity">' + esc(activityText) + '</div>' : '') +
+        (desc ? '<div class="user-popup-desc">' + esc(desc) + '</div>' : '') +
+        '<hr class="user-popup-divider">' +
+        '<div class="user-popup-actions">' +
+          (isFriend
+            ? '<button class="btn btn-sm" disabled style="opacity:.5;cursor:default;flex:1">Already Friends</button>'
+            : '<button class="btn btn-primary btn-sm" id="popup-add-friend">Add Friend</button>') +
+          '<button class="btn btn-sm" id="popup-dm-btn">Message</button>' +
+        '</div>' +
+        '<button class="user-popup-view-more" id="popup-view-more">View Full Profile</button>' +
+      '</div>';
+
+    // Position popup near the anchor element
+    const rect = anchorEl.getBoundingClientRect();
+    let top = rect.top;
+    let left = rect.right + 10;
+    // Make sure it fits on screen
+    const popupW = 300;
+    const popupH = 340;
+    if (left + popupW > window.innerWidth) left = rect.left - popupW - 10;
+    if (left < 0) left = 10;
+    if (top + popupH > window.innerHeight) top = window.innerHeight - popupH - 10;
+    if (top < 10) top = 10;
+    popup.style.top = top + 'px';
+    popup.style.left = left + 'px';
+
+    overlay.classList.add('open');
+
+    // Close on click outside
+    overlay.addEventListener('click', function _close(e) {
+      if (e.target === overlay) {
+        overlay.classList.remove('open');
+        overlay.removeEventListener('click', _close);
+      }
+    });
+
+    // Wire Add Friend
+    const addBtn = document.getElementById('popup-add-friend');
+    if (addBtn) {
+      addBtn.addEventListener('click', async () => {
+        addBtn.disabled = true;
+        addBtn.textContent = 'Sending...';
+        try {
+          // Check for existing pending request
+          const existing = await db.collection('friend_requests')
+            .where('from', '==', currentUser.uid)
+            .where('to', '==', uid)
+            .get();
+          let hasPending = false;
+          existing.forEach(d => { if (d.data().status === 'pending') hasPending = true; });
+          if (hasPending) {
+            showToast('Request already sent.', 'info');
+            addBtn.textContent = 'Sent';
+            return;
+          }
+          await db.collection('friend_requests').add({
+            from: currentUser.uid,
+            fromUsername: userProfile.username,
+            to: uid,
+            toUsername: u.username,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            status: 'pending'
+          });
+          addBtn.textContent = 'Sent!';
+          showToast('Friend request sent!', 'success');
+        } catch (err) {
+          console.error(err);
+          addBtn.textContent = 'Failed';
+          showToast('Failed to send request.', 'error');
+        }
+      });
+    }
+
+    // Wire DM button
+    document.getElementById('popup-dm-btn').addEventListener('click', () => {
+      overlay.classList.remove('open');
+      // If already in DM list, open it; otherwise navigate
+      const prof = _dmProfiles.get(uid);
+      if (prof) {
+        showDMView();
+        openDM(uid, prof);
+      } else {
+        // Start a new DM — cache this user profile and open
+        _dmProfiles.set(uid, { username: u.username, avatar: u.avatar, effectiveStatus: eStatus });
+        profileCache.set(uid, { username: u.username, avatar: u.avatar, effectiveStatus: eStatus });
+        showDMView();
+        openDM(uid, { username: u.username, avatar: u.avatar, effectiveStatus: eStatus });
+        _renderDMFriendsList();
+      }
+    });
+
+    // Wire View More
+    document.getElementById('popup-view-more').addEventListener('click', () => {
+      overlay.classList.remove('open');
+      window.location.href = 'friends.html?view=' + uid;
+    });
   }
 
   /* ── Reply helpers ── */

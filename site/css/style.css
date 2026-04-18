@@ -1253,6 +1253,8 @@ a.nav-link:hover { text-decoration: none; }
 .friends-search-item .friend-avatar { width: 28px; height: 28px; font-size: 12px; }
 .friends-search-item .friend-name { flex: 1; font-size: 13px; }
 .friends-search-item .friends-add-btn { padding: 4px 12px; font-size: 12px; }
+.friends-search-item .search-clickable { cursor: pointer; }
+.friends-search-item .search-clickable:hover { opacity: .8; }
 
 .friends-search-hint {
   padding: 8px;
@@ -2421,6 +2423,149 @@ body.messenger-page #app {
   animation: msgHighlight 2s ease forwards;
   border-radius: 6px;
 }
+
+/* Message jump highlight animation */
+@keyframes msgHighlight {
+  0%   { background: rgba(255, 59, 59, .22); }
+  100% { background: transparent; }
+}
+.msg-highlight {
+  animation: msgHighlight 2s ease forwards;
+  border-radius: 6px;
+}
+
+/* ── User Mini-Profile Popup ── */
+.user-popup-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+}
+.user-popup-overlay.open { display: block; }
+
+.user-popup {
+  position: absolute;
+  width: 300px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px rgba(0,0,0,.45);
+  z-index: 901;
+}
+.user-popup-banner {
+  height: 60px;
+  background: linear-gradient(135deg, var(--red-dark) 0%, #8b0000 100%);
+}
+.user-popup-body {
+  padding: 0 16px 16px;
+  position: relative;
+}
+.user-popup-avatar-wrap {
+  margin-top: -30px;
+  margin-bottom: 8px;
+}
+.user-popup-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: var(--red-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: visible;
+  border: 3px solid var(--bg-secondary);
+}
+.user-popup-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.user-popup-avatar .status-dot {
+  width: 14px;
+  height: 14px;
+  bottom: 0;
+  right: 0;
+  border-width: 3px;
+  border-color: var(--bg-secondary);
+}
+.user-popup-initial {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+}
+.user-popup-name {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 2px;
+}
+.user-popup-status {
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 99px;
+  margin-bottom: 6px;
+}
+.user-popup-status.online  { background: rgba(87,242,135,.15); color: var(--status-online); }
+.user-popup-status.away    { background: rgba(250,168,26,.15);  color: var(--status-away); }
+.user-popup-status.dnd     { background: rgba(237,66,69,.15);   color: var(--status-dnd); }
+.user-popup-status.offline { background: rgba(116,127,141,.15); color: var(--text-muted); }
+
+.user-popup-activity {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.user-popup-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.user-popup-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0 0 10px;
+}
+.user-popup-actions {
+  display: flex;
+  gap: 6px;
+}
+.user-popup-actions .btn {
+  flex: 1;
+  font-size: 12px;
+  padding: 6px 0;
+  text-align: center;
+}
+.user-popup-view-more {
+  display: block;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  cursor: pointer;
+  transition: var(--transition);
+  background: none;
+  border: none;
+  width: 100%;
+  padding: 0;
+}
+.user-popup-view-more:hover { color: var(--text); }
+
+/* Clickable avatars + usernames in messages */
+.msg-avatar { cursor: pointer; }
+.msg-author { cursor: pointer; }
+.msg-author:hover { text-decoration: underline; }
 
 /* ── Inline edit ── */
 .msg-edit-wrapper {
