@@ -1236,7 +1236,11 @@ const Messenger = (() => {
         // Save images + videos to DM library so both participants can reuse them in the picker
         if (imageUrls.length) {
           const imgCol = db.collection('dms').doc(convoId).collection('images');
-          imageUrls.forEach(url => imgCol.add({ url, uploadedBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {}));
+          const gifCol = db.collection('dms').doc(convoId).collection('gifs');
+          imageUrls.forEach(url => {
+            const isGif = /\.gif(\?|$)/i.test(url);
+            (isGif ? gifCol : imgCol).add({ url, uploadedBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+          });
         }
         if (videoUrl) {
           db.collection('dms').doc(convoId).collection('videos')
@@ -1260,11 +1264,13 @@ const Messenger = (() => {
         await db.collection('servers').doc(currentChat.serverId)
           .collection('channels').doc(currentChat.channelId)
           .collection('messages').add(msgData);
-        // Add images to server library
+        // Add images (and gifs) to server library
         if (imageUrls.length) {
           const imgCol = db.collection('servers').doc(currentChat.serverId).collection('images');
+          const gifCol = db.collection('servers').doc(currentChat.serverId).collection('gifs');
           imageUrls.forEach(url => {
-            imgCol.add({ url, uploadedBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+            const isGif = /\.gif(\?|$)/i.test(url);
+            (isGif ? gifCol : imgCol).add({ url, uploadedBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
           });
         }
         // Add video to server library
