@@ -360,9 +360,12 @@ const Nav = (() => {
       // RTDB SDK write — works if WebSocket still open
       if (presenceRef) presenceRef.update({ online: false, effectiveStatus: 'offline' }).catch(() => {});
       // Firestore SDK write — fallback for browsers where keepalive fetch may not complete on full close
+      // Always write 'offline' — the user's status preference is stored in 'status'
+      // and restored on next login via _computeEffective. This ensures manual-status
+      // users (DND, Away, etc.) correctly appear offline when they close the browser.
       ref.update({
         online: false,
-        effectiveStatus: profile.status === 'auto' ? 'offline' : profile.effectiveStatus,
+        effectiveStatus: 'offline',
         lastSeen: firebase.firestore.FieldValue.serverTimestamp()
       }).catch(() => {});
     }

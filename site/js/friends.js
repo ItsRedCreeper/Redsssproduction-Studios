@@ -320,11 +320,16 @@ const Friends = (() => {
   function _resolveStatus(profile) {
     const eStatus = profile.effectiveStatus || 'offline';
     if (eStatus === 'offline') return 'offline';
+    // Manual status (not auto) — trust effectiveStatus directly; the RTDB offline
+    // signal and _goOffline will write 'offline' when they truly disconnect.
+    if (profile.status && profile.status !== 'auto') return eStatus;
+    // Auto status — fall back to offline if the heartbeat has gone stale
+    // (browser throttles background intervals to ~60s, so use 90s threshold)
     if (profile.lastSeen) {
       let ms = null;
       if (profile.lastSeen.toDate) ms = profile.lastSeen.toDate().getTime();
       else if (profile.lastSeen.seconds) ms = profile.lastSeen.seconds * 1000;
-      if (ms !== null && Date.now() - ms > 30 * 1000) return 'offline';
+      if (ms !== null && Date.now() - ms > 90 * 1000) return 'offline';
     }
     return eStatus;
   }
