@@ -401,7 +401,34 @@ const Friends = (() => {
     });
   }
 
-  /* ── Select friend → show profile ── */
+  function _resolveActivityDetails(profile, eStatus) {
+    if (eStatus === undefined) eStatus = _resolveStatus(profile);
+    if (eStatus === 'offline') return { icon: '\u2298', label: 'Status', name: 'Offline' };
+    if (eStatus === 'dnd')     return { icon: '\u26d4', label: 'Status', name: 'Do Not Disturb' };
+    const activity = profile.activity || {};
+    if (activity.page === 'games' && activity.game)    return { icon: '\ud83c\udfae', label: 'Playing a Game', name: activity.game };
+    if (activity.page === 'messenger' && activity.server) return { icon: '\ud83d\udcac', label: 'In RedsssMessenger', name: activity.server };
+    if (activity.page === 'messenger' && activity.dm)  return { icon: '\ud83d\udcac', label: 'Chatting', name: 'with ' + activity.dm };
+    if (activity.page === 'messenger')  return { icon: '\ud83d\udcac', label: 'In RedsssMessenger', name: '' };
+    if (activity.page === 'games')      return { icon: '\ud83d\udd79\ufe0f', label: 'Browsing', name: 'Game Library' };
+    if (activity.page === 'support')    return { icon: '\u2753', label: 'Viewing', name: 'Support Page' };
+    if (activity.page === 'friends')    return { icon: '\ud83d\udc65', label: 'Viewing', name: 'Friends' };
+    if (eStatus === 'away')             return { icon: '\ud83c\udf19', label: 'Status', name: 'Away' };
+    return { icon: '\u2705', label: 'Status', name: 'Online' };
+  }
+
+  function _buildActivityCard(details) {
+    const nameHtml = details.name ? '<span class="friend-activity-name">' + _esc(details.name) + '</span>' : '';
+    return '<div class="friend-activity-card">' +
+      '<div class="friend-activity-card-label">' + _esc(details.label) + '</div>' +
+      '<div class="friend-activity-card-row">' +
+        '<span class="friend-activity-icon">' + details.icon + '</span>' +
+        nameHtml +
+      '</div>' +
+    '</div>';
+  }
+
+  /* \u2500\u2500 Select friend \u2192 show profile \u2500\u2500 */
   function _selectFriend(uid) {
     const f = friendProfiles.find(p => p.uid === uid);
     if (!f) return;
@@ -412,7 +439,7 @@ const Friends = (() => {
       ? '<img src="' + _esc(f.avatar) + '" alt="">'
       : '<span class="friend-profile-initial">' + initial + '</span>';
     const eStatus = _resolveStatus(f);
-    const activity = _resolveActivity(f, eStatus);
+    const details = _resolveActivityDetails(f, eStatus);
     const joined = f.createdAt
       ? new Date(f.createdAt.toDate()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
       : 'Unknown';
@@ -427,10 +454,7 @@ const Friends = (() => {
           '<span class="status-dot ' + eStatus + '"></span>' +
         '</div>' +
         '<h2 class="friend-profile-name">' + _esc(f.username) + '</h2>' +
-        '<div class="friend-profile-status">' +
-          '<span class="status-dot-inline ' + eStatus + '"></span>' +
-          _esc(activity) +
-        '</div>' +
+        _buildActivityCard(details) +
         (f.description ? '<div class="friend-profile-bio">' + _esc(f.description) + '</div>' : '') +
         '<div class="friend-profile-joined">Member since ' + joined + '</div>' +
         '<div class="friend-profile-actions">' +

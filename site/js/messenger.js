@@ -27,6 +27,15 @@ const Messenger = (() => {
   const _serverGifUnsubs = new Map(); // serverId → unsub fn
   const _serverGifs     = new Map(); // serverId → [{url, uploadedBy, createdAt}]
   let _myServerIds = new Set();
+  // Server Image library
+  const _serverImageUnsubs = new Map();
+  const _serverImages      = new Map();
+  // Server Video library
+  const _serverVideoUnsubs = new Map();
+  const _serverVideos      = new Map();
+  // Staged video
+  let _stagedVideo    = null;
+  let _stagedVideoUrl = null;
 
   // Picker state
   let _pickerOpen = false;
@@ -64,11 +73,17 @@ const Messenger = (() => {
       if (e.target.files.length) _addStagedFiles(e.target.files);
       e.target.value = '';
     });
+    document.getElementById('video-upload-btn').addEventListener('click', e => { e.stopPropagation(); document.getElementById('video-upload-input').click(); });
+    document.getElementById('video-upload-input').addEventListener('change', e => {
+      if (e.target.files.length) _addStagedVideo(e.target.files[0]);
+      e.target.value = '';
+    });
     // Close picker on outside click
     document.addEventListener('click', e => {
       if (_pickerOpen && !document.getElementById('picker-panel').contains(e.target) &&
           e.target.id !== 'picker-toggle-btn' &&
-          !e.target.closest('#img-upload-btn')) {
+          !e.target.closest('#img-upload-btn') &&
+          !e.target.closest('#video-upload-btn')) {
         _closePicker();
       }
     });
@@ -470,6 +485,8 @@ const Messenger = (() => {
 
         _myServerIds = newServerIds;
         _syncServerGifListeners(newServerIds);
+        _syncServerImageListeners(newServerIds);
+        _syncServerVideoListeners(newServerIds);
         if (publicServers.length) {
           const label = document.createElement('div');
           label.className = 'server-label';
@@ -1081,7 +1098,8 @@ const Messenger = (() => {
     const input = document.getElementById('chat-input');
     const text = input.value.trim();
     const hasImages = _stagedFiles.length > 0;
-    if (!text && !hasImages) return;
+    const hasVideo  = _stagedVideo !== null;
+    if (!text && !hasImages && !hasVideo) return;
     if (text.length > 2000) return;
 
     input.value = '';
@@ -1111,12 +1129,35 @@ const Messenger = (() => {
       _renderStagedPreviews();
     }
 
+    // Upload staged video
+    let videoUrl = '';
+    if (hasVideo) {
+      showToast('Uploading video...', 'info');
+      try {
+        const fd = new FormData();
+        fd.append('file', _stagedVideo);
+        fd.append('upload_preset', CLOUDINARY_PRESET);
+        const res = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/video/upload', { method: 'POST', body: fd });
+        const d = await res.json();
+        if (!d.secure_url) throw new Error('Upload failed');
+        videoUrl = d.secure_url;
+      } catch {
+        showToast('Video upload failed.', 'error');
+        return;
+      }
+      URL.revokeObjectURL(_stagedVideoUrl);
+      _stagedVideo = null;
+      _stagedVideoUrl = null;
+      _renderStagedPreviews();
+    }
+
     const msgData = {
       uid: currentUser.uid,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     if (text) msgData.text = text;
     if (imageUrls.length) msgData.images = imageUrls;
+    if (videoUrl) msgData.videoUrl = videoUrl;
 
     if (_replyState) {
       msgData.replyTo = {
@@ -1136,7 +1177,9 @@ const Messenger = (() => {
         await db.collection('dms').doc(convoId).collection('messages').add(msgData);
 
         // Notify friend
-        const notifText = imageUrls.length
+        const notifText = videoUrl
+          ? userProfile.username + ' sent a video'
+          : imageUrls.length
           ? userProfile.username + ' sent ' + (imageUrls.length === 1 ? 'an image' : imageUrls.length + ' images')
           : userProfile.username + ': ' + (text.length > 60 ? text.slice(0, 60) + '...' : text);
         await db.collection('users').doc(currentChat.friendUid).collection('notifications').add({
@@ -1150,6 +1193,18 @@ const Messenger = (() => {
         await db.collection('servers').doc(currentChat.serverId)
           .collection('channels').doc(currentChat.channelId)
           .collection('messages').add(msgData);
+        // Add images to server library
+        if (imageUrls.length) {
+          const imgCol = db.collection('servers').doc(currentChat.serverId).collection('images');
+          imageUrls.forEach(url => {
+            imgCol.add({ url, uploadedBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+          });
+        }
+        // Add video to server library
+        if (videoUrl) {
+          db.collection('servers').doc(currentChat.serverId).collection('videos')
+            .add({ url: videoUrl, uploadedBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+        }
       }
     } catch (err) {
       console.error('Send failed:', err);
@@ -1228,6 +1283,9 @@ const Messenger = (() => {
         ).join('') +
         '</div>';
     }
+    if (data.videoUrl) {
+      contentHTML += '<div class="msg-video-wrap"><video class="msg-video" src="' + esc(data.videoUrl) + '" controls preload="metadata"></video></div>';
+    }
 
     div.innerHTML =
       '<div class="msg-avatar">' + avatarContent +
@@ -1304,34 +1362,64 @@ const Messenger = (() => {
   /* ── Edit / Delete ── */
   function _editMessage(docRef, currentText, msgEl) {
     const msgTextEl = msgEl.querySelector('.msg-text');
-    if (!msgTextEl || msgEl.querySelector('.msg-edit-input')) return; // already editing
+    if (!msgTextEl || msgEl.querySelector('.msg-edit-wrapper')) return; // already editing
+
+    const original = msgTextEl.innerHTML;
+    msgTextEl.innerHTML = '';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg-edit-wrapper';
+
+    const label = document.createElement('div');
+    label.className = 'msg-edit-label';
+    label.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Editing message';
 
     const textarea = document.createElement('textarea');
     textarea.className = 'msg-edit-input';
     textarea.value = currentText;
-    textarea.rows = 1;
+    function autoGrow() {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+    }
+    textarea.addEventListener('input', autoGrow);
+
+    const footer = document.createElement('div');
+    footer.className = 'msg-edit-footer';
+
+    const charCount = document.createElement('span');
+    charCount.className = 'msg-edit-char-count';
+    function updateCount() { charCount.textContent = (2000 - textarea.value.length) + ' left'; }
+    updateCount();
+    textarea.addEventListener('input', updateCount);
 
     const actions = document.createElement('div');
     actions.className = 'msg-edit-actions';
-    const saveBtn = document.createElement('button');
-    saveBtn.className = 'msg-edit-save';
-    saveBtn.textContent = 'Save';
+
+    const hint = document.createElement('span');
+    hint.className = 'msg-edit-hint';
+    hint.textContent = 'Esc to cancel';
+
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'msg-edit-cancel';
     cancelBtn.textContent = 'Cancel';
-    const hint = document.createElement('span');
-    hint.className = 'msg-edit-hint';
-    hint.textContent = 'Enter to save · Esc to cancel';
-    actions.appendChild(saveBtn);
-    actions.appendChild(cancelBtn);
-    actions.appendChild(hint);
 
-    const original = msgTextEl.innerHTML;
-    msgTextEl.innerHTML = '';
-    msgTextEl.appendChild(textarea);
-    msgTextEl.appendChild(actions);
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'msg-edit-save';
+    saveBtn.textContent = 'Save Changes';
+
+    actions.appendChild(hint);
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+    footer.appendChild(charCount);
+    footer.appendChild(actions);
+    wrapper.appendChild(label);
+    wrapper.appendChild(textarea);
+    wrapper.appendChild(footer);
+    msgTextEl.appendChild(wrapper);
+
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    setTimeout(autoGrow, 0);
 
     async function save() {
       const newText = textarea.value.trim();
@@ -1646,14 +1734,18 @@ const Messenger = (() => {
   function _switchPickerTab(tab) {
     _pickerTab = tab;
     document.querySelectorAll('.picker-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    document.getElementById('picker-emoji-tab').style.display = tab === 'emoji' ? '' : 'none';
-    document.getElementById('picker-gif-tab').style.display = tab === 'gif' ? '' : 'none';
+    document.getElementById('picker-emoji-tab').style.display   = tab === 'emoji'  ? '' : 'none';
+    document.getElementById('picker-gif-tab').style.display     = tab === 'gif'    ? '' : 'none';
+    document.getElementById('picker-images-tab').style.display  = tab === 'images' ? '' : 'none';
+    document.getElementById('picker-videos-tab').style.display  = tab === 'videos' ? '' : 'none';
     _renderPickerTabContent(tab);
   }
 
   function _renderPickerTabContent(tab) {
-    if (tab === 'emoji') _renderEmojiTab();
-    else _renderGifTab();
+    if (tab === 'emoji')       _renderEmojiTab();
+    else if (tab === 'gif')    _renderGifTab();
+    else if (tab === 'images') _renderImagesTab();
+    else if (tab === 'videos') _renderVideosTab();
   }
 
   function _renderEmojiTab() {
@@ -1744,6 +1836,152 @@ const Messenger = (() => {
     });
   }
 
+
+  function _renderImagesTab() {
+    const tab = document.getElementById('picker-images-tab');
+    const images = _allImages();
+    tab.innerHTML = images.length
+      ? '<div class="gif-grid">' +
+        images.map(i => '<img class="gif-item" src="' + esc(i.url) + '" alt="Image" data-url="' + esc(i.url) + '" loading="lazy">').join('') +
+        '</div>'
+      : '<div class="gif-empty">No images yet \u2014 send one in a channel to populate this library!</div>';
+    tab.querySelectorAll('.gif-item').forEach(img => {
+      img.addEventListener('click', () => _sendImageFromPicker(img.dataset.url));
+    });
+  }
+
+  function _renderVideosTab() {
+    const tab = document.getElementById('picker-videos-tab');
+    const videos = _allVideos();
+    tab.innerHTML = videos.length
+      ? '<div class="gif-grid">' +
+        videos.map(v =>
+          '<div class="video-picker-item" data-url="' + esc(v.url) + '">' +
+          '<video class="video-picker-thumb" src="' + esc(v.url) + '" preload="metadata" muted></video>' +
+          '<div class="video-picker-play">\u25b6</div>' +
+          '</div>'
+        ).join('') +
+        '</div>'
+      : '<div class="gif-empty">No videos yet \u2014 use the \ud83c\udfa5 button in the chat bar to upload one!</div>';
+    tab.querySelectorAll('.video-picker-item').forEach(el => {
+      el.addEventListener('click', () => _sendVideoFromPicker(el.dataset.url));
+    });
+  }
+
+  async function _sendImageFromPicker(imageUrl) {
+    if (!currentChat) { showToast('Open a chat first.', 'error'); return; }
+    _closePicker();
+    const msgData = {
+      text: '',
+      images: [imageUrl],
+      uid: currentUser.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    try {
+      if (currentChat.type === 'dm') {
+        const convoId = [currentUser.uid, currentChat.friendUid].sort().join('_');
+        await db.collection('dms').doc(convoId).collection('messages').add(msgData);
+      } else if (currentChat.type === 'channel') {
+        await db.collection('servers').doc(currentChat.serverId)
+          .collection('channels').doc(currentChat.channelId)
+          .collection('messages').add(msgData);
+      }
+    } catch (err) {
+      console.error('Send image failed:', err);
+      showToast('Failed to send image.', 'error');
+    }
+  }
+
+  async function _sendVideoFromPicker(videoUrl) {
+    if (!currentChat) { showToast('Open a chat first.', 'error'); return; }
+    _closePicker();
+    const msgData = {
+      text: '',
+      videoUrl,
+      uid: currentUser.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    try {
+      if (currentChat.type === 'dm') {
+        const convoId = [currentUser.uid, currentChat.friendUid].sort().join('_');
+        await db.collection('dms').doc(convoId).collection('messages').add(msgData);
+      } else if (currentChat.type === 'channel') {
+        await db.collection('servers').doc(currentChat.serverId)
+          .collection('channels').doc(currentChat.channelId)
+          .collection('messages').add(msgData);
+      }
+    } catch (err) {
+      console.error('Send video failed:', err);
+      showToast('Failed to send video.', 'error');
+    }
+  }
+
+  function _syncServerImageListeners(serverIds) {
+    _serverImageUnsubs.forEach((unsub, sid) => {
+      if (!serverIds.has(sid)) {
+        unsub();
+        _serverImageUnsubs.delete(sid);
+        _serverImages.delete(sid);
+      }
+    });
+    serverIds.forEach(sid => {
+      if (_serverImageUnsubs.has(sid)) return;
+      const unsub = db.collection('servers').doc(sid).collection('images')
+        .orderBy('createdAt', 'desc').limit(100)
+        .onSnapshot(snap => {
+          const imgs = [];
+          snap.forEach(d => imgs.push({ id: d.id, ...d.data() }));
+          _serverImages.set(sid, imgs);
+          if (_pickerOpen && _pickerTab === 'images') _renderImagesTab();
+        });
+      _serverImageUnsubs.set(sid, unsub);
+    });
+  }
+
+  function _syncServerVideoListeners(serverIds) {
+    _serverVideoUnsubs.forEach((unsub, sid) => {
+      if (!serverIds.has(sid)) {
+        unsub();
+        _serverVideoUnsubs.delete(sid);
+        _serverVideos.delete(sid);
+      }
+    });
+    serverIds.forEach(sid => {
+      if (_serverVideoUnsubs.has(sid)) return;
+      const unsub = db.collection('servers').doc(sid).collection('videos')
+        .orderBy('createdAt', 'desc').limit(50)
+        .onSnapshot(snap => {
+          const vids = [];
+          snap.forEach(d => vids.push({ id: d.id, ...d.data() }));
+          _serverVideos.set(sid, vids);
+          if (_pickerOpen && _pickerTab === 'videos') _renderVideosTab();
+        });
+      _serverVideoUnsubs.set(sid, unsub);
+    });
+  }
+
+  function _allImages() {
+    const seen = new Set();
+    const result = [];
+    _serverImages.forEach(imgs => {
+      imgs.forEach(i => {
+        if (!seen.has(i.url)) { seen.add(i.url); result.push(i); }
+      });
+    });
+    return result;
+  }
+
+  function _allVideos() {
+    const seen = new Set();
+    const result = [];
+    _serverVideos.forEach(vids => {
+      vids.forEach(v => {
+        if (!seen.has(v.url)) { seen.add(v.url); result.push(v); }
+      });
+    });
+    return result;
+  }
+
   /* ── Image Attachment Staging ── */
   function _addStagedFiles(fileList) {
     const arr = Array.from(fileList);
@@ -1759,25 +1997,53 @@ const Messenger = (() => {
 
   function _renderStagedPreviews() {
     const bar = document.getElementById('attachment-staging');
-    if (!_stagedFiles.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+    const hasContent = _stagedFiles.length > 0 || _stagedVideo !== null;
+    if (!hasContent) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
     bar.style.display = 'flex';
-    bar.innerHTML = _stagedObjectUrls.map((url, i) =>
+    let html = _stagedObjectUrls.map((url, i) =>
       '<div class="attachment-thumb-wrap">' +
         '<img class="attachment-thumb" src="' + url + '" alt="">' +
         '<button class="attachment-remove" data-idx="' + i + '" title="Remove">\u00d7</button>' +
       '</div>'
-    ).join('') +
-    '<span class="attachment-count">' + _stagedFiles.length + '/4</span>';
-
-    bar.querySelectorAll('.attachment-remove').forEach(btn => {
+    ).join('');
+    if (_stagedVideo) {
+      html += '<div class="attachment-thumb-wrap attachment-video-wrap">' +
+        '<video class="attachment-thumb" src="' + _stagedVideoUrl + '" muted preload="metadata"></video>' +
+        '<button class="attachment-remove attachment-remove-video" title="Remove">\u00d7</button>' +
+        '<span class="attachment-video-label">Video</span>' +
+      '</div>';
+    }
+    if (_stagedFiles.length) {
+      html += '<span class="attachment-count">' + _stagedFiles.length + '/4</span>';
+    }
+    bar.innerHTML = html;
+    bar.querySelectorAll('.attachment-remove:not(.attachment-remove-video)').forEach(btn => {
       btn.addEventListener('click', () => _removeStagedFile(parseInt(btn.dataset.idx)));
     });
+    const videoRemoveBtn = bar.querySelector('.attachment-remove-video');
+    if (videoRemoveBtn) {
+      videoRemoveBtn.addEventListener('click', () => {
+        URL.revokeObjectURL(_stagedVideoUrl);
+        _stagedVideo = null;
+        _stagedVideoUrl = null;
+        _renderStagedPreviews();
+      });
+    }
   }
 
   function _removeStagedFile(idx) {
     URL.revokeObjectURL(_stagedObjectUrls[idx]);
     _stagedFiles.splice(idx, 1);
     _stagedObjectUrls.splice(idx, 1);
+    _renderStagedPreviews();
+  }
+
+  function _addStagedVideo(file) {
+    if (!file.type.startsWith('video/')) { showToast('Please select a video file.', 'error'); return; }
+    if (file.size > 50 * 1024 * 1024) { showToast('Video must be under 50 MB.', 'error'); return; }
+    if (_stagedVideo) URL.revokeObjectURL(_stagedVideoUrl);
+    _stagedVideo = file;
+    _stagedVideoUrl = URL.createObjectURL(file);
     _renderStagedPreviews();
   }
 
