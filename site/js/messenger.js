@@ -250,6 +250,7 @@ const Messenger = (() => {
   const _rtdbDMListeners = new Map();        // uid → RTDB off fn
   const _dmProfiles = new Map();             // uid → profile data
   const _rtdbOfflineSet = new Set();         // uids RTDB confirmed offline (takes priority over Firestore)
+  const _currentFriendUids = new Set();      // current user's friend uids
 
   // Periodically re-render so lastSeen staleness is re-evaluated even when Firestore doesn't push
   setInterval(() => {
@@ -260,6 +261,8 @@ const Messenger = (() => {
     db.collection('users').doc(currentUser.uid).onSnapshot(doc => {
       if (!doc.exists) return;
       const friendUids = doc.data().friends || [];
+      _currentFriendUids.clear();
+      friendUids.forEach(uid => _currentFriendUids.add(uid));
 
       if (!friendUids.length) {
         _dmFriendListeners.forEach(unsub => unsub());
@@ -380,7 +383,10 @@ const Messenger = (() => {
       return;
     }
 
-    list.innerHTML = profiles.map(f => {
+    const friends = profiles.filter(f => _currentFriendUids.has(f.uid));
+    const nonFriends = profiles.filter(f => !_currentFriendUids.has(f.uid));
+
+    function renderItem(f) {
       const initial = (f.username || 'U').charAt(0).toUpperCase();
       const avatarHtml = f.avatar
         ? '<img src="' + esc(f.avatar) + '" alt="">'
@@ -395,7 +401,17 @@ const Messenger = (() => {
           '<div class="friend-name">' + esc(f.username) + '</div>' +
           '<div class="friend-status">' + _resolveActivity(f, eStatus) + '</div>' +
         '</div></div>';
-    }).join('');
+    }
+
+    let html = '';
+    if (friends.length) {
+      html += friends.map(renderItem).join('');
+    }
+    if (nonFriends.length) {
+      html += '<div class="dm-category-label">Direct Messages</div>';
+      html += nonFriends.map(renderItem).join('');
+    }
+    list.innerHTML = html;
 
     list.querySelectorAll('.friend-item').forEach(el => {
       el.addEventListener('click', () => openDM(el.dataset.uid, _dmProfiles.get(el.dataset.uid)));
@@ -444,6 +460,18 @@ const Messenger = (() => {
     document.getElementById('chat-title').textContent = profile ? profile.username : 'Chat';
     document.getElementById('chat-input-bar').style.display = 'flex';
     document.getElementById('members-sidebar').style.display = 'none';
+
+    // Show leave chat button only for non-friends
+    const leaveBtn = document.getElementById('leave-chat-btn');
+    if (leaveBtn) {
+      if (!_currentFriendUids.has(friendUid)) {
+        leaveBtn.style.display = '';
+        leaveBtn.onclick = () => _confirmLeaveChat(friendUid, profile ? profile.username : 'this user');
+      } else {
+        leaveBtn.style.display = 'none';
+        leaveBtn.onclick = null;
+      }
+    }
 
     // Track activity
     const dmName = profile ? (profile.username || '') : '';
@@ -904,7 +932,7 @@ const Messenger = (() => {
       'activity.dm': null
     }).catch(() => {});
 
-    loadChannels(serverId);
+    loadChannels(serverId, true);
 
     // Live listener on server doc → updates members list when someone joins/leaves
     if (_serverDocUnsub) { _serverDocUnsub(); _serverDocUnsub = null; }
@@ -915,7 +943,7 @@ const Messenger = (() => {
     loadMembers(serverId, serverData.members || []);
   }
 
-  function loadChannels(serverId) {
+  function loadChannels(serverId, autoOpen) {
     const isOwner = !!(currentUser && currentUser.uid === currentServerOwner);
     db.collection('servers').doc(serverId).collection('channels')
       .orderBy('name')
@@ -966,9 +994,10 @@ const Messenger = (() => {
           });
         }
 
-        // Auto-open first channel
-        if (!snap.empty && !currentChat) {
-          const first = docs[0];
+        // Auto-open first channel (or one named 'general')
+        if (!snap.empty && (autoOpen || !currentChat)) {
+          const generalDoc = docs.find(d => d.data().name.toLowerCase() === 'general');
+          const first = generalDoc || docs[0];
           openChannel(serverId, first.id, first.data().name);
         }
       });
@@ -1108,7 +1137,7 @@ const Messenger = (() => {
       const avatarHtml = m.avatar ? '<img src="' + esc(m.avatar) + '" alt="">' : initial;
       const eStatus = _resolveStatus(m);
       const activity = _resolveActivity(m, eStatus);
-      return '<div class="member-item">' +
+      return '<div class="member-item" data-uid="' + m.uid + '" style="cursor:pointer">' +
         '<div class="member-avatar">' + avatarHtml +
           '<span class="status-dot ' + eStatus + '"></span>' +
         '</div>' +
@@ -1117,6 +1146,14 @@ const Messenger = (() => {
           '<span class="member-activity">' + esc(activity) + '</span>' +
         '</div></div>';
     }).join('');
+
+    // Wire click → user popup (skip self)
+    list.querySelectorAll('.member-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const uid = el.dataset.uid;
+        if (uid && uid !== currentUser.uid) _showUserPopup(uid, el);
+      });
+    });
   }
 
   /* ── Channel Chat ── */
@@ -1131,6 +1168,8 @@ const Messenger = (() => {
 
     document.getElementById('chat-title').textContent = '# ' + channelName;
     document.getElementById('chat-input-bar').style.display = 'flex';
+    const lBtn = document.getElementById('leave-chat-btn');
+    if (lBtn) lBtn.style.display = 'none';
 
     const messagesEl = document.getElementById('chat-messages');
     messagesEl.innerHTML = '<div class="chat-empty">Loading...</div>';
@@ -1264,19 +1303,23 @@ const Messenger = (() => {
             .add({ url: videoUrl, uploadedBy: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
         }
 
-        // Notify friend
-        const notifText = videoUrl
-          ? userProfile.username + ' sent a video'
-          : imageUrls.length
-          ? userProfile.username + ' sent ' + (imageUrls.length === 1 ? 'an image' : imageUrls.length + ' images')
-          : userProfile.username + ': ' + (text.length > 60 ? text.slice(0, 60) + '...' : text);
-        await db.collection('users').doc(currentChat.friendUid).collection('notifications').add({
-          message: notifText,
-          type: 'dm',
-          fromUid: currentUser.uid,
-          read: false,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+        // Notify friend (skip if they are in DND mode)
+        const recipientProfile = _dmProfiles.get(currentChat.friendUid) || profileCache.get(currentChat.friendUid);
+        const recipientStatus = recipientProfile ? (recipientProfile.effectiveStatus || 'offline') : 'offline';
+        if (recipientStatus !== 'dnd') {
+          const notifText = videoUrl
+            ? userProfile.username + ' sent a video'
+            : imageUrls.length
+            ? userProfile.username + ' sent ' + (imageUrls.length === 1 ? 'an image' : imageUrls.length + ' images')
+            : userProfile.username + ': ' + (text.length > 60 ? text.slice(0, 60) + '...' : text);
+          await db.collection('users').doc(currentChat.friendUid).collection('notifications').add({
+            message: notifText,
+            type: 'dm',
+            fromUid: currentUser.uid,
+            read: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        }
       } else if (currentChat.type === 'channel') {
         await db.collection('servers').doc(currentChat.serverId)
           .collection('channels').doc(currentChat.channelId)
@@ -1463,19 +1506,7 @@ const Messenger = (() => {
       ? '<img src="' + esc(u.avatar) + '" alt="">'
       : '<span class="user-popup-initial">' + initial + '</span>';
     const eStatus = u.effectiveStatus || 'offline';
-    const statusLabels = { online: 'Online', away: 'Away', dnd: 'Do Not Disturb', offline: 'Offline' };
-
-    // Activity
-    let activityText = '';
-    if (fullData && fullData.activity) {
-      const a = fullData.activity;
-      if (a.page === 'games' && a.game) activityText = 'Playing ' + a.game;
-      else if (a.page === 'messenger' && a.dm) activityText = 'Chatting with ' + a.dm;
-      else if (a.page === 'messenger' && a.server) activityText = 'In ' + a.server;
-      else if (a.page === 'messenger') activityText = 'On Messenger';
-      else if (a.page === 'friends') activityText = 'On Friends';
-      else if (a.page === 'games') activityText = 'Browsing Games';
-    }
+    const statusText = _resolveActivity(fullData || u, eStatus);
 
     // Description
     const desc = fullData && fullData.description ? fullData.description : '';
@@ -1497,8 +1528,7 @@ const Messenger = (() => {
           '</div>' +
         '</div>' +
         '<h3 class="user-popup-name">' + esc(u.username) + '</h3>' +
-        '<span class="user-popup-status ' + eStatus + '">' + (statusLabels[eStatus] || 'Offline') + '</span>' +
-        (activityText ? '<div class="user-popup-activity">' + esc(activityText) + '</div>' : '') +
+        '<span class="user-popup-status ' + eStatus + '">' + esc(statusText) + '</span>' +
         (desc ? '<div class="user-popup-desc">' + esc(desc) + '</div>' : '') +
         '<hr class="user-popup-divider">' +
         '<div class="user-popup-actions">' +
@@ -1541,7 +1571,24 @@ const Messenger = (() => {
         addBtn.disabled = true;
         addBtn.textContent = 'Sending...';
         try {
-          // Check for existing pending request
+          // Check if they already sent us a pending request — auto-accept
+          const reverseReqs = await db.collection('friend_requests')
+            .where('from', '==', uid)
+            .where('to', '==', currentUser.uid)
+            .get();
+          let reverseDoc = null;
+          reverseReqs.forEach(d => { if (d.data().status === 'pending') reverseDoc = d; });
+          if (reverseDoc) {
+            const batch = db.batch();
+            batch.update(db.collection('users').doc(currentUser.uid), { friends: firebase.firestore.FieldValue.arrayUnion(uid) });
+            batch.update(db.collection('users').doc(uid), { friends: firebase.firestore.FieldValue.arrayUnion(currentUser.uid) });
+            batch.update(db.collection('friend_requests').doc(reverseDoc.id), { status: 'accepted' });
+            await batch.commit();
+            addBtn.textContent = 'Friends!';
+            showToast('Friend added!', 'success');
+            return;
+          }
+          // Check for existing pending request from us
           const existing = await db.collection('friend_requests')
             .where('from', '==', currentUser.uid)
             .where('to', '==', uid)
@@ -1777,6 +1824,40 @@ const Messenger = (() => {
       onConfirm: async () => {
         try { await docRef.delete(); }
         catch { showToast('Failed to delete message.', 'error'); }
+      }
+    });
+  }
+
+  /* ── Leave Chat (non-friend DMs) ── */
+  function _confirmLeaveChat(otherUid, otherName) {
+    _showConfirm({
+      title: 'Leave Chat',
+      avatar: '',
+      username: otherName,
+      preview: 'This will delete all messages in this conversation for both users.',
+      onConfirm: async () => {
+        try {
+          const convoId = [currentUser.uid, otherUid].sort().join('_');
+          // Delete all messages in the conversation
+          const msgs = await db.collection('dms').doc(convoId).collection('messages').get();
+          const batch = db.batch();
+          msgs.forEach(d => batch.delete(d.ref));
+          batch.delete(db.collection('dms').doc(convoId));
+          await batch.commit();
+          // Remove from local state
+          if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+          _dmProfiles.delete(otherUid);
+          currentChat = null;
+          document.getElementById('chat-messages').innerHTML = '<div class="chat-empty">Select a friend or channel to start chatting</div>';
+          document.getElementById('chat-title').textContent = 'Select a conversation';
+          document.getElementById('chat-input-bar').style.display = 'none';
+          document.getElementById('leave-chat-btn').style.display = 'none';
+          _renderDMFriendsList();
+          showToast('Chat deleted.', 'success');
+        } catch (err) {
+          console.error(err);
+          showToast('Failed to delete chat.', 'error');
+        }
       }
     });
   }

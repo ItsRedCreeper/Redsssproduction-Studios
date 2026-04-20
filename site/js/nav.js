@@ -7,6 +7,7 @@
 const Nav = (() => {
 
   let _idleTimer = null;
+  let _currentProfile = null;
   const IDLE_MS = 10 * 60 * 1000; // 10 minutes
 
   /* ── Public init ── */
@@ -34,6 +35,7 @@ const Nav = (() => {
         document.getElementById('app').style.display = '';
 
         // Wire everything
+        _currentProfile = profile;
         _renderUserUI(user, profile);
         _setActive(activePageId);
         _setupEvents(user, profile);
@@ -255,7 +257,9 @@ const Nav = (() => {
         snap.forEach(d => notifs.push({ id: d.id, ...d.data() }));
         const unread = notifs.filter(n => !n.read).length;
 
-        if (unread > 0) {
+        // Suppress badge/bell when user is in DND mode
+        const isDnd = _currentProfile && _currentProfile.effectiveStatus === 'dnd';
+        if (unread > 0 && !isDnd) {
           badge.textContent = unread > 9 ? '9+' : unread;
           badge.classList.add('visible');
           bell.classList.add('ringing');

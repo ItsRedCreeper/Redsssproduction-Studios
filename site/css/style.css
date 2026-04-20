@@ -1744,6 +1744,16 @@ body.messenger-page #app {
 .friend-item:hover { background: var(--bg-hover); }
 .friend-item.active { background: var(--bg-tertiary); }
 
+.dm-category-label {
+  padding: 8px 16px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
 .friend-avatar {
   width: 32px;
   height: 32px;
@@ -1924,7 +1934,31 @@ body.messenger-page #app {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
+
+.btn-leave-chat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  background: transparent;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-leave-chat:hover {
+  background: var(--danger);
+  color: #fff;
+}
+.btn-leave-chat svg { stroke: currentColor; }
 
 .chat-messages {
   flex: 1;

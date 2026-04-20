@@ -140,6 +140,20 @@ const Friends = (() => {
         return;
       }
 
+      // Check if they already sent us a pending request — auto-accept instead
+      const reverseReqs = await db.collection('friend_requests')
+        .where('from', '==', targetUid)
+        .where('to', '==', currentUser.uid)
+        .get();
+      let reverseDoc = null;
+      reverseReqs.forEach(d => { if (d.data().status === 'pending') reverseDoc = d; });
+      if (reverseDoc) {
+        await _acceptFriend(reverseDoc.id, targetUid);
+        btnEl.textContent = 'Friends';
+        btnEl.disabled = true;
+        return;
+      }
+
       // Check if a pending request already exists (denied ones are ignored so you can re-send)
       const existing = await db.collection('friend_requests')
         .where('from', '==', currentUser.uid)
@@ -579,8 +593,8 @@ const Friends = (() => {
         '</div>' +
         '<div class="friend-tabs">' +
           '<button class="friend-tab' + (_selectedFriendTab === 'about' ? ' active' : '') + '" data-tab="about">About</button>' +
-          '<button class="friend-tab' + (_selectedFriendTab === 'mutual-friends' ? ' active' : '') + '" data-tab="mutual-friends">Mutual Friends</button>' +
-          '<button class="friend-tab' + (_selectedFriendTab === 'mutual-servers' ? ' active' : '') + '" data-tab="mutual-servers">Mutual Servers</button>' +
+          '<button class="friend-tab' + (_selectedFriendTab === 'mutual-friends' ? ' active' : '') + '" data-tab="mutual-friends" id="tab-mutual-friends">Mutual Friends</button>' +
+          '<button class="friend-tab' + (_selectedFriendTab === 'mutual-servers' ? ' active' : '') + '" data-tab="mutual-servers" id="tab-mutual-servers">Mutual Servers</button>' +
         '</div>' +
         '<div class="friend-tab-panels">' +
           '<div class="friend-tab-panel' + (_selectedFriendTab === 'about' ? ' active' : '') + '" data-panel="about">' +
@@ -643,6 +657,9 @@ const Friends = (() => {
 
     // Load note
     _loadFriendNote(uid);
+
+    // Pre-load mutual counts for tab labels
+    _loadMutualCounts(uid);
 
     // If tabs other than about are active, load their content
     if (_selectedFriendTab === 'mutual-friends') _loadMutualFriends(uid);
@@ -831,6 +848,24 @@ const Friends = (() => {
       const activityObj = f.activity || {};
       joinBtn.style.display = (activityObj.page === 'games' && activityObj.game) ? '' : 'none';
     }
+  }
+
+  /* ── Mutual counts for tab labels ── */
+  async function _loadMutualCounts(uid) {
+    try {
+      const theirDoc = await db.collection('users').doc(uid).get();
+      const theirFriends = ((theirDoc.data() || {}).friends) || [];
+      const mutualFriendCount = _myFriendUids.filter(f => theirFriends.includes(f)).length;
+      const tab1 = document.getElementById('tab-mutual-friends');
+      if (tab1) tab1.textContent = 'Mutual Friends — ' + mutualFriendCount;
+    } catch { /* ignore */ }
+    try {
+      const snap = await db.collection('servers').where('members', 'array-contains', currentUser.uid).get();
+      let mutualServerCount = 0;
+      snap.forEach(doc => { if ((doc.data().members || []).includes(uid)) mutualServerCount++; });
+      const tab2 = document.getElementById('tab-mutual-servers');
+      if (tab2) tab2.textContent = 'Mutual Servers — ' + mutualServerCount;
+    } catch { /* ignore */ }
   }
 
   /* ── Mutual friends ── */

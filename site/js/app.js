@@ -615,10 +615,9 @@ const App = (() => {
   let _lastDisplayedOnline = -1;
   let _onlineDecreaseTimer = null;
   function _listenOnlineCount() {
-    const STALE_MS = 30 * 1000;   // treat as offline if heartbeat > 30s ago
     const CLEANUP_MS = 60 * 1000; // write offline to Firestore if > 60s stale
     db.collection('users')
-      .where('effectiveStatus', 'in', ['online', 'away', 'dnd'])
+      .where('online', '==', true)
       .onSnapshot(snap => {
         const now = Date.now();
         let count = 0;
@@ -630,22 +629,20 @@ const App = (() => {
             else if (data.lastSeen.seconds) lastMs = data.lastSeen.seconds * 1000;
           }
           const age = now - lastMs;
-          if (age <= STALE_MS) {
-            count++;
-          } else if (age > CLEANUP_MS && doc.id !== currentUser.uid) {
+          if (age > CLEANUP_MS && doc.id !== currentUser.uid) {
             // Clean up stale Firestore entry so it doesn't linger
             db.collection('users').doc(doc.id).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+          } else {
+            count++;
           }
         });
         const el = document.getElementById('stat-online');
         if (!el) return;
         clearTimeout(_onlineDecreaseTimer);
         if (_lastDisplayedOnline === -1 || count >= _lastDisplayedOnline) {
-          // First update or increase: show immediately
           _lastDisplayedOnline = count;
           el.textContent = count;
         } else {
-          // Decrease: wait 3s before committing to avoid flicker
           _onlineDecreaseTimer = setTimeout(() => {
             _lastDisplayedOnline = count;
             el.textContent = count;
