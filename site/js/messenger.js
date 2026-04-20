@@ -216,11 +216,9 @@ const Messenger = (() => {
           if (doc.exists) {
             const u = doc.data();
             const prof = { uid: _dmParam, username: u.username || 'User', avatar: u.avatar || '', effectiveStatus: u.effectiveStatus || 'offline' };
-            _dmProfiles.set(_dmParam, prof);
             profileCache.set(_dmParam, { username: prof.username, avatar: prof.avatar, effectiveStatus: prof.effectiveStatus });
             showDMView();
             openDM(_dmParam, prof);
-            _renderDMFriendsList();
           }
         } catch { /* ignore */ }
       }, 3000);
@@ -1679,12 +1677,12 @@ const Messenger = (() => {
         showDMView();
         openDM(uid, prof);
       } else {
-        // Start a new DM — cache this user profile and open
-        _dmProfiles.set(uid, { uid: uid, username: u.username, avatar: u.avatar, effectiveStatus: eStatus });
+        // Open the chat UI but don't add to sidebar yet — _listenNonFriendDMs
+        // will add them automatically once the first message is sent.
+        const newProf = { uid: uid, username: u.username, avatar: u.avatar, effectiveStatus: eStatus };
         profileCache.set(uid, { username: u.username, avatar: u.avatar, effectiveStatus: eStatus });
         showDMView();
-        openDM(uid, { uid: uid, username: u.username, avatar: u.avatar, effectiveStatus: eStatus });
-        _renderDMFriendsList();
+        openDM(uid, newProf);
       }
     });
 
