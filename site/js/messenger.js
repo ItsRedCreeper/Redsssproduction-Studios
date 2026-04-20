@@ -1981,8 +1981,15 @@ const Messenger = (() => {
         const data = change.doc.data();
 
         if (change.type === 'added') {
-          _addStreamCard(serverId, channelId, streamerUid, data.username || 'Someone');
-          if (streamerUid !== currentUser.uid) {
+          _addStreamCard(streamerUid, data.username || 'Someone');
+          if (streamerUid === currentUser.uid && _localStream) {
+            // Attach our own local stream to our card
+            const myCard = document.querySelector('[data-stream-uid="' + streamerUid + '"]');
+            if (myCard) {
+              const vid = myCard.querySelector('video');
+              if (vid) { vid.srcObject = _localStream; vid.play().catch(() => {}); }
+            }
+          } else if (streamerUid !== currentUser.uid) {
             _joinStream(serverId, channelId, streamerUid);
           }
         } else if (change.type === 'removed') {
@@ -2004,7 +2011,7 @@ const Messenger = (() => {
     _streamUnsubs.push(streamsUnsub);
   }
 
-  function _addStreamCard(serverId, channelId, streamerUid, username) {
+  function _addStreamCard(streamerUid, username) {
     const grid = document.getElementById('stream-grid');
     if (grid.querySelector('[data-stream-uid="' + streamerUid + '"]')) return;
 
@@ -2069,15 +2076,6 @@ const Messenger = (() => {
       username: userProfile.username || 'Someone',
       startedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
-
-    // Set our own video immediately in our card
-    setTimeout(() => {
-      const card = document.querySelector('[data-stream-uid="' + currentUser.uid + '"]');
-      if (card) {
-        const vid = card.querySelector('video');
-        if (vid) { vid.srcObject = _localStream; vid.muted = true; }
-      }
-    }, 200);
 
     // Listen for viewers joining our stream
     const viewersRef = streamRef.collection('viewers');
@@ -2190,7 +2188,7 @@ const Messenger = (() => {
       const card = document.querySelector('[data-stream-uid="' + streamerUid + '"]');
       if (card && e.streams[0]) {
         const vid = card.querySelector('video');
-        if (vid) vid.srcObject = e.streams[0];
+        if (vid) { vid.srcObject = e.streams[0]; vid.play().catch(() => {}); }
       }
     };
 
