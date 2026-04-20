@@ -236,6 +236,10 @@ const Messenger = (() => {
     document.getElementById('dm-section').style.display = 'flex';
     document.getElementById('channel-section').style.display = 'none';
     document.getElementById('members-sidebar').style.display = 'none';
+    document.getElementById('stream-view').style.display = 'none';
+    document.getElementById('chat-messages').style.display = '';
+
+    _cleanupStreaming();
 
     // Track activity
     db.collection('users').doc(currentUser.uid).update({
@@ -495,6 +499,7 @@ const Messenger = (() => {
   /* ── DM Chat ── */
   function openDM(friendUid, profile) {
     if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+    _cleanupStreaming();
 
     currentChat = { type: 'dm', friendUid };
 
@@ -504,6 +509,8 @@ const Messenger = (() => {
 
     document.getElementById('chat-title').textContent = profile ? profile.username : 'Chat';
     document.getElementById('chat-input-bar').style.display = 'flex';
+    document.getElementById('stream-view').style.display = 'none';
+    document.getElementById('chat-messages').style.display = '';
     document.getElementById('members-sidebar').style.display = 'none';
 
     // Show leave chat button only for non-friends
@@ -896,7 +903,11 @@ const Messenger = (() => {
           const el = document.createElement('div');
           el.className = 'channel-item';
           el.dataset.id = doc.id;
-          el.innerHTML = '<span class="channel-hash">#</span> ' + esc(ch.name);
+          if (ch.type === 'streaming') {
+            el.innerHTML = '<span class="channel-icon-stream"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></span> ' + esc(ch.name);
+          } else {
+            el.innerHTML = '<span class="channel-hash">#</span> ' + esc(ch.name);
+          }
           el.addEventListener('click', () => _openPreviewChannel(serverId, doc.id, ch.name));
           list.appendChild(el);
         });
@@ -1006,6 +1017,7 @@ const Messenger = (() => {
           const el = document.createElement('div');
           el.className = 'channel-item';
           el.dataset.id = doc.id;
+          el.dataset.type = ch.type || 'text';
 
           let orderBtns = '';
           if (isOwner) {
@@ -1013,10 +1025,18 @@ const Messenger = (() => {
             const dnBtn = idx < docs.length - 1 ? '<button class="ch-order-btn ch-dn" data-idx="' + idx + '" title="Move down">↓</button>' : '';
             orderBtns = '<span class="ch-order-btns">' + upBtn + dnBtn + '</span>';
           }
-          el.innerHTML = '<span class="channel-hash">#</span> ' + esc(ch.name) + orderBtns;
+          if (ch.type === 'streaming') {
+            el.innerHTML = '<span class="channel-icon-stream"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></span> ' + esc(ch.name) + orderBtns;
+          } else {
+            el.innerHTML = '<span class="channel-hash">#</span> ' + esc(ch.name) + orderBtns;
+          }
           el.addEventListener('click', e => {
             if (e.target.classList.contains('ch-order-btn')) return;
-            openChannel(serverId, doc.id, ch.name);
+            if (ch.type === 'streaming') {
+              openStreamingChannel(serverId, doc.id, ch.name);
+            } else {
+              openChannel(serverId, doc.id, ch.name);
+            }
           });
           list.appendChild(el);
         });
@@ -1043,10 +1063,26 @@ const Messenger = (() => {
         if (!snap.empty && (autoOpen || !currentChat)) {
           const generalDoc = docs.find(d => d.data().name.toLowerCase() === 'general');
           const first = generalDoc || docs[0];
-          openChannel(serverId, first.id, first.data().name);
+          const firstData = first.data();
+          if (firstData.type === 'streaming') {
+            openStreamingChannel(serverId, first.id, firstData.name);
+          } else {
+            openChannel(serverId, first.id, firstData.name);
+          }
         }
       });
   }
+
+  let _selectedChannelType = 'text';
+  (function _wireChannelTypePicker() {
+    document.querySelectorAll('.channel-type-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.channel-type-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        _selectedChannelType = btn.dataset.type;
+      });
+    });
+  })();
 
   async function createChannel() {
     if (!currentServerId) return;
@@ -1058,12 +1094,21 @@ const Messenger = (() => {
 
     try {
       const existingSnap = await db.collection('servers').doc(currentServerId).collection('channels').get();
-      await db.collection('servers').doc(currentServerId).collection('channels').add({
+      const channelData = {
         name,
         order: existingSnap.size,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
+      };
+      if (_selectedChannelType === 'streaming') {
+        channelData.type = 'streaming';
+        channelData.activeStreamer = null;
+        channelData.streamerName = null;
+      }
+      await db.collection('servers').doc(currentServerId).collection('channels').add(channelData);
       document.getElementById('channel-name-input').value = '';
+      _selectedChannelType = 'text';
+      document.querySelectorAll('.channel-type-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector('.channel-type-btn[data-type="text"]').classList.add('active');
       document.getElementById('create-channel-modal').classList.remove('open');
       showToast('Channel created!', 'success');
     } catch {
@@ -1204,6 +1249,7 @@ const Messenger = (() => {
   /* ── Channel Chat ── */
   function openChannel(serverId, channelId, channelName) {
     if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+    _cleanupStreaming();
 
     currentChat = { type: 'channel', serverId, channelId };
 
@@ -1213,6 +1259,8 @@ const Messenger = (() => {
 
     document.getElementById('chat-title').textContent = '# ' + channelName;
     document.getElementById('chat-input-bar').style.display = 'flex';
+    document.getElementById('stream-view').style.display = 'none';
+    document.getElementById('chat-messages').style.display = '';
     const lBtn = document.getElementById('leave-chat-btn');
     if (lBtn) lBtn.style.display = 'none';
 
@@ -1856,6 +1904,327 @@ const Messenger = (() => {
     cancelNew.addEventListener('click', close);
     overlay.addEventListener('click', e => { if (e.target === overlay) close(); }, { once: true });
   }
+
+  /* ══════════════════════════════════════════════
+     Streaming Channel — WebRTC screen share
+     ══════════════════════════════════════════════ */
+
+  let _localStream = null;                   // MediaStream from getDisplayMedia
+  const _streamerPCs = new Map();            // viewerUid → RTCPeerConnection (streamer side)
+  let _viewerPC = null;                      // RTCPeerConnection (viewer side)
+  let _streamUnsubs = [];                    // Firestore listeners to clean up
+  let _isStreaming = false;
+  let _isViewing = false;
+  const _rtcConfig = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  };
+
+  function _cleanupStreaming() {
+    // Stop local stream tracks
+    if (_localStream) {
+      _localStream.getTracks().forEach(t => t.stop());
+      _localStream = null;
+    }
+    // Close streamer peer connections
+    _streamerPCs.forEach(pc => pc.close());
+    _streamerPCs.clear();
+    // Close viewer peer connection
+    if (_viewerPC) { _viewerPC.close(); _viewerPC = null; }
+    // Unsubscribe Firestore listeners
+    _streamUnsubs.forEach(fn => fn());
+    _streamUnsubs = [];
+    // Reset video element
+    const vid = document.getElementById('stream-video');
+    if (vid) vid.srcObject = null;
+    _isStreaming = false;
+    _isViewing = false;
+  }
+
+  function openStreamingChannel(serverId, channelId, channelName) {
+    if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+    _cleanupStreaming();
+
+    currentChat = { type: 'streaming', serverId, channelId };
+
+    document.querySelectorAll('.channel-item').forEach(c => c.classList.remove('active'));
+    const el = document.querySelector('.channel-item[data-id="' + channelId + '"]');
+    if (el) el.classList.add('active');
+
+    document.getElementById('chat-title').textContent = channelName;
+    document.getElementById('chat-messages').style.display = 'none';
+    document.getElementById('chat-input-bar').style.display = 'none';
+    const lBtn = document.getElementById('leave-chat-btn');
+    if (lBtn) lBtn.style.display = 'none';
+
+    const streamView = document.getElementById('stream-view');
+    const streamIdle = document.getElementById('stream-idle');
+    const streamActive = document.getElementById('stream-active');
+    streamView.style.display = 'flex';
+    streamIdle.style.display = 'flex';
+    streamActive.style.display = 'none';
+
+    // Wire Go Live button
+    const goLiveBtn = document.getElementById('stream-go-live-btn');
+    const goLiveNew = goLiveBtn.cloneNode(true);
+    goLiveBtn.replaceWith(goLiveNew);
+    goLiveNew.addEventListener('click', () => _startStreaming(serverId, channelId));
+
+    // Wire Stop button
+    const stopBtn = document.getElementById('stream-stop-btn');
+    const stopNew = stopBtn.cloneNode(true);
+    stopBtn.replaceWith(stopNew);
+    stopNew.addEventListener('click', () => _stopStreaming(serverId, channelId));
+
+    // Listen to channel doc for active streamer changes
+    const channelRef = db.collection('servers').doc(serverId).collection('channels').doc(channelId);
+    const unsub = channelRef.onSnapshot(snap => {
+      if (!snap.exists) return;
+      const data = snap.data();
+      // Don't react if we already cleaned up / navigated away
+      if (!currentChat || currentChat.type !== 'streaming' || currentChat.channelId !== channelId) return;
+
+      if (data.activeStreamer) {
+        streamIdle.style.display = 'none';
+        streamActive.style.display = 'flex';
+
+        if (data.activeStreamer === currentUser.uid) {
+          // We are the streamer
+          document.getElementById('stream-bar-name').textContent = 'You are live!';
+          document.getElementById('stream-stop-btn').style.display = '';
+        } else {
+          // Someone else is streaming — join as viewer
+          document.getElementById('stream-bar-name').textContent = (data.streamerName || 'Someone') + ' is live';
+          document.getElementById('stream-stop-btn').style.display = 'none';
+          if (!_isViewing) {
+            _joinAsViewer(serverId, channelId, data.activeStreamer);
+          }
+        }
+        _listenViewerCount(serverId, channelId);
+      } else {
+        // No one streaming
+        streamIdle.style.display = 'flex';
+        streamActive.style.display = 'none';
+        if (_isViewing) {
+          _cleanupStreaming();
+          showToast('The stream has ended.', 'info');
+        }
+      }
+    });
+    _streamUnsubs.push(unsub);
+  }
+
+  async function _startStreaming(serverId, channelId) {
+    if (_isStreaming) return;
+    // Check if getDisplayMedia is available
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      showToast('Screen sharing is not supported on this device.', 'error');
+      return;
+    }
+    try {
+      _localStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'always' },
+        audio: false
+      });
+    } catch (err) {
+      if (err.name !== 'NotAllowedError') {
+        showToast('Could not start screen share.', 'error');
+      }
+      return;
+    }
+    _isStreaming = true;
+
+    // Show preview in local video element
+    const vid = document.getElementById('stream-video');
+    vid.srcObject = _localStream;
+    vid.muted = true;
+
+    // If the user stops sharing via the browser's native "Stop sharing" button
+    _localStream.getVideoTracks()[0].addEventListener('ended', () => {
+      _stopStreaming(serverId, channelId);
+    });
+
+    const channelRef = db.collection('servers').doc(serverId).collection('channels').doc(channelId);
+
+    // Mark ourselves as the active streamer
+    await channelRef.update({
+      activeStreamer: currentUser.uid,
+      streamerName: userProfile.username || 'Someone'
+    });
+
+    // Listen for viewers joining
+    const viewersRef = channelRef.collection('viewers');
+    const viewerUnsub = viewersRef.onSnapshot(snap => {
+      snap.docChanges().forEach(change => {
+        const viewerUid = change.doc.id;
+        if (viewerUid === currentUser.uid) return;
+
+        if (change.type === 'added') {
+          // New viewer — create a peer connection for them
+          _createStreamerPC(serverId, channelId, viewerUid);
+        } else if (change.type === 'removed') {
+          // Viewer left — close their PC
+          const pc = _streamerPCs.get(viewerUid);
+          if (pc) { pc.close(); _streamerPCs.delete(viewerUid); }
+        }
+      });
+    });
+    _streamUnsubs.push(viewerUnsub);
+  }
+
+  async function _createStreamerPC(serverId, channelId, viewerUid) {
+    const pc = new RTCPeerConnection(_rtcConfig);
+    _streamerPCs.set(viewerUid, pc);
+
+    // Add local stream tracks
+    _localStream.getTracks().forEach(track => pc.addTrack(track, _localStream));
+
+    const viewerDocRef = db.collection('servers').doc(serverId)
+      .collection('channels').doc(channelId)
+      .collection('viewers').doc(viewerUid);
+
+    // Send ICE candidates to Firestore
+    pc.onicecandidate = e => {
+      if (e.candidate) {
+        viewerDocRef.collection('streamerCandidates').add(e.candidate.toJSON()).catch(() => {});
+      }
+    };
+
+    // Create offer and write to viewer doc
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await viewerDocRef.update({ offer: { type: offer.type, sdp: offer.sdp } }).catch(() => {});
+
+    // Listen for viewer's answer
+    const answerUnsub = viewerDocRef.onSnapshot(snap => {
+      const data = snap.data();
+      if (data && data.answer && !pc.currentRemoteDescription) {
+        pc.setRemoteDescription(new RTCSessionDescription(data.answer)).catch(() => {});
+      }
+    });
+    _streamUnsubs.push(answerUnsub);
+
+    // Listen for viewer's ICE candidates
+    const candidateUnsub = viewerDocRef.collection('viewerCandidates').onSnapshot(snap => {
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(() => {});
+        }
+      });
+    });
+    _streamUnsubs.push(candidateUnsub);
+  }
+
+  async function _stopStreaming(serverId, channelId) {
+    if (!_isStreaming) return;
+    const channelRef = db.collection('servers').doc(serverId).collection('channels').doc(channelId);
+
+    // Delete all viewer signal docs
+    try {
+      const viewers = await channelRef.collection('viewers').get();
+      const batch = db.batch();
+      for (const vDoc of viewers.docs) {
+        // Delete subcollections first
+        const sCands = await vDoc.ref.collection('streamerCandidates').get();
+        sCands.forEach(c => batch.delete(c.ref));
+        const vCands = await vDoc.ref.collection('viewerCandidates').get();
+        vCands.forEach(c => batch.delete(c.ref));
+        batch.delete(vDoc.ref);
+      }
+      await batch.commit();
+    } catch (err) { console.error('Cleanup viewers error:', err); }
+
+    // Clear active streamer
+    await channelRef.update({ activeStreamer: null, streamerName: null }).catch(() => {});
+
+    _cleanupStreaming();
+  }
+
+  async function _joinAsViewer(serverId, channelId, streamerUid) {
+    if (_isViewing) return;
+    _isViewing = true;
+
+    const channelRef = db.collection('servers').doc(serverId).collection('channels').doc(channelId);
+    const viewerDocRef = channelRef.collection('viewers').doc(currentUser.uid);
+
+    // Create our viewer doc to signal we want to watch
+    await viewerDocRef.set({ joined: true });
+
+    const pc = new RTCPeerConnection(_rtcConfig);
+    _viewerPC = pc;
+
+    // When we receive the stream track, show it in the video element
+    pc.ontrack = e => {
+      const vid = document.getElementById('stream-video');
+      if (vid && e.streams[0]) vid.srcObject = e.streams[0];
+    };
+
+    // Send our ICE candidates
+    pc.onicecandidate = e => {
+      if (e.candidate) {
+        viewerDocRef.collection('viewerCandidates').add(e.candidate.toJSON()).catch(() => {});
+      }
+    };
+
+    // Listen for the streamer's offer
+    const offerUnsub = viewerDocRef.onSnapshot(async snap => {
+      const data = snap.data();
+      if (!data || !data.offer) return;
+      if (pc.currentRemoteDescription) return;
+
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await viewerDocRef.update({ answer: { type: answer.type, sdp: answer.sdp } });
+      } catch (err) { console.error('Viewer offer handling error:', err); }
+    });
+    _streamUnsubs.push(offerUnsub);
+
+    // Listen for streamer's ICE candidates
+    const candidateUnsub = viewerDocRef.collection('streamerCandidates').onSnapshot(snap => {
+      snap.docChanges().forEach(change => {
+        if (change.type === 'added') {
+          pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(() => {});
+        }
+      });
+    });
+    _streamUnsubs.push(candidateUnsub);
+  }
+
+  function _listenViewerCount(serverId, channelId) {
+    // Avoid duplicate listeners
+    if (_streamUnsubs._viewerCountActive) return;
+    _streamUnsubs._viewerCountActive = true;
+    const unsub = db.collection('servers').doc(serverId)
+      .collection('channels').doc(channelId)
+      .collection('viewers')
+      .onSnapshot(snap => {
+        const count = snap.size;
+        const el = document.getElementById('stream-viewers');
+        if (el) el.textContent = count + ' watching';
+      });
+    _streamUnsubs.push(unsub);
+  }
+
+  // Cleanup stream when navigating away
+  window.addEventListener('beforeunload', () => {
+    if (_isStreaming && currentChat && currentChat.type === 'streaming') {
+      // Synchronously clear activeStreamer via sendBeacon or just rely on Firestore TTL
+      const channelRef = db.collection('servers').doc(currentChat.serverId)
+        .collection('channels').doc(currentChat.channelId);
+      channelRef.update({ activeStreamer: null, streamerName: null }).catch(() => {});
+    }
+    if (_isViewing && currentChat && currentChat.type === 'streaming') {
+      const viewerDocRef = db.collection('servers').doc(currentChat.serverId)
+        .collection('channels').doc(currentChat.channelId)
+        .collection('viewers').doc(currentUser.uid);
+      viewerDocRef.delete().catch(() => {});
+    }
+    _cleanupStreaming();
+  });
 
   async function _deleteMessage(docRef, data) {
     const cached = data && profileCache.get(data.uid);
