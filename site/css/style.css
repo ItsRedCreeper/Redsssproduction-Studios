@@ -2536,17 +2536,12 @@ body.messenger-page #app {
   margin: 0 0 2px;
 }
 .user-popup-status {
-  font-size: 11px;
-  font-weight: 600;
-  display: inline-block;
-  padding: 2px 7px;
-  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 500;
+  display: block;
   margin-bottom: 6px;
+  color: var(--text-muted);
 }
-.user-popup-status.online  { background: rgba(87,242,135,.15); color: var(--status-online); }
-.user-popup-status.away    { background: rgba(250,168,26,.15);  color: var(--status-away); }
-.user-popup-status.dnd     { background: rgba(237,66,69,.15);   color: var(--status-dnd); }
-.user-popup-status.offline { background: rgba(116,127,141,.15); color: var(--text-muted); }
 
 .user-popup-activity {
   font-size: 12px;

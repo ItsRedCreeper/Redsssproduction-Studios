@@ -189,6 +189,7 @@ const Messenger = (() => {
 
     // Initialize
     loadFriends();
+    _listenNonFriendDMs();
     loadServers();
     showDMView();
 
@@ -265,14 +266,15 @@ const Messenger = (() => {
       friendUids.forEach(uid => _currentFriendUids.add(uid));
 
       if (!friendUids.length) {
+        // Remove friend-related entries, keep non-friend DMs
+        const friendKeys = Array.from(_dmFriendListeners.keys());
         _dmFriendListeners.forEach(unsub => unsub());
         _dmFriendListeners.clear();
         _rtdbDMListeners.forEach(off => off());
         _rtdbDMListeners.clear();
-        _dmProfiles.clear();
+        friendKeys.forEach(uid => _dmProfiles.delete(uid));
         _syncDMMediaListeners(new Set());
-        document.getElementById('friends-list').innerHTML =
-          '<div class="sidebar-empty">No friends yet</div>';
+        _renderDMFriendsList();
         return;
       }
 
@@ -357,6 +359,32 @@ const Messenger = (() => {
     });
   }
 
+  /* ── Discover non-friend DM conversations ── */
+  let _nonFriendDMUnsub = null;
+  function _listenNonFriendDMs() {
+    if (_nonFriendDMUnsub) { _nonFriendDMUnsub(); _nonFriendDMUnsub = null; }
+    _nonFriendDMUnsub = db.collection('dms')
+      .where('participants', 'array-contains', currentUser.uid)
+      .onSnapshot(snap => {
+        snap.forEach(doc => {
+          const data = doc.data();
+          const otherUid = (data.participants || []).find(p => p !== currentUser.uid);
+          if (!otherUid) return;
+          // Skip if already tracked (friend or existing non-friend entry)
+          if (_dmProfiles.has(otherUid)) return;
+          // Fetch their profile and add to DM list
+          db.collection('users').doc(otherUid).get().then(uDoc => {
+            if (!uDoc.exists) return;
+            if (_dmProfiles.has(otherUid)) return; // double-check
+            const u = uDoc.data();
+            _dmProfiles.set(otherUid, { uid: otherUid, ...u, effectiveStatus: u.effectiveStatus || 'offline' });
+            profileCache.set(otherUid, { username: u.username, avatar: u.avatar || '', effectiveStatus: u.effectiveStatus || 'offline' });
+            _renderDMFriendsList();
+          }).catch(() => {});
+        });
+      });
+  }
+
   function _resolveStatus(profile) {
     const eStatus = profile.effectiveStatus || 'offline';
     if (eStatus === 'offline') return 'offline';
@@ -364,12 +392,12 @@ const Messenger = (() => {
     // signal and _goOffline will write 'offline' when they truly disconnect.
     if (profile.status && profile.status !== 'auto') return eStatus;
     // Auto status — fall back to offline if the heartbeat has gone stale
-    // (browser throttles background intervals to ~60s, so use 90s threshold)
+    // (browser throttles background intervals heavily, so use 5-minute threshold)
     if (profile.lastSeen) {
       let ms = null;
       if (profile.lastSeen.toDate) ms = profile.lastSeen.toDate().getTime();
       else if (profile.lastSeen.seconds) ms = profile.lastSeen.seconds * 1000;
-      if (ms !== null && Date.now() - ms > 90 * 1000) return 'offline';
+      if (ms !== null && Date.now() - ms > 5 * 60 * 1000) return 'offline';
     }
     return eStatus;
   }
@@ -1288,6 +1316,11 @@ const Messenger = (() => {
     try {
       if (currentChat.type === 'dm') {
         const convoId = [currentUser.uid, currentChat.friendUid].sort().join('_');
+        // Ensure the parent DM doc exists (for Firestore rules and cross-user discovery)
+        await db.collection('dms').doc(convoId).set({
+          participants: [currentUser.uid, currentChat.friendUid],
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
         await db.collection('dms').doc(convoId).collection('messages').add(msgData);
         // Save images + videos to DM library so both participants can reuse them in the picker
         if (imageUrls.length) {

@@ -615,7 +615,7 @@ const App = (() => {
   let _lastDisplayedOnline = -1;
   let _onlineDecreaseTimer = null;
   function _listenOnlineCount() {
-    const CLEANUP_MS = 60 * 1000; // write offline to Firestore if > 60s stale
+    const CLEANUP_MS = 5 * 60 * 1000; // write offline to Firestore if > 5 min stale
     db.collection('users')
       .where('online', '==', true)
       .onSnapshot(snap => {

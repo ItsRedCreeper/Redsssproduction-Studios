@@ -407,12 +407,12 @@ const Friends = (() => {
     // signal and _goOffline will write 'offline' when they truly disconnect.
     if (profile.status && profile.status !== 'auto') return eStatus;
     // Auto status — fall back to offline if the heartbeat has gone stale
-    // (browser throttles background intervals to ~60s, so use 90s threshold)
+    // (browser throttles background intervals heavily, so use 5-minute threshold)
     if (profile.lastSeen) {
       let ms = null;
       if (profile.lastSeen.toDate) ms = profile.lastSeen.toDate().getTime();
       else if (profile.lastSeen.seconds) ms = profile.lastSeen.seconds * 1000;
-      if (ms !== null && Date.now() - ms > 90 * 1000) return 'offline';
+      if (ms !== null && Date.now() - ms > 5 * 60 * 1000) return 'offline';
     }
     return eStatus;
   }
@@ -557,8 +557,6 @@ const Friends = (() => {
       ? new Date(f.createdAt.toDate()).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })
       : null;
 
-    const statusLabels = { online: 'Online', away: 'Away', dnd: 'Do Not Disturb', offline: 'Offline' };
-
     // Activity icon
     let activityIcon = '';
     if (activityObj.page === 'games' && activityObj.game) {
@@ -581,7 +579,7 @@ const Friends = (() => {
           '<div class="friend-profile-info">' +
             '<div class="friend-profile-top">' +
               '<h2 class="friend-profile-name">' + _esc(f.username) + '</h2>' +
-              '<span class="friend-status-pill ' + eStatus + '" id="fp-status-pill">' + (statusLabels[eStatus] || 'Offline') + '</span>' +
+              '<span class="friend-status-pill ' + eStatus + '" id="fp-status-pill">' + _esc(activity) + '</span>' +
             '</div>' +
             '<div class="friend-profile-activity">' +
               activityIcon + '<span id="fp-activity-text">' + _esc(activity) + '</span>' +
@@ -822,13 +820,11 @@ const Friends = (() => {
     if (!f) return;
     const eStatus = _resolveStatus(f);
     const activity = _resolveActivity(f, eStatus);
-    const statusLabels = { online: 'Online', away: 'Away', dnd: 'Do Not Disturb', offline: 'Offline' };
-
     const dot = document.getElementById('fp-status-dot');
     if (dot) dot.className = 'status-dot ' + eStatus;
 
     const pill = document.getElementById('fp-status-pill');
-    if (pill) { pill.className = 'friend-status-pill ' + eStatus; pill.textContent = statusLabels[eStatus] || 'Offline'; }
+    if (pill) { pill.className = 'friend-status-pill ' + eStatus; pill.textContent = activity; }
 
     const actEl = document.getElementById('fp-activity-text');
     if (actEl) actEl.textContent = activity;
