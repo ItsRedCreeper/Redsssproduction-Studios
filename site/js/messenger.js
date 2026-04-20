@@ -1101,8 +1101,6 @@ const Messenger = (() => {
       };
       if (_selectedChannelType === 'streaming') {
         channelData.type = 'streaming';
-        channelData.activeStreamer = null;
-        channelData.streamerName = null;
       }
       await db.collection('servers').doc(currentServerId).collection('channels').add(channelData);
       document.getElementById('channel-name-input').value = '';
@@ -1906,15 +1904,14 @@ const Messenger = (() => {
   }
 
   /* ══════════════════════════════════════════════
-     Streaming Channel — WebRTC screen share
+     Streaming Channel — WebRTC multi-streamer
      ══════════════════════════════════════════════ */
 
-  let _localStream = null;                   // MediaStream from getDisplayMedia
-  const _streamerPCs = new Map();            // viewerUid → RTCPeerConnection (streamer side)
-  let _viewerPC = null;                      // RTCPeerConnection (viewer side)
-  let _streamUnsubs = [];                    // Firestore listeners to clean up
+  let _localStream = null;
+  const _streamerPCs = new Map();            // viewerUid → RTCPeerConnection (when WE are streaming)
+  const _viewerPCs = new Map();              // streamerUid → RTCPeerConnection (when we view others)
+  let _streamUnsubs = [];
   let _isStreaming = false;
-  let _isViewing = false;
   const _rtcConfig = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -1923,24 +1920,17 @@ const Messenger = (() => {
   };
 
   function _cleanupStreaming() {
-    // Stop local stream tracks
     if (_localStream) {
       _localStream.getTracks().forEach(t => t.stop());
       _localStream = null;
     }
-    // Close streamer peer connections
     _streamerPCs.forEach(pc => pc.close());
     _streamerPCs.clear();
-    // Close viewer peer connection
-    if (_viewerPC) { _viewerPC.close(); _viewerPC = null; }
-    // Unsubscribe Firestore listeners
+    _viewerPCs.forEach(pc => pc.close());
+    _viewerPCs.clear();
     _streamUnsubs.forEach(fn => fn());
     _streamUnsubs = [];
-    // Reset video element
-    const vid = document.getElementById('stream-video');
-    if (vid) vid.srcObject = null;
     _isStreaming = false;
-    _isViewing = false;
   }
 
   function openStreamingChannel(serverId, channelId, channelName) {
@@ -1960,11 +1950,10 @@ const Messenger = (() => {
     if (lBtn) lBtn.style.display = 'none';
 
     const streamView = document.getElementById('stream-view');
-    const streamIdle = document.getElementById('stream-idle');
-    const streamActive = document.getElementById('stream-active');
     streamView.style.display = 'flex';
-    streamIdle.style.display = 'flex';
-    streamActive.style.display = 'none';
+
+    const grid = document.getElementById('stream-grid');
+    grid.innerHTML = '';
 
     // Wire Go Live button
     const goLiveBtn = document.getElementById('stream-go-live-btn');
@@ -1976,49 +1965,76 @@ const Messenger = (() => {
     const stopBtn = document.getElementById('stream-stop-btn');
     const stopNew = stopBtn.cloneNode(true);
     stopBtn.replaceWith(stopNew);
+    stopNew.style.display = 'none';
     stopNew.addEventListener('click', () => _stopStreaming(serverId, channelId));
 
-    // Listen to channel doc for active streamer changes
-    const channelRef = db.collection('servers').doc(serverId).collection('channels').doc(channelId);
-    const unsub = channelRef.onSnapshot(snap => {
-      if (!snap.exists) return;
-      const data = snap.data();
-      // Don't react if we already cleaned up / navigated away
+    // Listen for stream docs (each streamer has one)
+    const streamsRef = db.collection('servers').doc(serverId)
+      .collection('channels').doc(channelId)
+      .collection('streams');
+
+    const streamsUnsub = streamsRef.onSnapshot(snap => {
       if (!currentChat || currentChat.type !== 'streaming' || currentChat.channelId !== channelId) return;
 
-      if (data.activeStreamer) {
-        streamIdle.style.display = 'none';
-        streamActive.style.display = 'flex';
+      snap.docChanges().forEach(change => {
+        const streamerUid = change.doc.id;
+        const data = change.doc.data();
 
-        if (data.activeStreamer === currentUser.uid) {
-          // We are the streamer
-          document.getElementById('stream-bar-name').textContent = 'You are live!';
-          document.getElementById('stream-stop-btn').style.display = '';
-        } else {
-          // Someone else is streaming — join as viewer
-          document.getElementById('stream-bar-name').textContent = (data.streamerName || 'Someone') + ' is live';
-          document.getElementById('stream-stop-btn').style.display = 'none';
-          if (!_isViewing) {
-            _joinAsViewer(serverId, channelId, data.activeStreamer);
+        if (change.type === 'added') {
+          _addStreamCard(serverId, channelId, streamerUid, data.username || 'Someone');
+          if (streamerUid !== currentUser.uid) {
+            _joinStream(serverId, channelId, streamerUid);
           }
+        } else if (change.type === 'removed') {
+          _removeStreamCard(streamerUid);
+          // Close viewer PC for this streamer
+          const vpc = _viewerPCs.get(streamerUid);
+          if (vpc) { vpc.close(); _viewerPCs.delete(streamerUid); }
         }
-        _listenViewerCount(serverId, channelId);
+      });
+
+      // Show empty state or grid
+      const empty = document.getElementById('stream-empty');
+      if (snap.empty) {
+        if (empty) empty.style.display = 'flex';
       } else {
-        // No one streaming
-        streamIdle.style.display = 'flex';
-        streamActive.style.display = 'none';
-        if (_isViewing) {
-          _cleanupStreaming();
-          showToast('The stream has ended.', 'info');
-        }
+        if (empty) empty.style.display = 'none';
       }
     });
-    _streamUnsubs.push(unsub);
+    _streamUnsubs.push(streamsUnsub);
+  }
+
+  function _addStreamCard(serverId, channelId, streamerUid, username) {
+    const grid = document.getElementById('stream-grid');
+    if (grid.querySelector('[data-stream-uid="' + streamerUid + '"]')) return;
+
+    const card = document.createElement('div');
+    card.className = 'stream-card';
+    card.dataset.streamUid = streamerUid;
+    card.innerHTML =
+      '<div class="stream-video-wrap">' +
+        '<video autoplay playsinline muted></video>' +
+        '<div class="stream-overlay">' +
+          '<span class="stream-live-badge">LIVE</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="stream-card-bar">' +
+        '<span class="stream-card-name">' + esc(username) + '</span>' +
+      '</div>';
+    grid.appendChild(card);
+  }
+
+  function _removeStreamCard(streamerUid) {
+    const card = document.querySelector('[data-stream-uid="' + streamerUid + '"]');
+    if (card) {
+      const vid = card.querySelector('video');
+      if (vid) vid.srcObject = null;
+      card.remove();
+    }
   }
 
   async function _startStreaming(serverId, channelId) {
     if (_isStreaming) return;
-    // Check if getDisplayMedia is available
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
       showToast('Screen sharing is not supported on this device.', 'error');
       return;
@@ -2036,36 +2052,42 @@ const Messenger = (() => {
     }
     _isStreaming = true;
 
-    // Show preview in local video element
-    const vid = document.getElementById('stream-video');
-    vid.srcObject = _localStream;
-    vid.muted = true;
+    // Show stop button, hide go live
+    document.getElementById('stream-stop-btn').style.display = '';
+    document.getElementById('stream-go-live-btn').style.display = 'none';
 
-    // If the user stops sharing via the browser's native "Stop sharing" button
+    // If the user stops sharing via browser's native button
     _localStream.getVideoTracks()[0].addEventListener('ended', () => {
       _stopStreaming(serverId, channelId);
     });
 
-    const channelRef = db.collection('servers').doc(serverId).collection('channels').doc(channelId);
-
-    // Mark ourselves as the active streamer
-    await channelRef.update({
-      activeStreamer: currentUser.uid,
-      streamerName: userProfile.username || 'Someone'
+    // Create our stream doc
+    const streamRef = db.collection('servers').doc(serverId)
+      .collection('channels').doc(channelId)
+      .collection('streams').doc(currentUser.uid);
+    await streamRef.set({
+      username: userProfile.username || 'Someone',
+      startedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    // Listen for viewers joining
-    const viewersRef = channelRef.collection('viewers');
+    // Set our own video immediately in our card
+    setTimeout(() => {
+      const card = document.querySelector('[data-stream-uid="' + currentUser.uid + '"]');
+      if (card) {
+        const vid = card.querySelector('video');
+        if (vid) { vid.srcObject = _localStream; vid.muted = true; }
+      }
+    }, 200);
+
+    // Listen for viewers joining our stream
+    const viewersRef = streamRef.collection('viewers');
     const viewerUnsub = viewersRef.onSnapshot(snap => {
       snap.docChanges().forEach(change => {
         const viewerUid = change.doc.id;
         if (viewerUid === currentUser.uid) return;
-
         if (change.type === 'added') {
-          // New viewer — create a peer connection for them
           _createStreamerPC(serverId, channelId, viewerUid);
         } else if (change.type === 'removed') {
-          // Viewer left — close their PC
           const pc = _streamerPCs.get(viewerUid);
           if (pc) { pc.close(); _streamerPCs.delete(viewerUid); }
         }
@@ -2077,27 +2099,23 @@ const Messenger = (() => {
   async function _createStreamerPC(serverId, channelId, viewerUid) {
     const pc = new RTCPeerConnection(_rtcConfig);
     _streamerPCs.set(viewerUid, pc);
-
-    // Add local stream tracks
     _localStream.getTracks().forEach(track => pc.addTrack(track, _localStream));
 
     const viewerDocRef = db.collection('servers').doc(serverId)
       .collection('channels').doc(channelId)
+      .collection('streams').doc(currentUser.uid)
       .collection('viewers').doc(viewerUid);
 
-    // Send ICE candidates to Firestore
     pc.onicecandidate = e => {
       if (e.candidate) {
         viewerDocRef.collection('streamerCandidates').add(e.candidate.toJSON()).catch(() => {});
       }
     };
 
-    // Create offer and write to viewer doc
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     await viewerDocRef.update({ offer: { type: offer.type, sdp: offer.sdp } }).catch(() => {});
 
-    // Listen for viewer's answer
     const answerUnsub = viewerDocRef.onSnapshot(snap => {
       const data = snap.data();
       if (data && data.answer && !pc.currentRemoteDescription) {
@@ -2106,7 +2124,6 @@ const Messenger = (() => {
     });
     _streamUnsubs.push(answerUnsub);
 
-    // Listen for viewer's ICE candidates
     const candidateUnsub = viewerDocRef.collection('viewerCandidates').onSnapshot(snap => {
       snap.docChanges().forEach(change => {
         if (change.type === 'added') {
@@ -2119,61 +2136,74 @@ const Messenger = (() => {
 
   async function _stopStreaming(serverId, channelId) {
     if (!_isStreaming) return;
-    const channelRef = db.collection('servers').doc(serverId).collection('channels').doc(channelId);
+    _isStreaming = false;
 
-    // Delete all viewer signal docs
+    // Stop local tracks immediately
+    if (_localStream) {
+      _localStream.getTracks().forEach(t => t.stop());
+      _localStream = null;
+    }
+
+    // Close all streamer PCs
+    _streamerPCs.forEach(pc => pc.close());
+    _streamerPCs.clear();
+
+    // Show go live, hide stop
+    const goLive = document.getElementById('stream-go-live-btn');
+    const stop = document.getElementById('stream-stop-btn');
+    if (goLive) goLive.style.display = '';
+    if (stop) stop.style.display = 'none';
+
+    // Delete our stream doc and subcollections
+    const streamRef = db.collection('servers').doc(serverId)
+      .collection('channels').doc(channelId)
+      .collection('streams').doc(currentUser.uid);
     try {
-      const viewers = await channelRef.collection('viewers').get();
+      const viewers = await streamRef.collection('viewers').get();
       const batch = db.batch();
       for (const vDoc of viewers.docs) {
-        // Delete subcollections first
         const sCands = await vDoc.ref.collection('streamerCandidates').get();
         sCands.forEach(c => batch.delete(c.ref));
         const vCands = await vDoc.ref.collection('viewerCandidates').get();
         vCands.forEach(c => batch.delete(c.ref));
         batch.delete(vDoc.ref);
       }
+      batch.delete(streamRef);
       await batch.commit();
-    } catch (err) { console.error('Cleanup viewers error:', err); }
-
-    // Clear active streamer
-    await channelRef.update({ activeStreamer: null, streamerName: null }).catch(() => {});
-
-    _cleanupStreaming();
+    } catch (err) { console.error('Stop stream cleanup error:', err); }
   }
 
-  async function _joinAsViewer(serverId, channelId, streamerUid) {
-    if (_isViewing) return;
-    _isViewing = true;
+  async function _joinStream(serverId, channelId, streamerUid) {
+    if (_viewerPCs.has(streamerUid)) return;
 
-    const channelRef = db.collection('servers').doc(serverId).collection('channels').doc(channelId);
-    const viewerDocRef = channelRef.collection('viewers').doc(currentUser.uid);
+    const streamRef = db.collection('servers').doc(serverId)
+      .collection('channels').doc(channelId)
+      .collection('streams').doc(streamerUid);
+    const viewerDocRef = streamRef.collection('viewers').doc(currentUser.uid);
 
-    // Create our viewer doc to signal we want to watch
     await viewerDocRef.set({ joined: true });
 
     const pc = new RTCPeerConnection(_rtcConfig);
-    _viewerPC = pc;
+    _viewerPCs.set(streamerUid, pc);
 
-    // When we receive the stream track, show it in the video element
     pc.ontrack = e => {
-      const vid = document.getElementById('stream-video');
-      if (vid && e.streams[0]) vid.srcObject = e.streams[0];
+      const card = document.querySelector('[data-stream-uid="' + streamerUid + '"]');
+      if (card && e.streams[0]) {
+        const vid = card.querySelector('video');
+        if (vid) vid.srcObject = e.streams[0];
+      }
     };
 
-    // Send our ICE candidates
     pc.onicecandidate = e => {
       if (e.candidate) {
         viewerDocRef.collection('viewerCandidates').add(e.candidate.toJSON()).catch(() => {});
       }
     };
 
-    // Listen for the streamer's offer
     const offerUnsub = viewerDocRef.onSnapshot(async snap => {
       const data = snap.data();
       if (!data || !data.offer) return;
       if (pc.currentRemoteDescription) return;
-
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
         const answer = await pc.createAnswer();
@@ -2183,7 +2213,6 @@ const Messenger = (() => {
     });
     _streamUnsubs.push(offerUnsub);
 
-    // Listen for streamer's ICE candidates
     const candidateUnsub = viewerDocRef.collection('streamerCandidates').onSnapshot(snap => {
       snap.docChanges().forEach(change => {
         if (change.type === 'added') {
@@ -2194,34 +2223,13 @@ const Messenger = (() => {
     _streamUnsubs.push(candidateUnsub);
   }
 
-  function _listenViewerCount(serverId, channelId) {
-    // Avoid duplicate listeners
-    if (_streamUnsubs._viewerCountActive) return;
-    _streamUnsubs._viewerCountActive = true;
-    const unsub = db.collection('servers').doc(serverId)
-      .collection('channels').doc(channelId)
-      .collection('viewers')
-      .onSnapshot(snap => {
-        const count = snap.size;
-        const el = document.getElementById('stream-viewers');
-        if (el) el.textContent = count + ' watching';
-      });
-    _streamUnsubs.push(unsub);
-  }
-
-  // Cleanup stream when navigating away
+  // Cleanup on page unload
   window.addEventListener('beforeunload', () => {
     if (_isStreaming && currentChat && currentChat.type === 'streaming') {
-      // Synchronously clear activeStreamer via sendBeacon or just rely on Firestore TTL
-      const channelRef = db.collection('servers').doc(currentChat.serverId)
-        .collection('channels').doc(currentChat.channelId);
-      channelRef.update({ activeStreamer: null, streamerName: null }).catch(() => {});
-    }
-    if (_isViewing && currentChat && currentChat.type === 'streaming') {
-      const viewerDocRef = db.collection('servers').doc(currentChat.serverId)
+      const streamRef = db.collection('servers').doc(currentChat.serverId)
         .collection('channels').doc(currentChat.channelId)
-        .collection('viewers').doc(currentUser.uid);
-      viewerDocRef.delete().catch(() => {});
+        .collection('streams').doc(currentUser.uid);
+      streamRef.delete().catch(() => {});
     }
     _cleanupStreaming();
   });

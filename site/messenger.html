@@ -144,27 +144,18 @@
 
       <!-- Streaming Channel View -->
       <div class="stream-view" id="stream-view" style="display:none">
-        <div class="stream-idle" id="stream-idle">
-          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-          <h3>No one is streaming</h3>
-          <p>Share your screen for others in this channel to watch</p>
-          <button class="btn btn-primary" id="stream-go-live-btn">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+        <div class="stream-toolbar">
+          <button class="btn btn-primary btn-sm" id="stream-go-live-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
             Go Live
           </button>
+          <button class="btn btn-danger btn-sm" id="stream-stop-btn" style="display:none">Stop Streaming</button>
         </div>
-        <div class="stream-active" id="stream-active" style="display:none">
-          <div class="stream-video-wrap">
-            <video id="stream-video" autoplay playsinline></video>
-            <div class="stream-overlay">
-              <span class="stream-live-badge">LIVE</span>
-              <span class="stream-viewers-badge" id="stream-viewers">0 watching</span>
-            </div>
-          </div>
-          <div class="stream-bar">
-            <span class="stream-bar-name" id="stream-bar-name"></span>
-            <button class="btn btn-danger btn-sm" id="stream-stop-btn" style="display:none">Stop Streaming</button>
-          </div>
+        <div class="stream-grid" id="stream-grid"></div>
+        <div class="stream-empty" id="stream-empty">
+          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          <h3>No one is streaming</h3>
+          <p>Click <strong>Go Live</strong> to share your screen</p>
         </div>
       </div>
       <input type="file" id="gif-upload-input" accept="image/*" multiple style="display:none">
