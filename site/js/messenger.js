@@ -366,16 +366,35 @@ const Messenger = (() => {
     _nonFriendDMUnsub = db.collection('dms')
       .where('participants', 'array-contains', currentUser.uid)
       .onSnapshot(snap => {
-        snap.forEach(doc => {
-          const data = doc.data();
+        snap.docChanges().forEach(change => {
+          const data = change.doc.data();
           const otherUid = (data.participants || []).find(p => p !== currentUser.uid);
           if (!otherUid) return;
-          // Skip if already tracked (friend or existing non-friend entry)
+
+          if (change.type === 'removed') {
+            // Other user left the chat — clean up our side
+            if (!_currentFriendUids.has(otherUid)) {
+              _dmProfiles.delete(otherUid);
+            }
+            // If we're currently viewing this DM, close it
+            if (currentChat && currentChat.type === 'dm' && currentChat.friendUid === otherUid) {
+              if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+              currentChat = null;
+              document.getElementById('chat-messages').innerHTML = '<div class="chat-empty">This conversation has been deleted.</div>';
+              document.getElementById('chat-title').textContent = 'Select a conversation';
+              document.getElementById('chat-input-bar').style.display = 'none';
+              document.getElementById('leave-chat-btn').style.display = 'none';
+              showToast('The other user left the chat.', 'info');
+            }
+            _renderDMFriendsList();
+            return;
+          }
+
+          // added or modified — discover new non-friend DMs
           if (_dmProfiles.has(otherUid)) return;
-          // Fetch their profile and add to DM list
           db.collection('users').doc(otherUid).get().then(uDoc => {
             if (!uDoc.exists) return;
-            if (_dmProfiles.has(otherUid)) return; // double-check
+            if (_dmProfiles.has(otherUid)) return;
             const u = uDoc.data();
             _dmProfiles.set(otherUid, { uid: otherUid, ...u, effectiveStatus: u.effectiveStatus || 'offline' });
             profileCache.set(otherUid, { username: u.username, avatar: u.avatar || '', effectiveStatus: u.effectiveStatus || 'offline' });
