@@ -215,9 +215,9 @@ const Messenger = (() => {
           const doc = await db.collection('users').doc(_dmParam).get();
           if (doc.exists) {
             const u = doc.data();
-            const prof = { username: u.username || 'User', avatar: u.avatar || '', effectiveStatus: u.effectiveStatus || 'offline' };
+            const prof = { uid: _dmParam, username: u.username || 'User', avatar: u.avatar || '', effectiveStatus: u.effectiveStatus || 'offline' };
             _dmProfiles.set(_dmParam, prof);
-            profileCache.set(_dmParam, prof);
+            profileCache.set(_dmParam, { username: prof.username, avatar: prof.avatar, effectiveStatus: prof.effectiveStatus });
             showDMView();
             openDM(_dmParam, prof);
             _renderDMFriendsList();
@@ -1661,10 +1661,10 @@ const Messenger = (() => {
         openDM(uid, prof);
       } else {
         // Start a new DM — cache this user profile and open
-        _dmProfiles.set(uid, { username: u.username, avatar: u.avatar, effectiveStatus: eStatus });
+        _dmProfiles.set(uid, { uid: uid, username: u.username, avatar: u.avatar, effectiveStatus: eStatus });
         profileCache.set(uid, { username: u.username, avatar: u.avatar, effectiveStatus: eStatus });
         showDMView();
-        openDM(uid, { username: u.username, avatar: u.avatar, effectiveStatus: eStatus });
+        openDM(uid, { uid: uid, username: u.username, avatar: u.avatar, effectiveStatus: eStatus });
         _renderDMFriendsList();
       }
     });
@@ -1863,34 +1863,42 @@ const Messenger = (() => {
 
   /* ── Leave Chat (non-friend DMs) ── */
   function _confirmLeaveChat(otherUid, otherName) {
-    _showConfirm({
-      title: 'Leave Chat',
-      avatar: '',
-      username: otherName,
-      preview: 'This will delete all messages in this conversation for both users.',
-      onConfirm: async () => {
-        try {
-          const convoId = [currentUser.uid, otherUid].sort().join('_');
-          // Delete all messages in the conversation
-          const msgs = await db.collection('dms').doc(convoId).collection('messages').get();
-          const batch = db.batch();
-          msgs.forEach(d => batch.delete(d.ref));
-          batch.delete(db.collection('dms').doc(convoId));
-          await batch.commit();
-          // Remove from local state
-          if (chatUnsub) { chatUnsub(); chatUnsub = null; }
-          _dmProfiles.delete(otherUid);
-          currentChat = null;
-          document.getElementById('chat-messages').innerHTML = '<div class="chat-empty">Select a friend or channel to start chatting</div>';
-          document.getElementById('chat-title').textContent = 'Select a conversation';
-          document.getElementById('chat-input-bar').style.display = 'none';
-          document.getElementById('leave-chat-btn').style.display = 'none';
-          _renderDMFriendsList();
-          showToast('Chat deleted.', 'success');
-        } catch (err) {
-          console.error(err);
-          showToast('Failed to delete chat.', 'error');
-        }
+    const overlay = document.getElementById('leave-chat-modal');
+    if (!overlay) return;
+    overlay.querySelector('.leave-modal-name').textContent = otherName;
+    overlay.classList.add('open');
+
+    const confirmBtn = overlay.querySelector('#leave-modal-ok');
+    const cancelBtn = overlay.querySelector('#leave-modal-cancel');
+    const confirmNew = confirmBtn.cloneNode(true);
+    const cancelNew = cancelBtn.cloneNode(true);
+    confirmBtn.replaceWith(confirmNew);
+    cancelBtn.replaceWith(cancelNew);
+
+    const close = () => overlay.classList.remove('open');
+    cancelNew.addEventListener('click', close);
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); }, { once: true });
+    confirmNew.addEventListener('click', async () => {
+      close();
+      try {
+        const convoId = [currentUser.uid, otherUid].sort().join('_');
+        const msgs = await db.collection('dms').doc(convoId).collection('messages').get();
+        const batch = db.batch();
+        msgs.forEach(d => batch.delete(d.ref));
+        batch.delete(db.collection('dms').doc(convoId));
+        await batch.commit();
+        if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+        _dmProfiles.delete(otherUid);
+        currentChat = null;
+        document.getElementById('chat-messages').innerHTML = '<div class="chat-empty">Select a friend or channel to start chatting</div>';
+        document.getElementById('chat-title').textContent = 'Select a conversation';
+        document.getElementById('chat-input-bar').style.display = 'none';
+        document.getElementById('leave-chat-btn').style.display = 'none';
+        _renderDMFriendsList();
+        showToast('Chat deleted.', 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('Failed to delete chat.', 'error');
       }
     });
   }

@@ -2833,6 +2833,35 @@ body.messenger-page #app {
 }
 .confirm-modal-ok:hover { background: var(--red-light) !important; }
 
+/* ── Leave Chat Modal ── */
+.leave-modal {
+  text-align: center;
+  padding: 28px 24px 20px;
+  max-width: 360px;
+}
+.leave-modal-icon {
+  color: var(--danger);
+  margin-bottom: 8px;
+}
+.leave-modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+.leave-modal-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0 0 20px;
+}
+.leave-modal-name { color: var(--text-primary); }
+.btn-danger {
+  background: var(--danger) !important;
+  color: #fff !important;
+  border: none !important;
+}
+.btn-danger:hover { opacity: .85; }
+
 /* ── Lightbox ── */
 .lightbox-overlay {
   display: none;
