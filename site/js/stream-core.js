@@ -10,6 +10,7 @@
   let streamContext = null; // { serverId, channelId, channelName, username, controllerUrl }
   let startedAt = 0;
   let isLive = false;
+  let isStarting = false;
   let lastCmdId = null;
 
   const streamerPCs = new Map(); // viewerUid -> RTCPeerConnection
@@ -106,8 +107,9 @@
   }
 
   async function _startStream(cmd) {
-    if (isLive) return;
+    if (isLive || isStarting) return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) return;
+    isStarting = true;
 
     streamContext = {
       serverId: cmd.serverId,
@@ -129,44 +131,49 @@
       });
     } catch (_) {
       streamContext = null;
+      isStarting = false;
       return;
     }
 
-    const vid = document.getElementById('core-video');
-    if (vid) vid.srcObject = localStream;
+    try {
+      const vid = document.getElementById('core-video');
+      if (vid) vid.srcObject = localStream;
 
-    localStream.getVideoTracks()[0].addEventListener('ended', () => {
-      _stopStream(true);
-    });
-
-    isLive = true;
-    startedAt = Date.now();
-    _publishState();
-
-    const streamRef = _streamRef();
-    await streamRef.set({
-      username: streamContext.username,
-      startedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    const viewersRef = streamRef.collection('viewers');
-    const unsub = viewersRef.onSnapshot(snap => {
-      snap.docChanges().forEach(change => {
-        const viewerUid = change.doc.id;
-        if (viewerUid === currentUser.uid) return;
-
-        if (change.type === 'added') {
-          _createStreamerPC(viewerUid);
-        } else if (change.type === 'removed') {
-          const pc = streamerPCs.get(viewerUid);
-          if (pc) {
-            pc.close();
-            streamerPCs.delete(viewerUid);
-          }
-        }
+      localStream.getVideoTracks()[0].addEventListener('ended', () => {
+        _stopStream(true);
       });
-    });
-    streamUnsubs.push(unsub);
+
+      isLive = true;
+      startedAt = Date.now();
+      _publishState();
+
+      const streamRef = _streamRef();
+      await streamRef.set({
+        username: streamContext.username,
+        startedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      const viewersRef = streamRef.collection('viewers');
+      const unsub = viewersRef.onSnapshot(snap => {
+        snap.docChanges().forEach(change => {
+          const viewerUid = change.doc.id;
+          if (viewerUid === currentUser.uid) return;
+
+          if (change.type === 'added') {
+            _createStreamerPC(viewerUid);
+          } else if (change.type === 'removed') {
+            const pc = streamerPCs.get(viewerUid);
+            if (pc) {
+              pc.close();
+              streamerPCs.delete(viewerUid);
+            }
+          }
+        });
+      });
+      streamUnsubs.push(unsub);
+    } finally {
+      isStarting = false;
+    }
   }
 
   async function _createStreamerPC(viewerUid) {

@@ -2379,7 +2379,7 @@ const Messenger = (() => {
       tries++;
       const state = _readSharedStreamState();
       const ok = !!(state && state.live && state.hostUid === currentUser.uid);
-      if (ok || tries >= 6) {
+      if (ok || tries >= 30) {
         clearInterval(retry);
         if (!ok) {
           _isStreaming = false;
@@ -2387,7 +2387,7 @@ const Messenger = (() => {
           _setStreamManagePanelOpen(false);
           document.getElementById('stream-stop-btn').style.display = 'none';
           document.getElementById('stream-go-live-btn').style.display = '';
-          showToast('Screen share prompt was blocked or missed. Try again and allow screen share.', 'error');
+          showToast('No stream started yet. Try again and allow screen share.', 'error');
         }
         return;
       }

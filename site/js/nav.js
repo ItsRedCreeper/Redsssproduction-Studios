@@ -160,7 +160,6 @@ const Nav = (() => {
     const navBtn = document.getElementById('stream-manage-nav-btn');
     const panel = document.getElementById('stream-manage-panel');
     const closeBtn = document.getElementById('stream-manage-close');
-    const openBtn = document.getElementById('stream-manage-open-btn');
     const chatBtn = document.getElementById('stream-manage-chat-btn');
     const stopBtn = document.getElementById('stream-manage-stop-btn');
 
@@ -171,23 +170,22 @@ const Nav = (() => {
       });
       closeBtn?.addEventListener('click', () => { panel.style.display = 'none'; });
 
-      openBtn?.addEventListener('click', () => {
-        const state = _readStreamState();
-        if (!state || !state.live) {
-          showToast('No active stream right now.', 'info');
-          return;
-        }
-        window.open(_resolveStreamManagerUrl(state), '_blank');
-      });
-
       chatBtn?.addEventListener('click', () => {
         const state = _readStreamState();
         if (!state || !state.live) {
           showToast('No active stream right now.', 'info');
           return;
         }
-        _sendStreamCommand({ action: 'openChat', by: user.uid });
-        window.open(_resolveStreamManagerUrl(state), '_blank');
+        const chatUrl = _buildStreamChatUrl(state);
+        const popup = window.open(
+          chatUrl,
+          'rpsStreamChat',
+          'width=420,height=640,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=no'
+        );
+        if (!popup) {
+          showToast('Popup blocked. Allow popups to open stream chat.', 'error');
+          return;
+        }
       });
 
       stopBtn?.addEventListener('click', () => {
@@ -251,7 +249,6 @@ const Nav = (() => {
           '<div class="stream-manage-row"><span>Channel</span><strong id="stream-manage-channel">None</strong></div>' +
           '<div class="stream-manage-row"><span>Uptime</span><strong id="stream-manage-uptime">00:00:00</strong></div>' +
           '<div class="stream-manage-actions">' +
-            '<button class="btn btn-sm" id="stream-manage-open-btn">Open Stream Tab</button>' +
             '<button class="btn btn-sm" id="stream-manage-chat-btn">Chat</button>' +
             '<button class="btn btn-danger btn-sm" id="stream-manage-stop-btn">Stop Stream</button>' +
           '</div>' +
@@ -284,6 +281,13 @@ const Nav = (() => {
     if (!raw) return 'messenger.html';
     if (/stream-core\.html/i.test(raw)) return 'messenger.html';
     return raw;
+  }
+
+  function _buildStreamChatUrl(state) {
+    const serverId = encodeURIComponent(state && state.serverId ? state.serverId : '');
+    const channelId = encodeURIComponent(state && state.channelId ? state.channelId : '');
+    const channelName = encodeURIComponent(state && state.channelName ? state.channelName : 'Streaming Channel');
+    return 'stream-chat.html?serverId=' + serverId + '&channelId=' + channelId + '&channelName=' + channelName;
   }
 
   function _refreshStreamManagerUI() {

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stream Chat</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="stream-chat-popup-page">
+  <div class="stream-chat-popup-shell">
+    <div class="stream-chat-popup-header">
+      <h1 id="stream-chat-popup-title">Stream Chat</h1>
+      <button class="btn btn-sm" id="stream-chat-popup-refresh">Refresh</button>
+    </div>
+
+    <div class="stream-chat-popup-subtitle" id="stream-chat-popup-subtitle">Live channel chat</div>
+
+    <div class="stream-chat-popup-messages" id="stream-chat-popup-messages">
+      <div class="chat-empty">Loading stream chat...</div>
+    </div>
+
+    <div class="stream-chat-popup-input-row">
+      <input class="chat-input" id="stream-chat-popup-input" placeholder="Message stream chat..." maxlength="2000">
+      <button class="chat-send" id="stream-chat-popup-send" title="Send">
+        <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/stream-chat.js"></script>
+</body>
+</html>
