@@ -2003,6 +2003,7 @@ const Messenger = (() => {
   let _streamInlineVideoUrl = null;
   const STREAM_STATE_KEY = 'rps_stream_state_v1';
   const STREAM_CMD_KEY = 'rps_stream_cmd_v1';
+  const STREAM_PENDING_START_KEY = 'rps_stream_pending_start_v1';
   let _streamControlChannel = null;
   let _lastStreamCmdId = null;
   const _rtcConfig = {
@@ -2161,6 +2162,7 @@ const Messenger = (() => {
   function _sendCoreStreamCommand(action, extra) {
     const payload = {
       id: Date.now() + ':' + Math.random().toString(16).slice(2),
+      ts: Date.now(),
       action,
       by: currentUser ? currentUser.uid : '',
       ...(extra || {})
@@ -2332,22 +2334,55 @@ const Messenger = (() => {
     if (_isStreaming) return;
     _streamContext = { serverId, channelId, channelName: (_streamContext && _streamContext.channelName) || 'Streaming Channel' };
 
-    // Open/attach dedicated background stream-core tab and send start command.
+    const startPayload = {
+      id: Date.now() + ':pending-start',
+      ts: Date.now(),
+      action: 'start',
+      by: currentUser ? currentUser.uid : '',
+      hostUid: currentUser.uid,
+      serverId,
+      channelId,
+      channelName: _streamContext.channelName,
+      username: userProfile.username || 'Someone'
+    };
+    localStorage.setItem(STREAM_PENDING_START_KEY, JSON.stringify(startPayload));
+
+    // Open/attach dedicated background stream-core tab.
     const coreUrl = 'stream-core.html';
     const coreTab = window.open(coreUrl, 'rpsStreamCore');
     if (!coreTab) {
       showToast('Popup blocked. Allow popups to start streaming.', 'error');
+      localStorage.removeItem(STREAM_PENDING_START_KEY);
       return;
     }
     try { coreTab.blur(); window.focus(); } catch (_) {}
 
-    _sendCoreStreamCommand('start', {
-      serverId,
-      channelId,
-      channelName: _streamContext.channelName,
-      hostUid: currentUser.uid,
-      username: userProfile.username || 'Someone'
-    });
+    // Fallback command retries in case pending-start was missed.
+    let tries = 0;
+    const retry = setInterval(() => {
+      tries++;
+      const state = _readSharedStreamState();
+      const ok = !!(state && state.live && state.hostUid === currentUser.uid);
+      if (ok || tries >= 6) {
+        clearInterval(retry);
+        if (!ok) {
+          _isStreaming = false;
+          _setStreamManagerLive(false);
+          _setStreamManagePanelOpen(false);
+          document.getElementById('stream-stop-btn').style.display = 'none';
+          document.getElementById('stream-go-live-btn').style.display = '';
+          showToast('Screen share prompt was blocked or missed. Try again and allow screen share.', 'error');
+        }
+        return;
+      }
+      _sendCoreStreamCommand('start', {
+        serverId,
+        channelId,
+        channelName: _streamContext.channelName,
+        hostUid: currentUser.uid,
+        username: userProfile.username || 'Someone'
+      });
+    }, 700);
 
     _isStreaming = true;
     _streamStartedAtMs = Date.now();

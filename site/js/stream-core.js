@@ -3,6 +3,7 @@
 (() => {
   const STREAM_STATE_KEY = 'rps_stream_state_v1';
   const STREAM_CMD_KEY = 'rps_stream_cmd_v1';
+  const STREAM_PENDING_START_KEY = 'rps_stream_pending_start_v1';
 
   let currentUser = null;
   let localStream = null;
@@ -32,6 +33,7 @@
     }
     currentUser = user;
     _initBridge();
+    _consumePendingStart();
   });
 
   function _initBridge() {
@@ -82,6 +84,25 @@
       _toggleRecord();
       return;
     }
+  }
+
+  function _consumePendingStart() {
+    let cmd = null;
+    try {
+      const raw = localStorage.getItem(STREAM_PENDING_START_KEY);
+      cmd = raw ? JSON.parse(raw) : null;
+    } catch (_) {
+      cmd = null;
+    }
+    if (!cmd) return;
+    if (!currentUser || cmd.hostUid !== currentUser.uid) return;
+    if (cmd.action !== 'start') return;
+    if (!cmd.ts || Date.now() - cmd.ts > 20000) {
+      localStorage.removeItem(STREAM_PENDING_START_KEY);
+      return;
+    }
+    localStorage.removeItem(STREAM_PENDING_START_KEY);
+    _handleCommand(cmd);
   }
 
   async function _startStream(cmd) {

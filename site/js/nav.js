@@ -262,7 +262,7 @@ const Nav = (() => {
   }
 
   function _sendStreamCommand(cmd) {
-    const payload = { ...cmd, id: Date.now() + ':' + Math.random().toString(16).slice(2) };
+    const payload = { ...cmd, id: Date.now() + ':' + Math.random().toString(16).slice(2), ts: Date.now() };
     localStorage.setItem(STREAM_CMD_KEY, JSON.stringify(payload));
     try {
       const bc = _streamControlChannel || new BroadcastChannel('rps-stream-control');
