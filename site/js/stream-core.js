@@ -29,12 +29,43 @@
       { urls: 'stun:stun3.l.google.com:19302' },
       { urls: 'stun:stun4.l.google.com:19302' },
       { urls: 'stun:stun.cloudflare.com:3478' },
+      // UDP relay (works on most home networks)
       { urls: 'turn:openrelay.metered.ca:80',  username: 'openrelayproject', credential: 'openrelayproject' },
       { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turns:openrelay.metered.ca:443',username: 'openrelayproject', credential: 'openrelayproject' }
+      // TCP relay (bypasses firewalls that block UDP)
+      { urls: 'turn:openrelay.metered.ca:80?transport=tcp',  username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
     ],
-    iceCandidatePoolSize: 10
+    iceCandidatePoolSize: 10,
+    bundlePolicy: 'max-bundle'
   };
+
+  // Detect relay vs direct connection and cap bitrate so we don't flood a
+  // low-bandwidth TURN relay with an 8 Mbps stream.
+  async function _adaptBitrateToConnection(pc) {
+    try {
+      const stats = await pc.getStats();
+      const candidates = new Map();
+      let activePairLocalId = null;
+      stats.forEach(r => {
+        if (r.type === 'local-candidate') candidates.set(r.id, r);
+        if (r.type === 'candidate-pair' && r.nominated) activePairLocalId = r.localCandidateId;
+      });
+      const localCand = activePairLocalId ? candidates.get(activePairLocalId) : null;
+      const isRelay = localCand && localCand.candidateType === 'relay';
+      // Direct path: 8 Mbps. Relay path: 1.5 Mbps (safe ceiling for free TURN).
+      const targetBitrate = isRelay ? 1500000 : 8000000;
+      pc.getSenders().forEach(sender => {
+        if (!sender.track || sender.track.kind !== 'video') return;
+        const p = sender.getParameters();
+        if (!p || !p.encodings || !p.encodings.length) return;
+        if (p.encodings[0].maxBitrate === targetBitrate) return;
+        p.encodings[0].maxBitrate = targetBitrate;
+        sender.setParameters(p).catch(() => {});
+      });
+    } catch (_) {}
+  }
 
   auth.onAuthStateChanged(async user => {
     if (!user) {
@@ -222,6 +253,19 @@
     pc.onicecandidate = e => {
       if (e.candidate) {
         viewerDocRef.collection('streamerCandidates').add(e.candidate.toJSON()).catch(() => {});
+      }
+    };
+
+    let _bitrateTimer = null;
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') {
+        _adaptBitrateToConnection(pc);
+        _bitrateTimer = setInterval(() => _adaptBitrateToConnection(pc), 8000);
+      } else if (pc.connectionState === 'failed') {
+        if (_bitrateTimer) { clearInterval(_bitrateTimer); _bitrateTimer = null; }
+        pc.restartIce();
+      } else if (pc.connectionState === 'closed') {
+        if (_bitrateTimer) { clearInterval(_bitrateTimer); _bitrateTimer = null; }
       }
     };
 
