@@ -16,6 +16,7 @@ const Nav = (() => {
   let _navStreamChatUnsub = null;
   let _navStreamChatCurrentUser = null;
   const _navStreamProfileCache = new Map();
+  let _navStreamReplyState = null;
 
   /* ── Public init ── */
   function init(activePageId) {
@@ -188,6 +189,7 @@ const Nav = (() => {
         const p = document.getElementById('nav-stream-chat-panel');
         if (p) p.style.display = 'none';
         if (_navStreamChatUnsub) { _navStreamChatUnsub(); _navStreamChatUnsub = null; }
+        _navCancelReply();
       });
       const navChatSend = document.getElementById('nav-stream-chat-send');
       const navChatInput = document.getElementById('nav-stream-chat-input');
@@ -195,6 +197,8 @@ const Nav = (() => {
       if (navChatInput) navChatInput.addEventListener('keydown', e => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _sendNavStreamMessage(); }
       });
+      const navReplyCancel = document.getElementById('nav-stream-reply-cancel');
+      if (navReplyCancel) navReplyCancel.addEventListener('click', () => _navCancelReply());
 
       stopBtn?.addEventListener('click', () => {
         const state = _readStreamState();
@@ -280,6 +284,12 @@ const Nav = (() => {
         '<div class="chat-messages" id="nav-stream-chat-messages">' +
           '<div class="chat-empty">No active stream chat.</div>' +
         '</div>' +
+        '<div class="reply-bar" id="nav-stream-reply-bar" style="display:none">' +
+          '<span class="reply-bar-label">Replying to <strong id="nav-stream-reply-name"></strong>: <span id="nav-stream-reply-preview"></span></span>' +
+          '<button class="reply-bar-cancel" id="nav-stream-reply-cancel" title="Cancel reply">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+          '</button>' +
+        '</div>' +
         '<div class="stream-chat-input-row">' +
           '<input class="chat-input" id="nav-stream-chat-input" placeholder="Message stream chat..." maxlength="2000">' +
           '<button class="chat-send" id="nav-stream-chat-send" title="Send">' +
@@ -352,16 +362,17 @@ const Nav = (() => {
         snap.forEach(doc => {
           const data = doc.data() || {};
           if (data.uid) _ensureNavProfileCached(data.uid);
-          messagesEl.appendChild(_renderNavStreamMessage(data, doc.ref));
+          messagesEl.appendChild(_renderNavStreamMessage(data, doc.ref, doc.id));
         });
         messagesEl.scrollTop = messagesEl.scrollHeight;
       });
   }
 
-  function _renderNavStreamMessage(data, docRef) {
+  function _renderNavStreamMessage(data, docRef, docId) {
     const div = document.createElement('div');
     div.className = 'msg';
     div.dataset.uid = data.uid || '';
+    if (docId) div.dataset.msgId = docId;
     const cached = _navStreamProfileCache.get(data.uid);
     const username = cached ? cached.username : (data.username || 'Unknown');
     const avatar = cached ? cached.avatar : (data.avatar || '');
@@ -371,6 +382,30 @@ const Nav = (() => {
     const time = data.createdAt
       ? new Date(data.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       : '';
+
+    // Reply quote block
+    let replyQuoteHTML = '';
+    if (data.replyTo) {
+      const rAuthor = _esc(data.replyTo.username || 'Unknown');
+      let rText = (data.replyTo.text || '').slice(0, 100);
+      if (!rText) {
+        if (data.replyTo.gifUrl) rText = '[GIF]';
+        else if (data.replyTo.videoUrl) rText = '[video]';
+        else if (data.replyTo.images && data.replyTo.images.length) rText = '[image]';
+        else rText = '[message]';
+      }
+      const rCached = _navStreamProfileCache.get(data.replyTo.uid);
+      const rAvatar = (rCached && rCached.avatar)
+        ? '<img src="' + _esc(rCached.avatar) + '" alt="">'
+        : _esc((data.replyTo.username || 'U').charAt(0).toUpperCase());
+      replyQuoteHTML = '<div class="msg-reply-quote"' + (data.replyTo.docId ? ' data-reply-id="' + _esc(data.replyTo.docId) + '"' : '') + '>' +
+        '<span class="reply-curve-line"></span>' +
+        '<span class="reply-avatar-mini">' + rAvatar + '</span>' +
+        '<span class="reply-name">' + rAuthor + '</span>' +
+        '<span class="reply-text">' + _esc(rText) + '</span>' +
+        '</div>';
+    }
+
     let contentHTML = '';
     if (data.gifUrl) contentHTML += '<div class="msg-gif-wrap"><img class="msg-gif" src="' + _esc(data.gifUrl) + '" alt="GIF" loading="lazy"></div>';
     if (data.text) contentHTML += '<div class="msg-text">' + _esc(data.text) + (data.edited ? '<span class="msg-edited-tag">(edited)</span>' : '') + '</div>';
@@ -382,16 +417,19 @@ const Nav = (() => {
     if (data.videoUrl) contentHTML += '<div class="msg-video-wrap"><video class="msg-video" src="' + _esc(data.videoUrl) + '" controls preload="metadata"></video></div>';
 
     const isOwn = _navStreamChatCurrentUser && data.uid === _navStreamChatCurrentUser.uid;
-    const deleteBtn = (isOwn && docRef)
-      ? '<button class="msg-action-btn delete" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>'
-      : '';
-    const actionsHTML = deleteBtn ? '<div class="msg-actions">' + deleteBtn + '</div>' : '';
+    const canDelete = isOwn && !!docRef;
+    const canEdit   = isOwn && !!docRef && !data.gifUrl && !(data.images && data.images.length && !data.text);
+    const replyBtn  = docRef ? '<button class="msg-action-btn reply" title="Reply"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></button>' : '';
+    const editBtn   = canEdit ? '<button class="msg-action-btn edit" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' : '';
+    const deleteBtn = canDelete ? '<button class="msg-action-btn delete" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>' : '';
+    const actionsHTML = (replyBtn || editBtn || deleteBtn) ? '<div class="msg-actions">' + replyBtn + editBtn + deleteBtn + '</div>' : '';
 
     div.innerHTML =
       '<div class="msg-avatar">' + avatarContent +
         '<span class="status-dot ' + _esc(eStatus) + '"></span>' +
       '</div>' +
       '<div class="msg-body">' +
+        replyQuoteHTML +
         '<div class="msg-header">' +
           '<span class="msg-author">' + _esc(username) + '</span>' +
           '<span class="msg-time">' + _esc(time) + '</span>' +
@@ -406,9 +444,18 @@ const Nav = (() => {
       if (avatarEl) avatarEl.addEventListener('click', e => { e.stopPropagation(); _showNavUserPopup(data.uid, avatarEl); });
       if (authorEl) authorEl.addEventListener('click', e => { e.stopPropagation(); _showNavUserPopup(data.uid, authorEl); });
     }
+    const replyBtnEl = div.querySelector('.msg-action-btn.reply');
+    if (replyBtnEl) replyBtnEl.addEventListener('click', () => _navSetReply(data, docId));
+    const editBtnEl = div.querySelector('.msg-action-btn.edit');
+    if (editBtnEl) editBtnEl.addEventListener('click', () => _navEditMessage(docRef, data.text || '', div));
     const deleteBtnEl = div.querySelector('.msg-action-btn.delete');
     if (deleteBtnEl) deleteBtnEl.addEventListener('click', async () => {
       try { await docRef.delete(); } catch (_) { showToast('Failed to delete message.', 'error'); }
+    });
+    const quoteEl = div.querySelector('.msg-reply-quote[data-reply-id]');
+    if (quoteEl) quoteEl.addEventListener('click', () => {
+      const target = document.querySelector('#nav-stream-chat-messages [data-msg-id="' + quoteEl.dataset.replyId + '"]');
+      if (target) { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); target.classList.add('msg-highlight'); setTimeout(() => target.classList.remove('msg-highlight'), 2000); }
     });
     return div;
   }
@@ -450,15 +497,120 @@ const Nav = (() => {
     const text = input.value.trim();
     if (!text) return;
     input.value = '';
+    const msgData = { uid: _navStreamChatCurrentUser.uid, text, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+    if (_navStreamReplyState) {
+      msgData.replyTo = _navStreamReplyState;
+      _navCancelReply();
+    }
     try {
       await db.collection('servers').doc(state.serverId)
         .collection('channels').doc(state.channelId)
         .collection('messages')
-        .add({ uid: _navStreamChatCurrentUser.uid, text, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        .add(msgData);
     } catch (_) {
       input.value = text;
       showToast('Failed to send message.', 'error');
     }
+  }
+
+  function _navSetReply(data, docId) {
+    const cached = _navStreamProfileCache.get(data.uid);
+    const username = cached ? cached.username : (data.username || 'Unknown');
+    let displayText = data.text || '';
+    if (!displayText) {
+      if (data.gifUrl) displayText = '[GIF]';
+      else if (data.videoUrl) displayText = '[video]';
+      else if (data.images && data.images.length) displayText = '[image]';
+      else displayText = '[message]';
+    }
+    const preview = displayText.slice(0, 80) + (displayText.length > 80 ? '\u2026' : '');
+    _navStreamReplyState = {
+      uid: data.uid,
+      username,
+      text: data.text || '',
+      docId: docId || '',
+      images: data.images || [],
+      gifUrl: data.gifUrl || '',
+      videoUrl: data.videoUrl || ''
+    };
+    const nameEl = document.getElementById('nav-stream-reply-name');
+    const previewEl = document.getElementById('nav-stream-reply-preview');
+    const bar = document.getElementById('nav-stream-reply-bar');
+    if (nameEl) nameEl.textContent = username;
+    if (previewEl) previewEl.textContent = preview;
+    if (bar) bar.style.display = 'flex';
+    const inp = document.getElementById('nav-stream-chat-input');
+    if (inp) inp.focus();
+  }
+
+  function _navCancelReply() {
+    _navStreamReplyState = null;
+    const bar = document.getElementById('nav-stream-reply-bar');
+    if (bar) bar.style.display = 'none';
+    const nameEl = document.getElementById('nav-stream-reply-name');
+    const previewEl = document.getElementById('nav-stream-reply-preview');
+    if (nameEl) nameEl.textContent = '';
+    if (previewEl) previewEl.textContent = '';
+  }
+
+  function _navEditMessage(docRef, currentText, msgEl) {
+    const msgTextEl = msgEl.querySelector('.msg-text');
+    if (!msgTextEl || msgEl.querySelector('.msg-edit-wrapper')) return;
+    const original = msgTextEl.innerHTML;
+    msgTextEl.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg-edit-wrapper';
+    const label = document.createElement('div');
+    label.className = 'msg-edit-label';
+    label.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Editing message';
+    const textarea = document.createElement('textarea');
+    textarea.className = 'msg-edit-input';
+    textarea.value = currentText;
+    function autoGrow() { textarea.style.height = 'auto'; textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px'; }
+    textarea.addEventListener('input', autoGrow);
+    const footer = document.createElement('div');
+    footer.className = 'msg-edit-footer';
+    const charCount = document.createElement('span');
+    charCount.className = 'msg-edit-char-count';
+    function updateCount() { charCount.textContent = (2000 - textarea.value.length) + ' left'; }
+    updateCount();
+    textarea.addEventListener('input', updateCount);
+    const actions = document.createElement('div');
+    actions.className = 'msg-edit-actions';
+    const hint = document.createElement('span');
+    hint.className = 'msg-edit-hint';
+    hint.textContent = 'Esc to cancel';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'msg-edit-cancel';
+    cancelBtn.textContent = 'Cancel';
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'msg-edit-save';
+    saveBtn.textContent = 'Save Changes';
+    actions.appendChild(hint);
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+    footer.appendChild(charCount);
+    footer.appendChild(actions);
+    wrapper.appendChild(label);
+    wrapper.appendChild(textarea);
+    wrapper.appendChild(footer);
+    msgTextEl.appendChild(wrapper);
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    setTimeout(autoGrow, 0);
+    async function save() {
+      const newText = textarea.value.trim();
+      if (!newText || newText === currentText) { cancel(); return; }
+      try { await docRef.update({ text: newText, edited: true }); }
+      catch (_) { showToast('Failed to edit message.', 'error'); cancel(); }
+    }
+    function cancel() { msgTextEl.innerHTML = original; }
+    saveBtn.addEventListener('click', save);
+    cancelBtn.addEventListener('click', cancel);
+    textarea.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+      if (e.key === 'Escape') { cancel(); }
+    });
   }
 
   async function _showNavUserPopup(uid, anchorEl) {
