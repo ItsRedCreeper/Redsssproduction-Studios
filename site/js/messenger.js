@@ -2789,7 +2789,9 @@ const Messenger = (() => {
         _viewerRooms.delete(streamerUid);
       });
 
-      await room.connect(wsUrl, token);
+      await room.connect(wsUrl, token, {
+        rtcConfig: { iceTransportPolicy: 'relay' }
+      });
     } catch (err) {
       console.error('LiveKit join error:', err);
       _viewerRooms.delete(streamerUid);

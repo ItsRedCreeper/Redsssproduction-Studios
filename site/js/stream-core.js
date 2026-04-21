@@ -199,22 +199,30 @@
         _stopStream(true);
       });
 
-      isLive = true;
-      startedAt = Date.now();
-      _publishState();
-
       // Connect to LiveKit and publish the screen capture track.
       _setStatus('Connecting to stream server...');
       const roomName = _livekitRoomName();
       const token = await _getLiveKitToken(roomName, true);
       livekitRoom = new LivekitClient.Room({ adaptiveStream: false, dynacast: false });
-      await livekitRoom.connect(LIVEKIT_URL, token);
+      // Force TURN relay so restrictive networks (Chromebook Wi-Fi, corporate firewalls)
+      // that block UDP can still connect via TCP/TLS over port 443.
+      await Promise.race([
+        livekitRoom.connect(LIVEKIT_URL, token, {
+          rtcConfig: { iceTransportPolicy: 'relay' }
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('LiveKit connect timed out after 20s')), 20000))
+      ]);
 
       const videoTrack = localStream.getVideoTracks()[0];
       await livekitRoom.localParticipant.publishTrack(videoTrack, {
         source: LivekitClient.Track.Source.ScreenShare,
         videoEncoding: { maxBitrate: 3_000_000, maxFramerate: 30 }
       });
+
+      // Only mark live AFTER we have published successfully.
+      isLive = true;
+      startedAt = Date.now();
+      _publishState();
 
       // Write the stream doc so viewers know where to connect.
       const streamRef = _streamRef();
@@ -227,6 +235,23 @@
 
       _hideStartUI();
       _setStatus('Live! You can minimise this tab.');
+    } catch (err) {
+      console.error('Stream start failed:', err);
+      _setStatus('Failed to start stream: ' + (err && err.message ? err.message : 'unknown error'));
+      // Cleanup partial state so user can retry.
+      if (livekitRoom) {
+        try { await livekitRoom.disconnect(); } catch (_) {}
+        livekitRoom = null;
+      }
+      if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+        localStream = null;
+      }
+      streamContext = null;
+      isLive = false;
+      _clearState();
+      const btn = document.getElementById('start-btn');
+      if (btn) btn.disabled = false;
     } finally {
       isStarting = false;
     }
