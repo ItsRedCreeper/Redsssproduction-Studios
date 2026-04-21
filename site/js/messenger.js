@@ -2780,6 +2780,7 @@ const Messenger = (() => {
     } catch (err) {
       console.error('LiveKit join error:', err);
       _viewerRooms.delete(streamerUid);
+    }
   }
 
   // Cleanup on page unload
