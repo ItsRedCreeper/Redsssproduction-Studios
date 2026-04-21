@@ -2175,6 +2175,21 @@ const Messenger = (() => {
     } catch (_) {}
   }
 
+  async function _ensureProfileCached(uid) {
+    if (!uid || profileCache.has(uid)) return;
+    try {
+      const doc = await db.collection('users').doc(uid).get();
+      if (!doc.exists) return;
+      const d = doc.data() || {};
+      profileCache.set(uid, {
+        username: d.username || 'User',
+        avatar: d.avatar || '',
+        effectiveStatus: d.effectiveStatus || 'offline'
+      });
+      _patchRenderedMessages(uid);
+    } catch (_) {}
+  }
+
   function _handleStreamCommand(cmd) {
     if (!cmd || !cmd.id) return;
     if (_lastStreamCmdId === cmd.id) return;
@@ -2343,7 +2358,8 @@ const Messenger = (() => {
       serverId,
       channelId,
       channelName: _streamContext.channelName,
-      username: userProfile.username || 'Someone'
+      username: userProfile.username || 'Someone',
+      controllerUrl: window.location.href
     };
     localStorage.setItem(STREAM_PENDING_START_KEY, JSON.stringify(startPayload));
 
@@ -2380,7 +2396,8 @@ const Messenger = (() => {
         channelId,
         channelName: _streamContext.channelName,
         hostUid: currentUser.uid,
-        username: userProfile.username || 'Someone'
+        username: userProfile.username || 'Someone',
+        controllerUrl: window.location.href
       });
     }, 700);
 
@@ -2527,6 +2544,7 @@ const Messenger = (() => {
         }
         snap.forEach(doc => {
           const data = doc.data();
+          if (data.uid) _ensureProfileCached(data.uid);
           popupWrap.appendChild(_renderStreamChatMessage(data));
           inlineWrap.appendChild(_renderStreamChatMessage(data));
         });
@@ -2538,8 +2556,12 @@ const Messenger = (() => {
   function _renderStreamChatMessage(data) {
     const row = document.createElement('div');
     row.className = 'stream-chat-msg';
+    row.dataset.uid = data.uid || '';
     const prof = profileCache.get(data.uid) || {};
     const name = prof.username || data.username || 'User';
+    const avatar = prof.avatar || data.avatar || '';
+    const status = prof.effectiveStatus || 'offline';
+    const initial = (name || 'U').charAt(0).toUpperCase();
     let t = '';
     if (data.createdAt && data.createdAt.toDate) t = data.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const parts = [];
@@ -2548,9 +2570,27 @@ const Messenger = (() => {
       data.images.forEach(url => parts.push('<div class="stream-chat-msg-text"><a href="' + esc(url) + '" target="_blank" rel="noopener">Image</a></div>'));
     }
     if (data.videoUrl) parts.push('<div class="stream-chat-msg-text"><a href="' + esc(data.videoUrl) + '" target="_blank" rel="noopener">Video</a></div>');
+    const avatarHtml = avatar
+      ? '<img src="' + esc(avatar) + '" alt="">'
+      : esc(initial);
     row.innerHTML =
-      '<div class="stream-chat-msg-head"><strong>' + esc(name) + '</strong><span>' + esc(t) + '</span></div>' +
-      parts.join('');
+      '<div class="stream-chat-msg-avatar">' + avatarHtml +
+        '<span class="status-dot ' + esc(status) + '"></span>' +
+      '</div>' +
+      '<div class="stream-chat-msg-main">' +
+        '<div class="stream-chat-msg-head">' +
+          '<span class="stream-chat-msg-author">' + esc(name) + '</span><span>' + esc(t) + '</span>' +
+        '</div>' +
+        parts.join('') +
+      '</div>';
+
+    if (data.uid && currentUser && data.uid !== currentUser.uid) {
+      const avatarEl = row.querySelector('.stream-chat-msg-avatar');
+      const authorEl = row.querySelector('.stream-chat-msg-author');
+      if (avatarEl) avatarEl.addEventListener('click', e => { e.stopPropagation(); _showUserPopup(data.uid, avatarEl); });
+      if (authorEl) authorEl.addEventListener('click', e => { e.stopPropagation(); _showUserPopup(data.uid, authorEl); });
+    }
+
     return row;
   }
 
@@ -2898,6 +2938,18 @@ const Messenger = (() => {
         av.innerHTML = avatarHTML + '<span class="status-dot ' + (cached.effectiveStatus || 'offline') + '"></span>';
       }
       const author = div.querySelector('.msg-author');
+      if (author) author.textContent = cached.username || 'Unknown';
+    });
+
+    const streamAvatarHTML = cached.avatar
+      ? '<img src="' + esc(cached.avatar) + '" alt="">'
+      : esc(initial);
+    document.querySelectorAll('.stream-chat-msg[data-uid="' + uid + '"]').forEach(div => {
+      const av = div.querySelector('.stream-chat-msg-avatar');
+      if (av) {
+        av.innerHTML = streamAvatarHTML + '<span class="status-dot ' + (cached.effectiveStatus || 'offline') + '"></span>';
+      }
+      const author = div.querySelector('.stream-chat-msg-author');
       if (author) author.textContent = cached.username || 'Unknown';
     });
   }

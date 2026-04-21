@@ -7,7 +7,7 @@
 
   let currentUser = null;
   let localStream = null;
-  let streamContext = null; // { serverId, channelId, channelName, username }
+  let streamContext = null; // { serverId, channelId, channelName, username, controllerUrl }
   let startedAt = 0;
   let isLive = false;
   let lastCmdId = null;
@@ -113,7 +113,8 @@
       serverId: cmd.serverId,
       channelId: cmd.channelId,
       channelName: cmd.channelName || 'Streaming Channel',
-      username: cmd.username || 'Someone'
+      username: cmd.username || 'Someone',
+      controllerUrl: cmd.controllerUrl || 'messenger.html'
     };
 
     try {
@@ -280,6 +281,7 @@
       channelName: streamContext.channelName,
       startedAt,
       hostUrl: window.location.href,
+      controllerUrl: streamContext.controllerUrl || 'messenger.html',
       hostUid: currentUser.uid
     };
     localStorage.setItem(STREAM_STATE_KEY, JSON.stringify(payload));

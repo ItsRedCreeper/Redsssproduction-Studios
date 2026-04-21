@@ -177,7 +177,7 @@ const Nav = (() => {
           showToast('No active stream right now.', 'info');
           return;
         }
-        window.open(state.hostUrl || 'messenger.html', '_blank');
+        window.open(_resolveStreamManagerUrl(state), '_blank');
       });
 
       chatBtn?.addEventListener('click', () => {
@@ -187,7 +187,7 @@ const Nav = (() => {
           return;
         }
         _sendStreamCommand({ action: 'openChat', by: user.uid });
-        if (state.hostUrl) window.open(state.hostUrl, '_blank');
+        window.open(_resolveStreamManagerUrl(state), '_blank');
       });
 
       stopBtn?.addEventListener('click', () => {
@@ -277,6 +277,13 @@ const Nav = (() => {
     } catch (_) {
       return null;
     }
+  }
+
+  function _resolveStreamManagerUrl(state) {
+    const raw = (state && (state.controllerUrl || state.hostUrl)) || '';
+    if (!raw) return 'messenger.html';
+    if (/stream-core\.html/i.test(raw)) return 'messenger.html';
+    return raw;
   }
 
   function _refreshStreamManagerUI() {
