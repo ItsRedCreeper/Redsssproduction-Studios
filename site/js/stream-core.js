@@ -31,9 +31,8 @@
       body: JSON.stringify({ roomName, canPublish })
     });
     if (!res.ok) {
-      let detail = '';
-      try { const j = await res.json(); detail = ' — ' + (j.error || JSON.stringify(j)); } catch (_) {}
-      throw new Error('LiveKit token fetch failed ' + res.status + detail);
+      const body = await res.text().catch(() => '(unreadable)');
+      throw new Error('Token ' + res.status + ': ' + body.slice(0, 300));
     }
     return (await res.json()).token;
   }
