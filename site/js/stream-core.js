@@ -124,8 +124,10 @@
         video: {
           cursor: 'always',
           frameRate: { ideal: 60, max: 60 },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
+          width: { ideal: 2560, max: 3840 },
+          height: { ideal: 1440, max: 2160 },
+          displaySurface: 'monitor',
+          resizeMode: 'none'
         },
         audio: false
       });
@@ -187,12 +189,12 @@
       if (track.kind === 'video' && sender && sender.getParameters) {
         const p = sender.getParameters() || {};
         if (!p.encodings || !p.encodings.length) p.encodings = [{}];
-        p.encodings[0].maxBitrate = 3500000;
+        p.encodings[0].maxBitrate = 8000000;
         p.encodings[0].maxFramerate = 60;
         sender.setParameters(p).catch(() => {});
       }
       if (track.kind === 'video') {
-        try { track.contentHint = 'motion'; } catch (_) {}
+        try { track.contentHint = 'detail'; } catch (_) {}
       }
     });
 

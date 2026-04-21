@@ -2498,7 +2498,7 @@ body.messenger-page #app {
   display: none;
   position: fixed;
   inset: 0;
-  z-index: 900;
+  z-index: 5300;
 }
 .user-popup-overlay.open { display: block; }
 

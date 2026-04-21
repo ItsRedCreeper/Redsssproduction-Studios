@@ -352,13 +352,13 @@ const Nav = (() => {
         snap.forEach(doc => {
           const data = doc.data() || {};
           if (data.uid) _ensureNavProfileCached(data.uid);
-          messagesEl.appendChild(_renderNavStreamMessage(data));
+          messagesEl.appendChild(_renderNavStreamMessage(data, doc.ref));
         });
         messagesEl.scrollTop = messagesEl.scrollHeight;
       });
   }
 
-  function _renderNavStreamMessage(data) {
+  function _renderNavStreamMessage(data, docRef) {
     const div = document.createElement('div');
     div.className = 'msg';
     div.dataset.uid = data.uid || '';
@@ -373,13 +373,20 @@ const Nav = (() => {
       : '';
     let contentHTML = '';
     if (data.gifUrl) contentHTML += '<div class="msg-gif-wrap"><img class="msg-gif" src="' + _esc(data.gifUrl) + '" alt="GIF" loading="lazy"></div>';
-    if (data.text) contentHTML += '<div class="msg-text">' + _esc(data.text) + '</div>';
+    if (data.text) contentHTML += '<div class="msg-text">' + _esc(data.text) + (data.edited ? '<span class="msg-edited-tag">(edited)</span>' : '') + '</div>';
     if (data.images && data.images.length) {
       contentHTML += '<div class="msg-images' + (data.images.length === 1 ? ' single' : '') + '">' +
         data.images.map(url => '<img class="msg-image" src="' + _esc(url) + '" alt="" loading="lazy">').join('') +
         '</div>';
     }
     if (data.videoUrl) contentHTML += '<div class="msg-video-wrap"><video class="msg-video" src="' + _esc(data.videoUrl) + '" controls preload="metadata"></video></div>';
+
+    const isOwn = _navStreamChatCurrentUser && data.uid === _navStreamChatCurrentUser.uid;
+    const deleteBtn = (isOwn && docRef)
+      ? '<button class="msg-action-btn delete" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>'
+      : '';
+    const actionsHTML = deleteBtn ? '<div class="msg-actions">' + deleteBtn + '</div>' : '';
+
     div.innerHTML =
       '<div class="msg-avatar">' + avatarContent +
         '<span class="status-dot ' + _esc(eStatus) + '"></span>' +
@@ -390,13 +397,19 @@ const Nav = (() => {
           '<span class="msg-time">' + _esc(time) + '</span>' +
         '</div>' +
         contentHTML +
-      '</div>';
+      '</div>' +
+      actionsHTML;
+
     if (data.uid && _navStreamChatCurrentUser && data.uid !== _navStreamChatCurrentUser.uid) {
       const avatarEl = div.querySelector('.msg-avatar');
       const authorEl = div.querySelector('.msg-author');
       if (avatarEl) avatarEl.addEventListener('click', e => { e.stopPropagation(); _showNavUserPopup(data.uid, avatarEl); });
       if (authorEl) authorEl.addEventListener('click', e => { e.stopPropagation(); _showNavUserPopup(data.uid, authorEl); });
     }
+    const deleteBtnEl = div.querySelector('.msg-action-btn.delete');
+    if (deleteBtnEl) deleteBtnEl.addEventListener('click', async () => {
+      try { await docRef.delete(); } catch (_) { showToast('Failed to delete message.', 'error'); }
+    });
     return div;
   }
 
@@ -600,6 +613,10 @@ const Nav = (() => {
       if (navChatPanel && navChatPanel.style.display !== 'none') {
         navChatPanel.style.display = 'none';
         if (_navStreamChatUnsub) { _navStreamChatUnsub(); _navStreamChatUnsub = null; }
+      }
+      const managePanel = document.getElementById('stream-manage-panel');
+      if (managePanel && managePanel.style.display !== 'none') {
+        managePanel.style.display = 'none';
       }
       statusEl.textContent = 'Offline';
       channelEl.textContent = 'None';

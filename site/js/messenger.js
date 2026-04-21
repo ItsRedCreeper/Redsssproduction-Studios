@@ -2545,15 +2545,15 @@ const Messenger = (() => {
         snap.forEach(doc => {
           const data = doc.data();
           if (data.uid) _ensureProfileCached(data.uid);
-          popupWrap.appendChild(_renderStreamChatMessage(data));
-          inlineWrap.appendChild(_renderStreamChatMessage(data));
+          popupWrap.appendChild(_renderStreamChatMessage(data, doc.ref, doc.id));
+          inlineWrap.appendChild(_renderStreamChatMessage(data, doc.ref, doc.id));
         });
         popupWrap.scrollTop = popupWrap.scrollHeight;
         inlineWrap.scrollTop = inlineWrap.scrollHeight;
       });
   }
 
-  function _renderStreamChatMessage(data) {
+  function _renderStreamChatMessage(data, docRef, docId) {
     const div = document.createElement('div');
     div.className = 'msg';
     div.dataset.uid = data.uid || '';
@@ -2570,13 +2570,22 @@ const Messenger = (() => {
       : '';
     let contentHTML = '';
     if (data.gifUrl) contentHTML += '<div class="msg-gif-wrap"><img class="msg-gif" src="' + esc(data.gifUrl) + '" alt="GIF" loading="lazy"></div>';
-    if (data.text) contentHTML += '<div class="msg-text">' + esc(data.text) + '</div>';
+    if (data.text) contentHTML += '<div class="msg-text">' + esc(data.text) + (data.edited ? '<span class="msg-edited-tag">(edited)</span>' : '') + '</div>';
     if (data.images && data.images.length) {
       contentHTML += '<div class="msg-images' + (data.images.length === 1 ? ' single' : '') + '">' +
         data.images.map(url => '<img class="msg-image" src="' + esc(url) + '" alt="" loading="lazy">').join('') +
         '</div>';
     }
     if (data.videoUrl) contentHTML += '<div class="msg-video-wrap"><video class="msg-video" src="' + esc(data.videoUrl) + '" controls preload="metadata"></video></div>';
+
+    const isOwn = currentUser && data.uid === currentUser.uid;
+    const canDelete = isOwn && !!docRef;
+    const canEdit   = isOwn && !!docRef && !data.gifUrl && !(data.images && data.images.length && !data.text);
+    const replyBtn   = docRef ? '<button class="msg-action-btn reply" title="Reply"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></button>' : '';
+    const editBtn    = canEdit ? '<button class="msg-action-btn edit" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' : '';
+    const deleteBtn  = canDelete ? '<button class="msg-action-btn delete" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg></button>' : '';
+    const actionsHTML = (replyBtn || editBtn || deleteBtn) ? '<div class="msg-actions">' + replyBtn + editBtn + deleteBtn + '</div>' : '';
+
     div.innerHTML =
       '<div class="msg-avatar">' + avatarContent +
         '<span class="status-dot ' + eStatus + '"></span>' +
@@ -2587,13 +2596,22 @@ const Messenger = (() => {
           '<span class="msg-time">' + time + '</span>' +
         '</div>' +
         contentHTML +
-      '</div>';
+      '</div>' +
+      actionsHTML;
+
     if (data.uid && currentUser && data.uid !== currentUser.uid) {
       const avatarEl = div.querySelector('.msg-avatar');
       const authorEl = div.querySelector('.msg-author');
       if (avatarEl) avatarEl.addEventListener('click', e => { e.stopPropagation(); _showUserPopup(data.uid, avatarEl); });
       if (authorEl) authorEl.addEventListener('click', e => { e.stopPropagation(); _showUserPopup(data.uid, authorEl); });
     }
+    const replyBtnEl = div.querySelector('.msg-action-btn.reply');
+    if (replyBtnEl) replyBtnEl.addEventListener('click', () => { _setReply(data, docId); });
+    const editBtnEl = div.querySelector('.msg-action-btn.edit');
+    if (editBtnEl) editBtnEl.addEventListener('click', () => { _editMessage(docRef, data.text || '', div); });
+    const deleteBtnEl = div.querySelector('.msg-action-btn.delete');
+    if (deleteBtnEl) deleteBtnEl.addEventListener('click', () => { _deleteMessage(docRef, data); });
+
     return div;
   }
 
