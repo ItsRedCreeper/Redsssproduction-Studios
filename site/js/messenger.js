@@ -1984,8 +1984,7 @@ const Messenger = (() => {
      ══════════════════════════════════════════════ */
 
   let _localStream = null;
-  const _streamerPCs = new Map();            // viewerUid → RTCPeerConnection (when WE are streaming)
-  const _viewerPCs = new Map();              // streamerUid → RTCPeerConnection (when we view others)
+  const _viewerRooms = new Map();              // streamerUid → LiveKit Room (when we view others)
   let _streamUnsubs = [];
   let _streamChatUnsub = null;
   let _isStreaming = false;
@@ -2006,47 +2005,17 @@ const Messenger = (() => {
   const STREAM_PENDING_START_KEY = 'rps_stream_pending_start_v1';
   let _streamControlChannel = null;
   let _lastStreamCmdId = null;
-  const _rtcConfig = {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
-      { urls: 'stun:stun.cloudflare.com:3478' },
-      // UDP relay (works on most home networks)
-      { urls: 'turn:openrelay.metered.ca:80',  username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-      // TCP relay (bypasses firewalls that block UDP)
-      { urls: 'turn:openrelay.metered.ca:80?transport=tcp',  username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
-    ],
-    iceCandidatePoolSize: 10,
-    bundlePolicy: 'max-bundle'
-  };
+  const LIVEKIT_URL = 'wss://redsssproduction-studios-aiosfout.livekit.cloud';
 
-  async function _adaptBitrateToConnection(pc) {
-    try {
-      const stats = await pc.getStats();
-      const candidates = new Map();
-      let activePairLocalId = null;
-      stats.forEach(r => {
-        if (r.type === 'local-candidate') candidates.set(r.id, r);
-        if (r.type === 'candidate-pair' && r.nominated) activePairLocalId = r.localCandidateId;
-      });
-      const localCand = activePairLocalId ? candidates.get(activePairLocalId) : null;
-      const isRelay = localCand && localCand.candidateType === 'relay';
-      const targetBitrate = isRelay ? 1500000 : 8000000;
-      pc.getSenders().forEach(sender => {
-        if (!sender.track || sender.track.kind !== 'video') return;
-        const p = sender.getParameters();
-        if (!p || !p.encodings || !p.encodings.length) return;
-        if (p.encodings[0].maxBitrate === targetBitrate) return;
-        p.encodings[0].maxBitrate = targetBitrate;
-        sender.setParameters(p).catch(() => {});
-      });
-    } catch (_) {}
+  async function _getLiveKitToken(roomName, canPublish) {
+    const idToken = await auth.currentUser.getIdToken();
+    const res = await fetch('/livekit-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken },
+      body: JSON.stringify({ roomName, canPublish })
+    });
+    if (!res.ok) throw new Error('LiveKit token fetch failed');
+    return (await res.json()).token;
   }
 
   function _cleanupStreaming() {
@@ -2063,10 +2032,8 @@ const Messenger = (() => {
       _localStream.getTracks().forEach(t => t.stop());
       _localStream = null;
     }
-    _streamerPCs.forEach(pc => pc.close());
-    _streamerPCs.clear();
-    _viewerPCs.forEach(pc => pc.close());
-    _viewerPCs.clear();
+    _viewerRooms.forEach(room => { room.disconnect().catch(() => {}); });
+    _viewerRooms.clear();
     _streamUnsubs.forEach(fn => fn());
     _streamUnsubs = [];
     if (_streamChatUnsub) {
@@ -2301,13 +2268,13 @@ const Messenger = (() => {
               if (vid) { vid.srcObject = _localStream; vid.play().catch(() => {}); }
             }
           } else if (streamerUid !== currentUser.uid) {
-            _joinStream(serverId, channelId, streamerUid);
+            _joinStream(serverId, channelId, streamerUid, data.livekitRoom, data.livekitUrl);
           }
         } else if (change.type === 'removed') {
           _removeStreamCard(streamerUid);
           // Close viewer PC for this streamer
-          const vpc = _viewerPCs.get(streamerUid);
-          if (vpc) { vpc.close(); _viewerPCs.delete(streamerUid); }
+          const room = _viewerRooms.get(streamerUid);
+          if (room) { room.disconnect().catch(() => {}); _viewerRooms.delete(streamerUid); }
         }
       });
 
@@ -2450,80 +2417,6 @@ const Messenger = (() => {
     showToast('Stream core started in a background tab.', 'success');
   }
 
-  async function _createStreamerPC(serverId, channelId, viewerUid) {
-    const pc = new RTCPeerConnection(_rtcConfig);
-    _streamerPCs.set(viewerUid, pc);
-    _localStream.getTracks().forEach(track => {
-      const sender = pc.addTrack(track, _localStream);
-      if (track.kind === 'video' && sender && sender.getParameters) {
-        const p = sender.getParameters() || {};
-        if (!p.encodings || !p.encodings.length) p.encodings = [{}];
-        p.encodings[0].maxBitrate = 8000000;
-        p.encodings[0].maxFramerate = 60;
-        sender.setParameters(p).catch(() => {});
-      }
-      if (track.kind === 'video') {
-        try { track.contentHint = 'detail'; } catch (_) {}
-      }
-    });
-
-    const viewerDocRef = db.collection('servers').doc(serverId)
-      .collection('channels').doc(channelId)
-      .collection('streams').doc(currentUser.uid)
-      .collection('viewers').doc(viewerUid);
-
-    pc.onicecandidate = e => {
-      if (e.candidate) {
-        viewerDocRef.collection('streamerCandidates').add(e.candidate.toJSON()).catch(() => {});
-      }
-    };
-
-    let _bitrateTimer = null;
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'connected') {
-        _adaptBitrateToConnection(pc);
-        _bitrateTimer = setInterval(() => _adaptBitrateToConnection(pc), 8000);
-      } else if (pc.connectionState === 'failed') {
-        if (_bitrateTimer) { clearInterval(_bitrateTimer); _bitrateTimer = null; }
-        pc.restartIce();
-      } else if (pc.connectionState === 'closed') {
-        if (_bitrateTimer) { clearInterval(_bitrateTimer); _bitrateTimer = null; }
-      }
-    };
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    await viewerDocRef.update({ offer: { type: offer.type, sdp: offer.sdp } }).catch(() => {});
-
-    let answerSet = false;
-    const pendingViewerCandidates = [];
-
-    const answerUnsub = viewerDocRef.onSnapshot(snap => {
-      const data = snap.data();
-      if (data && data.answer && !pc.currentRemoteDescription) {
-        pc.setRemoteDescription(new RTCSessionDescription(data.answer))
-          .then(() => {
-            answerSet = true;
-            for (const c of pendingViewerCandidates) { pc.addIceCandidate(c).catch(() => {}); }
-            pendingViewerCandidates.length = 0;
-          })
-          .catch(() => {});
-      }
-    });
-    _streamUnsubs.push(answerUnsub);
-
-    const candidateUnsub = viewerDocRef.collection('viewerCandidates').onSnapshot(snap => {
-      snap.docChanges().forEach(change => {
-        if (change.type === 'added') {
-          const c = new RTCIceCandidate(change.doc.data());
-          if (answerSet) { pc.addIceCandidate(c).catch(() => {}); }
-          else { pendingViewerCandidates.push(c); }
-        }
-      });
-    });
-    _streamUnsubs.push(candidateUnsub);
-  }
-
   async function _stopStreaming(serverId, channelId) {
     if (!_isStreaming) return;
     _isStreaming = false;
@@ -2549,9 +2442,7 @@ const Messenger = (() => {
     _streamStartedAtMs = null;
     _updateStreamManagePanel();
 
-    // Local viewer-side cleanup while core tab performs host cleanup.
-    _streamerPCs.forEach(pc => pc.close());
-    _streamerPCs.clear();
+    // Viewer rooms cleaned up by _cleanupStreaming.
   }
 
   function _captureStreamSnapshot() {
@@ -2859,80 +2750,36 @@ const Messenger = (() => {
     }
   }
 
-  async function _joinStream(serverId, channelId, streamerUid) {
-    if (_viewerPCs.has(streamerUid)) return;
+  async function _joinStream(serverId, channelId, streamerUid, livekitRoomName, livekitUrl) {
+    if (_viewerRooms.has(streamerUid)) return;
+    if (!livekitRoomName) return; // stream doc doesn't have LiveKit info yet
 
-    const streamRef = db.collection('servers').doc(serverId)
-      .collection('channels').doc(channelId)
-      .collection('streams').doc(streamerUid);
-    const viewerDocRef = streamRef.collection('viewers').doc(currentUser.uid);
+    try {
+      const wsUrl = livekitUrl || LIVEKIT_URL;
+      const token = await _getLiveKitToken(livekitRoomName, false);
 
-    // Use a unique sessionId each join so the streamer can distinguish a
-    // fresh reconnect (Firestore 'modified') from answer/candidate writes.
-    const sessionId = Math.random().toString(36).slice(2);
-    await viewerDocRef.set({ joined: true, sessionId });
+      const room = new LivekitClient.Room({ adaptiveStream: true, dynacast: false });
+      _viewerRooms.set(streamerUid, room);
 
-    const pc = new RTCPeerConnection(_rtcConfig);
-    _viewerPCs.set(streamerUid, pc);
-
-    let remoteDescSet = false;
-    const pendingCandidates = [];
-
-    // Use a local MediaStream so we don't depend on e.streams[0] which can
-    // be undefined on some browser/codec combinations.
-    const remoteStream = new MediaStream();
-    pc.ontrack = e => {
-      remoteStream.addTrack(e.track);
-      const card = document.querySelector('[data-stream-uid="' + streamerUid + '"]');
-      if (card) {
+      room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind !== LivekitClient.Track.Kind.Video) return;
+        const card = document.querySelector('[data-stream-uid="' + streamerUid + '"]');
+        if (!card) return;
         const vid = card.querySelector('video');
         if (vid) {
-          if (!vid.srcObject) vid.srcObject = remoteStream;
+          track.attach(vid);
           vid.play().catch(() => {});
         }
-      }
-    };
-
-    // Auto-retry ICE on connection failure (helps when STUN succeeds but path
-    // briefly drops; TURN relay should prevent most hard failures).
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed') {
-        pc.restartIce();
-      }
-    };
-
-    pc.onicecandidate = e => {
-      if (e.candidate) {
-        viewerDocRef.collection('viewerCandidates').add(e.candidate.toJSON()).catch(() => {});
-      }
-    };
-
-    const offerUnsub = viewerDocRef.onSnapshot(async snap => {
-      const data = snap.data();
-      if (!data || !data.offer) return;
-      if (pc.currentRemoteDescription) return;
-      try {
-        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        await viewerDocRef.update({ answer: { type: answer.type, sdp: answer.sdp } });
-        remoteDescSet = true;
-        for (const c of pendingCandidates) { pc.addIceCandidate(c).catch(() => {}); }
-        pendingCandidates.length = 0;
-      } catch (err) { console.error('Viewer offer handling error:', err); }
-    });
-    _streamUnsubs.push(offerUnsub);
-
-    const candidateUnsub = viewerDocRef.collection('streamerCandidates').onSnapshot(snap => {
-      snap.docChanges().forEach(change => {
-        if (change.type === 'added') {
-          const c = new RTCIceCandidate(change.doc.data());
-          if (remoteDescSet) { pc.addIceCandidate(c).catch(() => {}); }
-          else { pendingCandidates.push(c); }
-        }
       });
-    });
-    _streamUnsubs.push(candidateUnsub);
+
+      room.on(LivekitClient.RoomEvent.Disconnected, () => {
+        _viewerRooms.delete(streamerUid);
+      });
+
+      await room.connect(wsUrl, token);
+    } catch (err) {
+      console.error('LiveKit join error:', err);
+      _viewerRooms.delete(streamerUid);
   }
 
   // Cleanup on page unload
