@@ -2554,44 +2554,47 @@ const Messenger = (() => {
   }
 
   function _renderStreamChatMessage(data) {
-    const row = document.createElement('div');
-    row.className = 'stream-chat-msg';
-    row.dataset.uid = data.uid || '';
-    const prof = profileCache.get(data.uid) || {};
-    const name = prof.username || data.username || 'User';
-    const avatar = prof.avatar || data.avatar || '';
-    const status = prof.effectiveStatus || 'offline';
-    const initial = (name || 'U').charAt(0).toUpperCase();
-    let t = '';
-    if (data.createdAt && data.createdAt.toDate) t = data.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const parts = [];
-    if (data.text) parts.push('<div class="stream-chat-msg-text">' + esc(data.text) + '</div>');
-    if (data.images && data.images.length) {
-      data.images.forEach(url => parts.push('<div class="stream-chat-msg-text"><a href="' + esc(url) + '" target="_blank" rel="noopener">Image</a></div>'));
-    }
-    if (data.videoUrl) parts.push('<div class="stream-chat-msg-text"><a href="' + esc(data.videoUrl) + '" target="_blank" rel="noopener">Video</a></div>');
-    const avatarHtml = avatar
+    const div = document.createElement('div');
+    div.className = 'msg';
+    div.dataset.uid = data.uid || '';
+    const cached = profileCache.get(data.uid);
+    const username = cached ? cached.username : (data.username || 'Unknown');
+    const avatar = cached ? cached.avatar : (data.avatar || '');
+    const eStatus = cached ? cached.effectiveStatus : 'offline';
+    const initial = (username || 'U').charAt(0).toUpperCase();
+    const avatarContent = avatar
       ? '<img src="' + esc(avatar) + '" alt="">'
-      : esc(initial);
-    row.innerHTML =
-      '<div class="stream-chat-msg-avatar">' + avatarHtml +
-        '<span class="status-dot ' + esc(status) + '"></span>' +
+      : initial;
+    const time = data.createdAt
+      ? new Date(data.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '';
+    let contentHTML = '';
+    if (data.gifUrl) contentHTML += '<div class="msg-gif-wrap"><img class="msg-gif" src="' + esc(data.gifUrl) + '" alt="GIF" loading="lazy"></div>';
+    if (data.text) contentHTML += '<div class="msg-text">' + esc(data.text) + '</div>';
+    if (data.images && data.images.length) {
+      contentHTML += '<div class="msg-images' + (data.images.length === 1 ? ' single' : '') + '">' +
+        data.images.map(url => '<img class="msg-image" src="' + esc(url) + '" alt="" loading="lazy">').join('') +
+        '</div>';
+    }
+    if (data.videoUrl) contentHTML += '<div class="msg-video-wrap"><video class="msg-video" src="' + esc(data.videoUrl) + '" controls preload="metadata"></video></div>';
+    div.innerHTML =
+      '<div class="msg-avatar">' + avatarContent +
+        '<span class="status-dot ' + eStatus + '"></span>' +
       '</div>' +
-      '<div class="stream-chat-msg-main">' +
-        '<div class="stream-chat-msg-head">' +
-          '<span class="stream-chat-msg-author">' + esc(name) + '</span><span>' + esc(t) + '</span>' +
+      '<div class="msg-body">' +
+        '<div class="msg-header">' +
+          '<span class="msg-author">' + esc(username) + '</span>' +
+          '<span class="msg-time">' + time + '</span>' +
         '</div>' +
-        parts.join('') +
+        contentHTML +
       '</div>';
-
     if (data.uid && currentUser && data.uid !== currentUser.uid) {
-      const avatarEl = row.querySelector('.stream-chat-msg-avatar');
-      const authorEl = row.querySelector('.stream-chat-msg-author');
+      const avatarEl = div.querySelector('.msg-avatar');
+      const authorEl = div.querySelector('.msg-author');
       if (avatarEl) avatarEl.addEventListener('click', e => { e.stopPropagation(); _showUserPopup(data.uid, avatarEl); });
       if (authorEl) authorEl.addEventListener('click', e => { e.stopPropagation(); _showUserPopup(data.uid, authorEl); });
     }
-
-    return row;
+    return div;
   }
 
   function _addStreamChatFiles(fileList) {
@@ -2938,18 +2941,6 @@ const Messenger = (() => {
         av.innerHTML = avatarHTML + '<span class="status-dot ' + (cached.effectiveStatus || 'offline') + '"></span>';
       }
       const author = div.querySelector('.msg-author');
-      if (author) author.textContent = cached.username || 'Unknown';
-    });
-
-    const streamAvatarHTML = cached.avatar
-      ? '<img src="' + esc(cached.avatar) + '" alt="">'
-      : esc(initial);
-    document.querySelectorAll('.stream-chat-msg[data-uid="' + uid + '"]').forEach(div => {
-      const av = div.querySelector('.stream-chat-msg-avatar');
-      if (av) {
-        av.innerHTML = streamAvatarHTML + '<span class="status-dot ' + (cached.effectiveStatus || 'offline') + '"></span>';
-      }
-      const author = div.querySelector('.stream-chat-msg-author');
       if (author) author.textContent = cached.username || 'Unknown';
     });
   }

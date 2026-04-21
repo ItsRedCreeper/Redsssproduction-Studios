@@ -13,6 +13,9 @@ const Nav = (() => {
   const STREAM_CMD_KEY = 'rps_stream_cmd_v1';
   let _streamStateTimer = null;
   let _streamControlChannel = null;
+  let _navStreamChatUnsub = null;
+  let _navStreamChatCurrentUser = null;
+  const _navStreamProfileCache = new Map();
 
   /* ── Public init ── */
   function init(activePageId) {
@@ -155,6 +158,7 @@ const Nav = (() => {
 
   function _initStreamManager(user) {
     _ensureStreamManagerUI();
+    _navStreamChatCurrentUser = user;
     const isMessengerPage = document.body.classList.contains('messenger-page');
 
     const navBtn = document.getElementById('stream-manage-nav-btn');
@@ -176,16 +180,20 @@ const Nav = (() => {
           showToast('No active stream right now.', 'info');
           return;
         }
-        const chatUrl = _buildStreamChatUrl(state);
-        const popup = window.open(
-          chatUrl,
-          'rpsStreamChat',
-          'width=420,height=640,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=no'
-        );
-        if (!popup) {
-          showToast('Popup blocked. Allow popups to open stream chat.', 'error');
-          return;
-        }
+        _openNavStreamChat(state);
+      });
+
+      const navChatClose = document.getElementById('nav-stream-chat-close');
+      if (navChatClose) navChatClose.addEventListener('click', () => {
+        const p = document.getElementById('nav-stream-chat-panel');
+        if (p) p.style.display = 'none';
+        if (_navStreamChatUnsub) { _navStreamChatUnsub(); _navStreamChatUnsub = null; }
+      });
+      const navChatSend = document.getElementById('nav-stream-chat-send');
+      const navChatInput = document.getElementById('nav-stream-chat-input');
+      if (navChatSend) navChatSend.addEventListener('click', () => _sendNavStreamMessage());
+      if (navChatInput) navChatInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _sendNavStreamMessage(); }
       });
 
       stopBtn?.addEventListener('click', () => {
@@ -256,6 +264,42 @@ const Nav = (() => {
       const app = document.getElementById('app') || document.body;
       app.appendChild(panel);
     }
+
+    if (!document.getElementById('nav-stream-chat-panel')) {
+      const chatPanel = document.createElement('div');
+      chatPanel.id = 'nav-stream-chat-panel';
+      chatPanel.className = 'stream-chat-window';
+      chatPanel.style.display = 'none';
+      chatPanel.innerHTML =
+        '<div class="stream-chat-header">' +
+          '<span id="nav-stream-chat-title">Stream Chat</span>' +
+          '<button class="stream-chat-close" id="nav-stream-chat-close" title="Close">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+          '</button>' +
+        '</div>' +
+        '<div class="chat-messages" id="nav-stream-chat-messages">' +
+          '<div class="chat-empty">No active stream chat.</div>' +
+        '</div>' +
+        '<div class="stream-chat-input-row">' +
+          '<input class="chat-input" id="nav-stream-chat-input" placeholder="Message stream chat..." maxlength="2000">' +
+          '<button class="chat-send" id="nav-stream-chat-send" title="Send">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>' +
+          '</button>' +
+        '</div>';
+      const appEl = document.getElementById('app') || document.body;
+      appEl.appendChild(chatPanel);
+    }
+
+    if (!document.getElementById('user-popup-overlay')) {
+      const ov = document.createElement('div');
+      ov.id = 'user-popup-overlay';
+      ov.className = 'user-popup-overlay';
+      const pu = document.createElement('div');
+      pu.id = 'user-popup';
+      pu.className = 'user-popup';
+      ov.appendChild(pu);
+      document.body.appendChild(ov);
+    }
   }
 
   function _sendStreamCommand(cmd) {
@@ -283,11 +327,258 @@ const Nav = (() => {
     return raw;
   }
 
-  function _buildStreamChatUrl(state) {
-    const serverId = encodeURIComponent(state && state.serverId ? state.serverId : '');
-    const channelId = encodeURIComponent(state && state.channelId ? state.channelId : '');
-    const channelName = encodeURIComponent(state && state.channelName ? state.channelName : 'Streaming Channel');
-    return 'stream-chat.html?serverId=' + serverId + '&channelId=' + channelId + '&channelName=' + channelName;
+  function _openNavStreamChat(state) {
+    const panel = document.getElementById('nav-stream-chat-panel');
+    if (!panel) return;
+    panel.style.display = 'flex';
+    const titleEl = document.getElementById('nav-stream-chat-title');
+    if (titleEl) titleEl.textContent = 'Stream Chat \u2014 ' + _esc(state.channelName || 'Streaming Channel');
+    if (!state.serverId || !state.channelId) return;
+    if (_navStreamChatUnsub) { _navStreamChatUnsub(); _navStreamChatUnsub = null; }
+    const messagesEl = document.getElementById('nav-stream-chat-messages');
+    if (!messagesEl) return;
+    messagesEl.innerHTML = '<div class="chat-empty">Loading...</div>';
+    _navStreamChatUnsub = db.collection('servers').doc(state.serverId)
+      .collection('channels').doc(state.channelId)
+      .collection('messages')
+      .orderBy('createdAt', 'asc')
+      .limitToLast(100)
+      .onSnapshot(snap => {
+        messagesEl.innerHTML = '';
+        if (snap.empty) {
+          messagesEl.innerHTML = '<div class="chat-empty">No messages yet. Start the conversation!</div>';
+          return;
+        }
+        snap.forEach(doc => {
+          const data = doc.data() || {};
+          if (data.uid) _ensureNavProfileCached(data.uid);
+          messagesEl.appendChild(_renderNavStreamMessage(data));
+        });
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      });
+  }
+
+  function _renderNavStreamMessage(data) {
+    const div = document.createElement('div');
+    div.className = 'msg';
+    div.dataset.uid = data.uid || '';
+    const cached = _navStreamProfileCache.get(data.uid);
+    const username = cached ? cached.username : (data.username || 'Unknown');
+    const avatar = cached ? cached.avatar : (data.avatar || '');
+    const eStatus = cached ? cached.effectiveStatus : 'offline';
+    const initial = (username || 'U').charAt(0).toUpperCase();
+    const avatarContent = avatar ? '<img src="' + _esc(avatar) + '" alt="">' : initial;
+    const time = data.createdAt
+      ? new Date(data.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : '';
+    let contentHTML = '';
+    if (data.gifUrl) contentHTML += '<div class="msg-gif-wrap"><img class="msg-gif" src="' + _esc(data.gifUrl) + '" alt="GIF" loading="lazy"></div>';
+    if (data.text) contentHTML += '<div class="msg-text">' + _esc(data.text) + '</div>';
+    if (data.images && data.images.length) {
+      contentHTML += '<div class="msg-images' + (data.images.length === 1 ? ' single' : '') + '">' +
+        data.images.map(url => '<img class="msg-image" src="' + _esc(url) + '" alt="" loading="lazy">').join('') +
+        '</div>';
+    }
+    if (data.videoUrl) contentHTML += '<div class="msg-video-wrap"><video class="msg-video" src="' + _esc(data.videoUrl) + '" controls preload="metadata"></video></div>';
+    div.innerHTML =
+      '<div class="msg-avatar">' + avatarContent +
+        '<span class="status-dot ' + _esc(eStatus) + '"></span>' +
+      '</div>' +
+      '<div class="msg-body">' +
+        '<div class="msg-header">' +
+          '<span class="msg-author">' + _esc(username) + '</span>' +
+          '<span class="msg-time">' + _esc(time) + '</span>' +
+        '</div>' +
+        contentHTML +
+      '</div>';
+    if (data.uid && _navStreamChatCurrentUser && data.uid !== _navStreamChatCurrentUser.uid) {
+      const avatarEl = div.querySelector('.msg-avatar');
+      const authorEl = div.querySelector('.msg-author');
+      if (avatarEl) avatarEl.addEventListener('click', e => { e.stopPropagation(); _showNavUserPopup(data.uid, avatarEl); });
+      if (authorEl) authorEl.addEventListener('click', e => { e.stopPropagation(); _showNavUserPopup(data.uid, authorEl); });
+    }
+    return div;
+  }
+
+  async function _ensureNavProfileCached(uid) {
+    if (!uid || _navStreamProfileCache.has(uid)) return;
+    try {
+      const doc = await db.collection('users').doc(uid).get();
+      if (!doc.exists) return;
+      const d = doc.data() || {};
+      _navStreamProfileCache.set(uid, {
+        username: d.username || 'User',
+        avatar: d.avatar || '',
+        effectiveStatus: d.effectiveStatus || 'offline'
+      });
+      _patchNavStreamMessages(uid);
+    } catch (_) {}
+  }
+
+  function _patchNavStreamMessages(uid) {
+    const cached = _navStreamProfileCache.get(uid);
+    if (!cached) return;
+    const initial = (cached.username || 'U').charAt(0).toUpperCase();
+    const avatarHTML = cached.avatar ? '<img src="' + _esc(cached.avatar) + '" alt="">' : initial;
+    document.querySelectorAll('#nav-stream-chat-messages .msg[data-uid="' + uid + '"]').forEach(div => {
+      const av = div.querySelector('.msg-avatar');
+      if (av) av.innerHTML = avatarHTML + '<span class="status-dot ' + (cached.effectiveStatus || 'offline') + '"></span>';
+      const author = div.querySelector('.msg-author');
+      if (author) author.textContent = cached.username || 'Unknown';
+    });
+  }
+
+  async function _sendNavStreamMessage() {
+    if (!_navStreamChatCurrentUser) return;
+    const state = _readStreamState();
+    if (!state || !state.live || !state.serverId || !state.channelId) return;
+    const input = document.getElementById('nav-stream-chat-input');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    try {
+      await db.collection('servers').doc(state.serverId)
+        .collection('channels').doc(state.channelId)
+        .collection('messages')
+        .add({ uid: _navStreamChatCurrentUser.uid, text, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    } catch (_) {
+      input.value = text;
+      showToast('Failed to send message.', 'error');
+    }
+  }
+
+  async function _showNavUserPopup(uid, anchorEl) {
+    const overlay = document.getElementById('user-popup-overlay');
+    const popup = document.getElementById('user-popup');
+    if (!overlay || !popup) return;
+    let u = _navStreamProfileCache.get(uid);
+    let fullData = null;
+    try {
+      const doc = await db.collection('users').doc(uid).get();
+      if (doc.exists) {
+        fullData = doc.data();
+        u = {
+          username: fullData.username || (u ? u.username : 'Unknown'),
+          avatar: fullData.avatar || (u ? u.avatar : ''),
+          effectiveStatus: fullData.effectiveStatus || (u ? u.effectiveStatus : 'offline')
+        };
+      }
+    } catch (_) {}
+    if (!u) return;
+    const initial = (u.username || 'U').charAt(0).toUpperCase();
+    const avatarHtml = u.avatar
+      ? '<img src="' + _esc(u.avatar) + '" alt="">'
+      : '<span class="user-popup-initial">' + initial + '</span>';
+    const eStatus = u.effectiveStatus || 'offline';
+    const statusText = _navResolveActivity(fullData || u, eStatus);
+    const desc = fullData && fullData.description ? fullData.description : '';
+    let isFriend = false;
+    try {
+      if (_navStreamChatCurrentUser) {
+        const myDoc = await db.collection('users').doc(_navStreamChatCurrentUser.uid).get();
+        const myFriends = (myDoc.data() || {}).friends || [];
+        isFriend = myFriends.includes(uid);
+      }
+    } catch (_) {}
+    popup.innerHTML =
+      '<div class="user-popup-banner"></div>' +
+      '<div class="user-popup-body">' +
+        '<div class="user-popup-avatar-wrap">' +
+          '<div class="user-popup-avatar">' + avatarHtml +
+            '<span class="status-dot ' + eStatus + '"></span>' +
+          '</div>' +
+        '</div>' +
+        '<h3 class="user-popup-name">' + _esc(u.username) + '</h3>' +
+        '<span class="user-popup-status ' + eStatus + '">' + _esc(statusText) + '</span>' +
+        (desc ? '<div class="user-popup-desc">' + _esc(desc) + '</div>' : '') +
+        '<hr class="user-popup-divider">' +
+        '<div class="user-popup-actions">' +
+          (isFriend
+            ? '<button class="btn btn-sm" disabled style="opacity:.5;cursor:default;flex:1">Already Friends</button>'
+            : '<button class="btn btn-primary btn-sm" id="nav-popup-add-friend">Add Friend</button>') +
+          '<button class="btn btn-sm" id="nav-popup-dm-btn">Message</button>' +
+        '</div>' +
+        '<button class="user-popup-view-more" id="nav-popup-view-more">View Full Profile</button>' +
+      '</div>';
+    const rect = anchorEl.getBoundingClientRect();
+    let top = rect.top, left = rect.right + 10;
+    const popupW = 300, popupH = 340;
+    if (left + popupW > window.innerWidth) left = rect.left - popupW - 10;
+    if (left < 0) left = 10;
+    if (top + popupH > window.innerHeight) top = window.innerHeight - popupH - 10;
+    if (top < 10) top = 10;
+    popup.style.top = top + 'px';
+    popup.style.left = left + 'px';
+    overlay.classList.add('open');
+    overlay.addEventListener('click', function _close(e) {
+      if (e.target === overlay) { overlay.classList.remove('open'); overlay.removeEventListener('click', _close); }
+    });
+    const addBtn = document.getElementById('nav-popup-add-friend');
+    if (addBtn) {
+      addBtn.addEventListener('click', async () => {
+        addBtn.disabled = true;
+        addBtn.textContent = 'Sending...';
+        try {
+          if (!_navStreamChatCurrentUser) return;
+          const reverseReqs = await db.collection('friend_requests')
+            .where('from', '==', uid).where('to', '==', _navStreamChatCurrentUser.uid).get();
+          let reverseDoc = null;
+          reverseReqs.forEach(d => { if (d.data().status === 'pending') reverseDoc = d; });
+          if (reverseDoc) {
+            const batch = db.batch();
+            batch.update(db.collection('users').doc(_navStreamChatCurrentUser.uid), { friends: firebase.firestore.FieldValue.arrayUnion(uid) });
+            batch.update(db.collection('users').doc(uid), { friends: firebase.firestore.FieldValue.arrayUnion(_navStreamChatCurrentUser.uid) });
+            batch.update(db.collection('friend_requests').doc(reverseDoc.id), { status: 'accepted' });
+            await batch.commit();
+            addBtn.textContent = 'Friends!';
+            showToast('Friend added!', 'success');
+            return;
+          }
+          const existing = await db.collection('friend_requests')
+            .where('from', '==', _navStreamChatCurrentUser.uid).where('to', '==', uid).get();
+          let hasPending = false;
+          existing.forEach(d => { if (d.data().status === 'pending') hasPending = true; });
+          if (hasPending) { showToast('Request already sent.', 'info'); addBtn.textContent = 'Sent'; return; }
+          await db.collection('friend_requests').add({
+            from: _navStreamChatCurrentUser.uid,
+            fromUsername: (_currentProfile || {}).username || 'User',
+            to: uid,
+            toUsername: u.username,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            status: 'pending'
+          });
+          addBtn.textContent = 'Sent!';
+          showToast('Friend request sent!', 'success');
+        } catch (_) {
+          addBtn.textContent = 'Failed';
+          showToast('Failed to send request.', 'error');
+        }
+      });
+    }
+    document.getElementById('nav-popup-dm-btn').addEventListener('click', () => {
+      overlay.classList.remove('open');
+      window.location.href = 'messenger.html?dm=' + encodeURIComponent(uid);
+    });
+    document.getElementById('nav-popup-view-more').addEventListener('click', () => {
+      overlay.classList.remove('open');
+      window.location.href = 'friends.html?view=' + uid;
+    });
+  }
+
+  function _navResolveActivity(profile, eStatus) {
+    if (eStatus === 'offline') return 'Offline';
+    if (eStatus === 'dnd') return 'Do Not Disturb';
+    const activity = profile.activity || {};
+    if (activity.page === 'games' && activity.game) return 'Playing ' + activity.game;
+    if (activity.page === 'messenger' && activity.server) return 'In RedsssMessenger \u2014 ' + activity.server;
+    if (activity.page === 'messenger' && activity.dm) return 'Messaging ' + activity.dm;
+    if (activity.page === 'messenger') return 'In RedsssMessenger';
+    if (activity.page === 'games') return 'Browsing Games';
+    if (activity.page === 'support') return 'Viewing Support';
+    if (activity.page === 'home') return eStatus === 'away' ? 'Away' : 'Online';
+    if (activity.page === 'friends') return eStatus === 'away' ? 'Away' : 'Viewing Friends';
+    return eStatus === 'away' ? 'Away' : 'Online';
   }
 
   function _refreshStreamManagerUI() {
@@ -305,6 +596,11 @@ const Nav = (() => {
     if (!statusEl || !channelEl || !uptimeEl) return;
 
     if (!live) {
+      const navChatPanel = document.getElementById('nav-stream-chat-panel');
+      if (navChatPanel && navChatPanel.style.display !== 'none') {
+        navChatPanel.style.display = 'none';
+        if (_navStreamChatUnsub) { _navStreamChatUnsub(); _navStreamChatUnsub = null; }
+      }
       statusEl.textContent = 'Offline';
       channelEl.textContent = 'None';
       uptimeEl.textContent = '00:00:00';
