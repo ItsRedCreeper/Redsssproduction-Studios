@@ -2009,8 +2009,13 @@ const Messenger = (() => {
   const _rtcConfig = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ]
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' }
+    ],
+    iceCandidatePoolSize: 10
   };
 
   function _cleanupStreaming() {
@@ -2446,10 +2451,19 @@ const Messenger = (() => {
     await pc.setLocalDescription(offer);
     await viewerDocRef.update({ offer: { type: offer.type, sdp: offer.sdp } }).catch(() => {});
 
+    let answerSet = false;
+    const pendingViewerCandidates = [];
+
     const answerUnsub = viewerDocRef.onSnapshot(snap => {
       const data = snap.data();
       if (data && data.answer && !pc.currentRemoteDescription) {
-        pc.setRemoteDescription(new RTCSessionDescription(data.answer)).catch(() => {});
+        pc.setRemoteDescription(new RTCSessionDescription(data.answer))
+          .then(() => {
+            answerSet = true;
+            for (const c of pendingViewerCandidates) { pc.addIceCandidate(c).catch(() => {}); }
+            pendingViewerCandidates.length = 0;
+          })
+          .catch(() => {});
       }
     });
     _streamUnsubs.push(answerUnsub);
@@ -2457,7 +2471,9 @@ const Messenger = (() => {
     const candidateUnsub = viewerDocRef.collection('viewerCandidates').onSnapshot(snap => {
       snap.docChanges().forEach(change => {
         if (change.type === 'added') {
-          pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(() => {});
+          const c = new RTCIceCandidate(change.doc.data());
+          if (answerSet) { pc.addIceCandidate(c).catch(() => {}); }
+          else { pendingViewerCandidates.push(c); }
         }
       });
     });
@@ -2812,6 +2828,9 @@ const Messenger = (() => {
     const pc = new RTCPeerConnection(_rtcConfig);
     _viewerPCs.set(streamerUid, pc);
 
+    let remoteDescSet = false;
+    const pendingCandidates = [];
+
     pc.ontrack = e => {
       const card = document.querySelector('[data-stream-uid="' + streamerUid + '"]');
       if (card && e.streams[0]) {
@@ -2835,6 +2854,9 @@ const Messenger = (() => {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         await viewerDocRef.update({ answer: { type: answer.type, sdp: answer.sdp } });
+        remoteDescSet = true;
+        for (const c of pendingCandidates) { pc.addIceCandidate(c).catch(() => {}); }
+        pendingCandidates.length = 0;
       } catch (err) { console.error('Viewer offer handling error:', err); }
     });
     _streamUnsubs.push(offerUnsub);
@@ -2842,7 +2864,9 @@ const Messenger = (() => {
     const candidateUnsub = viewerDocRef.collection('streamerCandidates').onSnapshot(snap => {
       snap.docChanges().forEach(change => {
         if (change.type === 'added') {
-          pc.addIceCandidate(new RTCIceCandidate(change.doc.data())).catch(() => {});
+          const c = new RTCIceCandidate(change.doc.data());
+          if (remoteDescSet) { pc.addIceCandidate(c).catch(() => {}); }
+          else { pendingCandidates.push(c); }
         }
       });
     });
