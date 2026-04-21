@@ -2211,6 +2211,10 @@ const Messenger = (() => {
     if (!cmd || !cmd.id) return;
     if (_lastStreamCmdId === cmd.id) return;
     _lastStreamCmdId = cmd.id;
+    if (cmd.action === 'stop' && _isStreaming && _streamContext) {
+      _stopStreaming(_streamContext.serverId, _streamContext.channelId);
+      return;
+    }
     if (cmd.action === 'openChat' && _streamContext) {
       _openStreamChatWindow();
       window.focus();
@@ -2218,7 +2222,25 @@ const Messenger = (() => {
   }
 
   function _wireStreamingNavGuard() {
-    // No-op now: streaming core runs in a dedicated background tab.
+    // When streaming, intercept nav-link clicks to other pages.
+    // Open the target in a new tab so this tab stays alive and keeps publishing.
+    document.querySelectorAll('a.nav-link[href]').forEach(link => {
+      link.addEventListener('click', e => {
+        if (!_isStreaming) return; // not streaming — let browser navigate normally
+        const href = link.getAttribute('href');
+        if (!href || href === 'messenger.html' || href === '#') return;
+        e.preventDefault();
+        window.open(href, '_blank');
+        showToast('Stream is live — opened in a new tab so your stream keeps running.', 'info');
+      });
+    });
+
+    // Warn if the tab itself is closed or the URL bar is used to navigate.
+    window.addEventListener('beforeunload', e => {
+      if (!_isStreaming) return;
+      e.preventDefault();
+      e.returnValue = 'Your stream is live. Leaving this page will end the stream.';
+    });
   }
 
   function openStreamingChannel(serverId, channelId, channelName) {
