@@ -315,7 +315,7 @@ const Messenger = (() => {
     document.getElementById('stream-view').style.display = 'none';
     document.getElementById('chat-messages').style.display = '';
 
-    _cleanupStreaming();
+    _cleanupStreamingView();
 
     // Track activity
     db.collection('users').doc(currentUser.uid).update({
@@ -575,7 +575,7 @@ const Messenger = (() => {
   /* ── DM Chat ── */
   function openDM(friendUid, profile) {
     if (chatUnsub) { chatUnsub(); chatUnsub = null; }
-    _cleanupStreaming();
+    _cleanupStreamingView();
 
     currentChat = { type: 'dm', friendUid };
 
@@ -1323,7 +1323,7 @@ const Messenger = (() => {
   /* ── Channel Chat ── */
   function openChannel(serverId, channelId, channelName) {
     if (chatUnsub) { chatUnsub(); chatUnsub = null; }
-    _cleanupStreaming();
+    _cleanupStreamingView();
 
     currentChat = { type: 'channel', serverId, channelId };
 
@@ -2019,24 +2019,9 @@ const Messenger = (() => {
     return (await res.json()).token;
   }
 
-  function _cleanupStreaming() {
-    if (_streamUptimeTimer) {
-      clearInterval(_streamUptimeTimer);
-      _streamUptimeTimer = null;
-    }
-    if (_streamRecorder && _streamRecorder.state !== 'inactive') {
-      _streamRecorder.stop();
-    }
-    _streamRecorder = null;
-    _streamRecordChunks = [];
-    if (_localStream) {
-      _localStream.getTracks().forEach(t => t.stop());
-      _localStream = null;
-    }
-    if (_publisherRoom) {
-      _publisherRoom.disconnect().catch(() => {});
-      _publisherRoom = null;
-    }
+  // Tears down viewer rooms, Firestore listeners and UI only.
+  // Safe to call on navigation — does NOT stop the publisher or local stream.
+  function _cleanupStreamingView() {
     _viewerRooms.forEach(room => { room.disconnect().catch(() => {}); });
     _viewerRooms.clear();
     _streamUnsubs.forEach(fn => fn());
@@ -2057,14 +2042,38 @@ const Messenger = (() => {
     _streamChatVideo = null;
     _streamInlineFiles = [];
     _streamInlineVideo = null;
-    _streamContext = null;
-    _streamStartedAtMs = null;
     _setStreamManagePanelOpen(false);
     document.getElementById('stream-chat-window').style.display = 'none';
     document.getElementById('stream-chat-picker').style.display = 'none';
     document.getElementById('stream-inline-chat-picker').style.display = 'none';
     _renderStreamChatStaging();
     _renderStreamInlineStaging();
+  }
+
+  // Full teardown — stops publishing and clears all streaming state.
+  // Only call this when the stream is intentionally ended (not on navigation).
+  function _cleanupStreaming() {
+    _cleanupStreamingView();
+    if (_streamUptimeTimer) {
+      clearInterval(_streamUptimeTimer);
+      _streamUptimeTimer = null;
+    }
+    if (_streamRecorder && _streamRecorder.state !== 'inactive') {
+      _streamRecorder.stop();
+    }
+    _streamRecorder = null;
+    _streamRecordChunks = [];
+    if (_localStream) {
+      _localStream.getTracks().forEach(t => t.stop());
+      _localStream = null;
+    }
+    if (_publisherRoom) {
+      _publisherRoom.disconnect().catch(() => {});
+      _publisherRoom = null;
+    }
+    _streamContext = null;
+    _streamStartedAtMs = null;
+    _isStreaming = false;
     _syncFromSharedStreamState();
   }
 
@@ -2214,7 +2223,13 @@ const Messenger = (() => {
 
   function openStreamingChannel(serverId, channelId, channelName) {
     if (chatUnsub) { chatUnsub(); chatUnsub = null; }
-    _cleanupStreaming();
+
+    // If we're currently streaming in a DIFFERENT channel, stop that stream first.
+    if (_isStreaming && _streamContext && _streamContext.channelId !== channelId) {
+      _stopStreaming(_streamContext.serverId, _streamContext.channelId);
+    }
+
+    _cleanupStreamingView();
 
     _streamContext = { serverId, channelId, channelName };
     _updateStreamManagePanel();
@@ -2248,8 +2263,12 @@ const Messenger = (() => {
     const stopBtn = document.getElementById('stream-stop-btn');
     const stopNew = stopBtn.cloneNode(true);
     stopBtn.replaceWith(stopNew);
-    stopNew.style.display = 'none';
     stopNew.addEventListener('click', () => _stopStreaming(serverId, channelId));
+
+    // Restore correct button visibility if we're already streaming in this channel
+    const alreadyLive = _isStreaming && _streamContext && _streamContext.channelId === channelId;
+    goLiveNew.style.display = alreadyLive ? 'none' : '';
+    stopNew.style.display = alreadyLive ? '' : 'none';
 
     // Listen for stream docs (each streamer has one)
     const streamsRef = db.collection('servers').doc(serverId)
