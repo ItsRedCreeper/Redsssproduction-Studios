@@ -230,6 +230,37 @@ const Messenger = (() => {
     document.getElementById('stream-chat-input').addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _sendStreamChatMessage(); }
     });
+    document.getElementById('stream-inline-chat-picker-btn').addEventListener('click', () => {
+      const picker = document.getElementById('stream-inline-chat-picker');
+      picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
+    });
+    document.querySelectorAll('.stream-inline-emoji').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById('stream-inline-chat-input');
+        input.value += btn.dataset.emoji || '';
+        input.focus();
+      });
+    });
+    document.getElementById('stream-inline-chat-upload-btn').addEventListener('click', () => {
+      document.getElementById('stream-inline-chat-upload-input').click();
+    });
+    document.getElementById('stream-inline-chat-video-btn').addEventListener('click', () => {
+      document.getElementById('stream-inline-chat-video-input').click();
+    });
+    document.getElementById('stream-inline-chat-upload-input').addEventListener('change', e => {
+      if (e.target.files.length) _addStreamInlineFiles(e.target.files);
+      e.target.value = '';
+    });
+    document.getElementById('stream-inline-chat-video-input').addEventListener('change', e => {
+      if (e.target.files.length) _addStreamInlineVideo(e.target.files[0]);
+      e.target.value = '';
+    });
+    document.getElementById('stream-inline-chat-send').addEventListener('click', _sendStreamInlineMessage);
+    document.getElementById('stream-inline-chat-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _sendStreamInlineMessage(); }
+    });
+
+    _wireStreamingNavGuard();
 
     // Initialize
     loadFriends();
@@ -1966,6 +1997,9 @@ const Messenger = (() => {
   let _streamChatFiles = [];
   let _streamChatVideo = null;
   let _streamChatVideoUrl = null;
+  let _streamInlineFiles = [];
+  let _streamInlineVideo = null;
+  let _streamInlineVideoUrl = null;
   const _rtcConfig = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -1997,12 +2031,28 @@ const Messenger = (() => {
       _streamChatUnsub();
       _streamChatUnsub = null;
     }
+    if (_streamChatVideoUrl) {
+      URL.revokeObjectURL(_streamChatVideoUrl);
+      _streamChatVideoUrl = null;
+    }
+    if (_streamInlineVideoUrl) {
+      URL.revokeObjectURL(_streamInlineVideoUrl);
+      _streamInlineVideoUrl = null;
+    }
+    _streamChatFiles = [];
+    _streamChatVideo = null;
+    _streamInlineFiles = [];
+    _streamInlineVideo = null;
     _streamContext = null;
     _streamStartedAtMs = null;
     _isStreaming = false;
     _setStreamManagerLive(false);
     _setStreamManagePanelOpen(false);
     document.getElementById('stream-chat-window').style.display = 'none';
+    document.getElementById('stream-chat-picker').style.display = 'none';
+    document.getElementById('stream-inline-chat-picker').style.display = 'none';
+    _renderStreamChatStaging();
+    _renderStreamInlineStaging();
   }
 
   function _setStreamManagerLive(isLive) {
@@ -2050,6 +2100,21 @@ const Messenger = (() => {
     return hh + ':' + mm + ':' + ss;
   }
 
+  function _wireStreamingNavGuard() {
+    document.addEventListener('click', e => {
+      const link = e.target.closest('a[href]');
+      if (!link) return;
+      if (!_isStreaming) return;
+      const href = link.getAttribute('href') || '';
+      if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+      if (/^https?:\/\//i.test(href) && !href.includes(location.host)) return;
+      if (href.includes('messenger.html')) return;
+      e.preventDefault();
+      window.open(link.href, '_blank');
+      showToast('Opened in a new tab so your stream can continue.', 'info');
+    }, true);
+  }
+
   function openStreamingChannel(serverId, channelId, channelName) {
     if (chatUnsub) { chatUnsub(); chatUnsub = null; }
     _cleanupStreaming();
@@ -2071,6 +2136,7 @@ const Messenger = (() => {
 
     const streamView = document.getElementById('stream-view');
     streamView.style.display = 'flex';
+    _listenStreamChat();
 
     const grid = document.getElementById('stream-grid');
     grid.innerHTML = '';
@@ -2143,6 +2209,9 @@ const Messenger = (() => {
         '<video autoplay playsinline muted></video>' +
         '<div class="stream-overlay">' +
           '<span class="stream-live-badge">LIVE</span>' +
+          '<button class="stream-fullscreen-btn" title="Fullscreen" data-fullscreen-uid="' + streamerUid + '">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>' +
+          '</button>' +
         '</div>' +
         '<div class="stream-card-bar">' +
           '<span class="stream-card-name" title="' + esc(username) + '">' + esc(username) + '</span>' +
@@ -2150,6 +2219,24 @@ const Messenger = (() => {
       '</div>' +
       '';
     grid.appendChild(card);
+
+    const fsBtn = card.querySelector('[data-fullscreen-uid="' + streamerUid + '"]');
+    if (fsBtn) {
+      fsBtn.addEventListener('click', ev => {
+        ev.stopPropagation();
+        _toggleStreamFullscreen(streamerUid);
+      });
+    }
+  }
+
+  function _toggleStreamFullscreen(streamerUid) {
+    const card = document.querySelector('[data-stream-uid="' + streamerUid + '"] .stream-video-wrap');
+    if (!card) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+      return;
+    }
+    if (card.requestFullscreen) card.requestFullscreen().catch(() => {});
   }
 
   function _removeStreamCard(streamerUid) {
@@ -2410,23 +2497,30 @@ const Messenger = (() => {
   function _listenStreamChat() {
     if (!_streamContext) return;
     if (_streamChatUnsub) { _streamChatUnsub(); _streamChatUnsub = null; }
-    const wrap = document.getElementById('stream-chat-messages');
-    wrap.innerHTML = '<div class="chat-empty">Loading...</div>';
+    const popupWrap = document.getElementById('stream-chat-messages');
+    const inlineWrap = document.getElementById('stream-inline-chat-messages');
+    popupWrap.innerHTML = '<div class="chat-empty">Loading...</div>';
+    inlineWrap.innerHTML = '<div class="chat-empty">Loading...</div>';
     _streamChatUnsub = db.collection('servers').doc(_streamContext.serverId)
       .collection('channels').doc(_streamContext.channelId)
       .collection('messages')
       .orderBy('createdAt', 'asc')
       .limitToLast(100)
       .onSnapshot(snap => {
-        wrap.innerHTML = '';
+        popupWrap.innerHTML = '';
+        inlineWrap.innerHTML = '';
         if (snap.empty) {
-          wrap.innerHTML = '<div class="chat-empty">No messages yet. Start the conversation!</div>';
+          popupWrap.innerHTML = '<div class="chat-empty">No messages yet. Start the conversation!</div>';
+          inlineWrap.innerHTML = '<div class="chat-empty">No messages yet. Start the conversation!</div>';
           return;
         }
         snap.forEach(doc => {
-          wrap.appendChild(_renderStreamChatMessage(doc.data()));
+          const data = doc.data();
+          popupWrap.appendChild(_renderStreamChatMessage(data));
+          inlineWrap.appendChild(_renderStreamChatMessage(data));
         });
-        wrap.scrollTop = wrap.scrollHeight;
+        popupWrap.scrollTop = popupWrap.scrollHeight;
+        inlineWrap.scrollTop = inlineWrap.scrollHeight;
       });
   }
 
@@ -2523,6 +2617,98 @@ const Messenger = (() => {
     }
 
     _renderStreamChatStaging();
+
+    const msgData = {
+      uid: currentUser.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    if (text) msgData.text = text;
+    if (imageUrls.length) msgData.images = imageUrls;
+    if (videoUrl) msgData.videoUrl = videoUrl;
+
+    try {
+      await db.collection('servers').doc(_streamContext.serverId)
+        .collection('channels').doc(_streamContext.channelId)
+        .collection('messages').add(msgData);
+    } catch {
+      showToast('Failed to send stream chat message.', 'error');
+    }
+  }
+
+  function _addStreamInlineFiles(fileList) {
+    _streamInlineFiles = _streamInlineFiles.concat(Array.from(fileList));
+    _renderStreamInlineStaging();
+  }
+
+  function _addStreamInlineVideo(file) {
+    _streamInlineVideo = file;
+    if (_streamInlineVideoUrl) URL.revokeObjectURL(_streamInlineVideoUrl);
+    _streamInlineVideoUrl = URL.createObjectURL(file);
+    _renderStreamInlineStaging();
+  }
+
+  function _renderStreamInlineStaging() {
+    const el = document.getElementById('stream-inline-chat-staging');
+    const parts = [];
+    if (_streamInlineFiles.length) parts.push(_streamInlineFiles.length + ' image(s) ready');
+    if (_streamInlineVideo) parts.push('1 video ready');
+    if (!parts.length) {
+      el.style.display = 'none';
+      el.textContent = '';
+      return;
+    }
+    el.style.display = 'block';
+    el.textContent = parts.join(' • ');
+  }
+
+  async function _sendStreamInlineMessage() {
+    if (!_streamContext) return;
+    const input = document.getElementById('stream-inline-chat-input');
+    const text = input.value.trim();
+    const hasImages = _streamInlineFiles.length > 0;
+    const hasVideo = !!_streamInlineVideo;
+    if (!text && !hasImages && !hasVideo) return;
+    input.value = '';
+
+    let imageUrls = [];
+    if (hasImages) {
+      try {
+        imageUrls = await Promise.all(_streamInlineFiles.map(async f => {
+          const fd = new FormData();
+          fd.append('file', f);
+          fd.append('upload_preset', CLOUDINARY_PRESET);
+          const res = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/image/upload', { method: 'POST', body: fd });
+          const d = await res.json();
+          if (!d.secure_url) throw new Error('Upload failed');
+          return d.secure_url;
+        }));
+      } catch {
+        showToast('Image upload failed.', 'error');
+        return;
+      }
+      _streamInlineFiles = [];
+    }
+
+    let videoUrl = '';
+    if (hasVideo) {
+      try {
+        const fd = new FormData();
+        fd.append('file', _streamInlineVideo);
+        fd.append('upload_preset', CLOUDINARY_PRESET);
+        const res = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/video/upload', { method: 'POST', body: fd });
+        const d = await res.json();
+        if (!d.secure_url) throw new Error('Upload failed');
+        videoUrl = d.secure_url;
+      } catch {
+        showToast('Video upload failed.', 'error');
+        return;
+      }
+      if (_streamInlineVideoUrl) URL.revokeObjectURL(_streamInlineVideoUrl);
+      _streamInlineVideoUrl = null;
+      _streamInlineVideo = null;
+    }
+
+    _renderStreamInlineStaging();
 
     const msgData = {
       uid: currentUser.uid,
