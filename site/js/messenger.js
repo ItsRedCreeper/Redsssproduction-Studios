@@ -1984,6 +1984,7 @@ const Messenger = (() => {
      ══════════════════════════════════════════════ */
 
   let _localStream = null;
+  let _publisherRoom = null;                   // LiveKit Room when WE are the streamer
   const _viewerRooms = new Map();              // streamerUid → LiveKit Room (when we view others)
   let _streamUnsubs = [];
   let _streamChatUnsub = null;
@@ -2031,6 +2032,10 @@ const Messenger = (() => {
     if (_localStream) {
       _localStream.getTracks().forEach(t => t.stop());
       _localStream = null;
+    }
+    if (_publisherRoom) {
+      _publisherRoom.disconnect().catch(() => {});
+      _publisherRoom = null;
     }
     _viewerRooms.forEach(room => { room.disconnect().catch(() => {}); });
     _viewerRooms.clear();
@@ -2312,15 +2317,7 @@ const Messenger = (() => {
       '';
     grid.appendChild(card);
 
-    if (streamerUid === currentUser.uid && !_localStream) {
-      const wrap = card.querySelector('.stream-video-wrap');
-      const info = document.createElement('div');
-      info.className = 'stream-core-host-note';
-      info.textContent = 'Streaming from background core tab';
-      wrap.appendChild(info);
-    }
-
-    const fsBtn = card.querySelector('[data-fullscreen-uid="' + streamerUid + '"]');
+    if (fsBtn) {
     if (fsBtn) {
       fsBtn.addEventListener('click', ev => {
         ev.stopPropagation();
@@ -2352,57 +2349,83 @@ const Messenger = (() => {
     if (_isStreaming) return;
     _streamContext = { serverId, channelId, channelName: (_streamContext && _streamContext.channelName) || 'Streaming Channel' };
 
-    const startPayload = {
-      id: Date.now() + ':pending-start',
-      ts: Date.now(),
-      action: 'start',
-      by: currentUser ? currentUser.uid : '',
-      hostUid: currentUser.uid,
-      serverId,
-      channelId,
-      channelName: _streamContext.channelName,
-      username: userProfile.username || 'Someone',
-      controllerUrl: window.location.href
-    };
-    localStorage.setItem(STREAM_PENDING_START_KEY, JSON.stringify(startPayload));
-
-    // Open/attach dedicated background stream-core tab.
-    const coreUrl = 'stream-core.html';
-    const coreTab = window.open(coreUrl, 'rpsStreamCore');
-    if (!coreTab) {
-      showToast('Popup blocked. Allow popups to start streaming.', 'error');
-      localStorage.removeItem(STREAM_PENDING_START_KEY);
+    // Capture screen directly in this tab — no background tab needed with LiveKit.
+    let localStream;
+    try {
+      localStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          cursor: 'always',
+          frameRate: { ideal: 60, max: 60 },
+          width: { ideal: 2560, max: 3840 },
+          height: { ideal: 1440, max: 2160 },
+          displaySurface: 'monitor',
+          resizeMode: 'none'
+        },
+        audio: false
+      });
+    } catch (err) {
+      showToast('Screen share cancelled or not allowed.', 'error');
       return;
     }
-    try { coreTab.blur(); window.focus(); } catch (_) {}
 
-    // Fallback command retries in case pending-start was missed.
-    let tries = 0;
-    const retry = setInterval(() => {
-      tries++;
-      const state = _readSharedStreamState();
-      const ok = !!(state && state.live && state.hostUid === currentUser.uid);
-      if (ok || tries >= 30) {
-        clearInterval(retry);
-        if (!ok) {
-          _isStreaming = false;
-          _setStreamManagerLive(false);
-          _setStreamManagePanelOpen(false);
-          document.getElementById('stream-stop-btn').style.display = 'none';
-          document.getElementById('stream-go-live-btn').style.display = '';
-          showToast('No stream started yet. Try again and allow screen share.', 'error');
-        }
-        return;
-      }
-      _sendCoreStreamCommand('start', {
-        serverId,
-        channelId,
-        channelName: _streamContext.channelName,
-        hostUid: currentUser.uid,
-        username: userProfile.username || 'Someone',
-        controllerUrl: window.location.href
+    // Fetch a publisher token.
+    const roomName = 'rps_' + serverId + '_' + channelId + '_' + currentUser.uid;
+    let token;
+    try {
+      token = await _getLiveKitToken(roomName, true);
+    } catch (err) {
+      showToast('Failed to get stream token. Please try again.', 'error');
+      localStream.getTracks().forEach(t => t.stop());
+      return;
+    }
+
+    // Connect to LiveKit and publish the screen track.
+    _publisherRoom = new LivekitClient.Room({ adaptiveStream: false, dynacast: false });
+    try {
+      await _publisherRoom.connect(LIVEKIT_URL, token);
+      const videoTrack = localStream.getVideoTracks()[0];
+      await _publisherRoom.localParticipant.publishTrack(videoTrack, {
+        source: LivekitClient.Track.Source.ScreenShare,
+        videoEncoding: { maxBitrate: 3_000_000, maxFramerate: 30 }
       });
-    }, 700);
+    } catch (err) {
+      showToast('Failed to connect to stream server. Please try again.', 'error');
+      localStream.getTracks().forEach(t => t.stop());
+      _publisherRoom = null;
+      return;
+    }
+
+    _localStream = localStream;
+    // If the user stops the share from the browser's native UI, stop the stream.
+    localStream.getVideoTracks()[0].addEventListener('ended', () => _stopStreaming(serverId, channelId));
+
+    // Write stream doc so viewers can discover and join the LiveKit room.
+    try {
+      await db.collection('servers').doc(serverId)
+        .collection('channels').doc(channelId)
+        .collection('streams').doc(currentUser.uid)
+        .set({
+          username: userProfile.username || 'Someone',
+          startedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          livekitRoom: roomName,
+          livekitUrl: LIVEKIT_URL
+        });
+    } catch (err) {
+      showToast('Failed to publish stream info. Stopping.', 'error');
+      await _stopStreaming(serverId, channelId);
+      return;
+    }
+
+    // Publish state to localStorage so nav.js stream manager knows we're live.
+    const statePayload = {
+      live: true, serverId, channelId,
+      channelName: _streamContext.channelName,
+      startedAt: Date.now(),
+      hostUid: currentUser.uid,
+      hostUrl: window.location.href
+    };
+    localStorage.setItem(STREAM_STATE_KEY, JSON.stringify(statePayload));
+    try { if (_streamControlChannel) _streamControlChannel.postMessage({ type: 'stream-state', payload: statePayload }); } catch (_) {}
 
     _isStreaming = true;
     _streamStartedAtMs = Date.now();
@@ -2411,21 +2434,47 @@ const Messenger = (() => {
     _startUptimeTimer();
     _updateStreamManagePanel();
 
-    // Show stop button, hide go live in UI manager immediately.
     document.getElementById('stream-stop-btn').style.display = '';
     document.getElementById('stream-go-live-btn').style.display = 'none';
-    showToast('Stream core started in a background tab.', 'success');
+    showToast('Stream started.', 'success');
   }
 
   async function _stopStreaming(serverId, channelId) {
     if (!_isStreaming) return;
     _isStreaming = false;
 
-    _sendCoreStreamCommand('stop', {
-      serverId,
-      channelId,
-      hostUid: currentUser ? currentUser.uid : ''
-    });
+    // Disconnect publisher room and stop local tracks.
+    if (_publisherRoom) {
+      try { await _publisherRoom.disconnect(); } catch (_) {}
+      _publisherRoom = null;
+    }
+    if (_localStream) {
+      _localStream.getTracks().forEach(t => t.stop());
+      _localStream = null;
+    }
+
+    // Stop any active recording.
+    if (_streamRecorder && _streamRecorder.state !== 'inactive') {
+      _streamRecorder.stop();
+    }
+    _streamRecorder = null;
+    _streamRecordChunks = [];
+
+    // Delete stream doc so viewers know the stream ended.
+    const sid = serverId || (_streamContext && _streamContext.serverId);
+    const cid = channelId || (_streamContext && _streamContext.channelId);
+    if (sid && cid && currentUser) {
+      try {
+        await db.collection('servers').doc(sid)
+          .collection('channels').doc(cid)
+          .collection('streams').doc(currentUser.uid)
+          .delete();
+      } catch (_) {}
+    }
+
+    // Clear localStorage state so nav.js stream manager resets.
+    localStorage.removeItem(STREAM_STATE_KEY);
+    try { if (_streamControlChannel) _streamControlChannel.postMessage({ type: 'stream-state', payload: { live: false } }); } catch (_) {}
 
     // Show go live, hide stop
     const goLive = document.getElementById('stream-go-live-btn');
@@ -2441,26 +2490,55 @@ const Messenger = (() => {
     }
     _streamStartedAtMs = null;
     _updateStreamManagePanel();
-
-    // Viewer rooms cleaned up by _cleanupStreaming.
   }
 
   function _captureStreamSnapshot() {
-    if (!_isStreaming) {
+    if (!_isStreaming || !_localStream) {
       showToast('Start streaming first.', 'error');
       return;
     }
-    _sendCoreStreamCommand('snapshot', { hostUid: currentUser ? currentUser.uid : '' });
-    showToast('Snapshot requested from stream core tab.', 'info');
+    const track = _localStream.getVideoTracks()[0];
+    if (!track) { showToast('No video track available.', 'error'); return; }
+    const ic = new ImageCapture(track);
+    ic.grabFrame().then(bitmap => {
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      canvas.getContext('2d').drawImage(bitmap, 0, 0);
+      canvas.toBlob(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'stream-snapshot-' + Date.now() + '.png';
+        a.click();
+        showToast('Snapshot saved.', 'success');
+      }, 'image/png');
+    }).catch(() => showToast('Snapshot failed.', 'error'));
   }
 
   function _toggleStreamRecording() {
-    if (!_isStreaming) {
+    if (!_isStreaming || !_localStream) {
       showToast('Start streaming first.', 'error');
       return;
     }
-    _sendCoreStreamCommand('toggleRecord', { hostUid: currentUser ? currentUser.uid : '' });
-    showToast('Recording toggle sent to stream core tab.', 'info');
+    if (_streamRecorder && _streamRecorder.state === 'recording') {
+      _streamRecorder.stop();
+      showToast('Recording stopped. Saving…', 'info');
+    } else {
+      _streamRecordChunks = [];
+      _streamRecorder = new MediaRecorder(_localStream, { mimeType: 'video/webm;codecs=vp9' });
+      _streamRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) _streamRecordChunks.push(e.data); };
+      _streamRecorder.onstop = () => {
+        const blob = new Blob(_streamRecordChunks, { type: 'video/webm' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'stream-recording-' + Date.now() + '.webm';
+        a.click();
+        _streamRecordChunks = [];
+        showToast('Recording saved.', 'success');
+      };
+      _streamRecorder.start();
+      showToast('Recording started.', 'success');
+    }
   }
 
   function _openStreamChatWindow() {
