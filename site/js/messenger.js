@@ -2397,7 +2397,7 @@ const Messenger = (() => {
       tries++;
       const state = _readSharedStreamState();
       const ok = !!(state && state.live && state.hostUid === currentUser.uid);
-      if (ok || tries >= 30) {
+      if (ok || tries >= 90) {
         clearInterval(retry);
         if (!ok) {
           _isStreaming = false;
@@ -2430,7 +2430,7 @@ const Messenger = (() => {
 
     document.getElementById('stream-stop-btn').style.display = '';
     document.getElementById('stream-go-live-btn').style.display = 'none';
-    showToast('Stream core started in background tab.', 'success');
+    showToast('Check the stream tab — click "Share Screen & Go Live" there to start.', 'info');
   }
 
   async function _stopStreaming(serverId, channelId) {

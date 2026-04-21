@@ -9,7 +9,12 @@
       margin: 0;
       width: 100%;
       height: 100%;
-      background: #000;
+      background: #111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: sans-serif;
+      color: #fff;
       overflow: hidden;
     }
     #core-video {
@@ -19,10 +24,41 @@
       opacity: 0;
       pointer-events: none;
     }
+    #start-ui {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      text-align: center;
+      padding: 32px;
+    }
+    #start-ui h2 { margin: 0; font-size: 1.3rem; }
+    #start-ui p { margin: 0; color: #aaa; font-size: 0.9rem; }
+    #start-btn {
+      margin-top: 8px;
+      padding: 12px 32px;
+      background: #e03030;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #start-btn:hover { background: #c02020; }
+    #start-btn:disabled { background: #555; cursor: default; }
+    #status { font-size: 0.85rem; color: #aaa; min-height: 1.2em; }
   </style>
 </head>
 <body>
   <video id="core-video" autoplay playsinline muted></video>
+
+  <div id="start-ui">
+    <h2>RedsssProduction Studios — Stream Core</h2>
+    <p>Click the button below to share your screen and go live.</p>
+    <button id="start-btn">Share Screen &amp; Go Live</button>
+    <div id="status">Waiting for you to click...</div>
+  </div>
 
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>

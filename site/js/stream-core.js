@@ -38,6 +38,36 @@
     return 'rps_' + streamContext.serverId + '_' + streamContext.channelId + '_' + currentUser.uid;
   }
 
+  let _pendingCmd = null;  // holds the start cmd until the user clicks the button
+  let _userReady = false;  // true once the user has clicked Share Screen
+
+  function _setStatus(msg) {
+    const el = document.getElementById('status');
+    if (el) el.textContent = msg;
+  }
+
+  function _hideStartUI() {
+    const ui = document.getElementById('start-ui');
+    if (ui) ui.style.display = 'none';
+  }
+
+  // Wire the start button — must happen before auth resolves so the element exists.
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('start-btn');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      _setStatus('Starting screen share...');
+      _userReady = true;
+      if (_pendingCmd) {
+        await _handleCommand(_pendingCmd);
+        _pendingCmd = null;
+      } else {
+        _setStatus('Waiting for stream command...');
+      }
+    });
+  });
+
   auth.onAuthStateChanged(async user => {
     if (!user) {
       _clearState();
@@ -45,7 +75,27 @@
     }
     currentUser = user;
     _initBridge();
-    _consumePendingStart();
+    // Read the pending start payload but don't call getDisplayMedia yet —
+    // wait for the user to click the button (guarantees user gesture in Chrome).
+    const raw = localStorage.getItem(STREAM_PENDING_START_KEY);
+    if (raw) {
+      try {
+        const cmd = JSON.parse(raw);
+        if (cmd && cmd.hostUid === currentUser.uid && cmd.action === 'start'
+            && cmd.ts && Date.now() - cmd.ts <= 60000) {
+          localStorage.removeItem(STREAM_PENDING_START_KEY);
+          if (_userReady) {
+            await _handleCommand(cmd);
+          } else {
+            _pendingCmd = cmd;
+            _setStatus('Auth ready. Click "Share Screen & Go Live" to begin.');
+          }
+          return;
+        }
+      } catch (_) {}
+      localStorage.removeItem(STREAM_PENDING_START_KEY);
+    }
+    _setStatus('Waiting for stream command...');
   });
 
   function _initBridge() {
@@ -77,6 +127,12 @@
     if (cmd.hostUid && cmd.hostUid !== currentUser.uid) return;
 
     if (cmd.action === 'start') {
+      // If the user hasn't clicked the button yet, queue the command.
+      if (!_userReady) {
+        _pendingCmd = cmd;
+        _setStatus('Stream command received. Click "Share Screen & Go Live" to begin.');
+        return;
+      }
       await _startStream(cmd);
       return;
     }
@@ -98,24 +154,7 @@
     }
   }
 
-  function _consumePendingStart() {
-    let cmd = null;
-    try {
-      const raw = localStorage.getItem(STREAM_PENDING_START_KEY);
-      cmd = raw ? JSON.parse(raw) : null;
-    } catch (_) {
-      cmd = null;
-    }
-    if (!cmd) return;
-    if (!currentUser || cmd.hostUid !== currentUser.uid) return;
-    if (cmd.action !== 'start') return;
-    if (!cmd.ts || Date.now() - cmd.ts > 20000) {
-      localStorage.removeItem(STREAM_PENDING_START_KEY);
-      return;
-    }
-    localStorage.removeItem(STREAM_PENDING_START_KEY);
-    _handleCommand(cmd);
-  }
+  function _consumePendingStart() { /* replaced by button-gated flow */ }
 
   async function _startStream(cmd) {
     if (isLive || isStarting) return;
@@ -131,6 +170,7 @@
     };
 
     try {
+      _setStatus('Requesting screen share...');
       localStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           cursor: 'always',
@@ -145,6 +185,9 @@
     } catch (_) {
       streamContext = null;
       isStarting = false;
+      _setStatus('Screen share cancelled or denied. Close this tab and try again.');
+      const btn = document.getElementById('start-btn');
+      if (btn) btn.disabled = false;
       return;
     }
 
@@ -161,6 +204,7 @@
       _publishState();
 
       // Connect to LiveKit and publish the screen capture track.
+      _setStatus('Connecting to stream server...');
       const roomName = _livekitRoomName();
       const token = await _getLiveKitToken(roomName, true);
       livekitRoom = new LivekitClient.Room({ adaptiveStream: false, dynacast: false });
@@ -180,6 +224,9 @@
         livekitRoom: roomName,
         livekitUrl: LIVEKIT_URL
       });
+
+      _hideStartUI();
+      _setStatus('Live! You can minimise this tab.');
     } finally {
       isStarting = false;
     }
