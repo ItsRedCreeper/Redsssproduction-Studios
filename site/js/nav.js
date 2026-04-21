@@ -9,6 +9,10 @@ const Nav = (() => {
   let _idleTimer = null;
   let _currentProfile = null;
   const IDLE_MS = 10 * 60 * 1000; // 10 minutes
+  const STREAM_STATE_KEY = 'rps_stream_state_v1';
+  const STREAM_CMD_KEY = 'rps_stream_cmd_v1';
+  let _streamStateTimer = null;
+  let _streamControlChannel = null;
 
   /* ── Public init ── */
   function init(activePageId) {
@@ -42,6 +46,7 @@ const Nav = (() => {
         _setupPresence(user, profile);
         _listenNotifications(user);
         _listenFriendRequests(user);
+        _initStreamManager(user);
 
         // Track activity
         db.collection('users').doc(user.uid).update({
@@ -146,6 +151,164 @@ const Nav = (() => {
         nd.classList.remove('open');
       }
     });
+  }
+
+  function _initStreamManager(user) {
+    _ensureStreamManagerUI();
+    const isMessengerPage = document.body.classList.contains('messenger-page');
+
+    const navBtn = document.getElementById('stream-manage-nav-btn');
+    const panel = document.getElementById('stream-manage-panel');
+    const closeBtn = document.getElementById('stream-manage-close');
+    const openBtn = document.getElementById('stream-manage-open-btn');
+    const chatBtn = document.getElementById('stream-manage-chat-btn');
+    const stopBtn = document.getElementById('stream-manage-stop-btn');
+
+    if (!isMessengerPage) {
+      navBtn?.addEventListener('click', () => {
+        if (panel.style.display === 'none' || !panel.style.display) panel.style.display = 'block';
+        else panel.style.display = 'none';
+      });
+      closeBtn?.addEventListener('click', () => { panel.style.display = 'none'; });
+
+      openBtn?.addEventListener('click', () => {
+        const state = _readStreamState();
+        if (!state || !state.live) {
+          showToast('No active stream right now.', 'info');
+          return;
+        }
+        window.open(state.hostUrl || 'messenger.html', '_blank');
+      });
+
+      chatBtn?.addEventListener('click', () => {
+        const state = _readStreamState();
+        if (!state || !state.live) {
+          showToast('No active stream right now.', 'info');
+          return;
+        }
+        _sendStreamCommand({ action: 'openChat', by: user.uid });
+        if (state.hostUrl) window.open(state.hostUrl, '_blank');
+      });
+
+      stopBtn?.addEventListener('click', () => {
+        const state = _readStreamState();
+        if (!state || !state.live) {
+          showToast('No active stream right now.', 'info');
+          return;
+        }
+        _sendStreamCommand({ action: 'stop', by: user.uid });
+      });
+    }
+
+    if (_streamStateTimer) clearInterval(_streamStateTimer);
+    _streamStateTimer = setInterval(_refreshStreamManagerUI, 1000);
+    _refreshStreamManagerUI();
+
+    window.addEventListener('storage', e => {
+      if (e.key === STREAM_STATE_KEY) _refreshStreamManagerUI();
+    });
+
+    try {
+      _streamControlChannel = new BroadcastChannel('rps-stream-control');
+      _streamControlChannel.onmessage = evt => {
+        if (evt && evt.data && evt.data.type === 'stream-state') {
+          _refreshStreamManagerUI();
+        }
+      };
+    } catch (_) {}
+  }
+
+  function _ensureStreamManagerUI() {
+    const navRight = document.querySelector('.nav-right');
+    if (!navRight) return;
+
+    if (!document.getElementById('stream-manage-nav-btn')) {
+      const btn = document.createElement('button');
+      btn.id = 'stream-manage-nav-btn';
+      btn.className = 'stream-manage-nav-btn';
+      btn.style.display = 'none';
+      btn.title = 'Stream Manager';
+      btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><circle cx="8" cy="10" r="1.2"/><circle cx="12" cy="10" r="1.2"/><circle cx="16" cy="10" r="1.2"/></svg>';
+      const notifWrap = navRight.querySelector('.notif-wrapper');
+      if (notifWrap) navRight.insertBefore(btn, notifWrap);
+      else navRight.prepend(btn);
+    }
+
+    if (!document.getElementById('stream-manage-panel')) {
+      const panel = document.createElement('div');
+      panel.id = 'stream-manage-panel';
+      panel.className = 'stream-manage-panel';
+      panel.style.display = 'none';
+      panel.innerHTML =
+        '<div class="stream-manage-header">' +
+          '<span>Stream Manager</span>' +
+          '<button class="stream-manage-close" id="stream-manage-close" title="Close">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+          '</button>' +
+        '</div>' +
+        '<div class="stream-manage-body">' +
+          '<div class="stream-manage-row"><span>Status</span><strong id="stream-manage-status">Offline</strong></div>' +
+          '<div class="stream-manage-row"><span>Channel</span><strong id="stream-manage-channel">None</strong></div>' +
+          '<div class="stream-manage-row"><span>Uptime</span><strong id="stream-manage-uptime">00:00:00</strong></div>' +
+          '<div class="stream-manage-actions">' +
+            '<button class="btn btn-sm" id="stream-manage-open-btn">Open Stream Tab</button>' +
+            '<button class="btn btn-sm" id="stream-manage-chat-btn">Chat</button>' +
+            '<button class="btn btn-danger btn-sm" id="stream-manage-stop-btn">Stop Stream</button>' +
+          '</div>' +
+        '</div>';
+      const app = document.getElementById('app') || document.body;
+      app.appendChild(panel);
+    }
+  }
+
+  function _sendStreamCommand(cmd) {
+    const payload = { ...cmd, id: Date.now() + ':' + Math.random().toString(16).slice(2) };
+    localStorage.setItem(STREAM_CMD_KEY, JSON.stringify(payload));
+    try {
+      const bc = _streamControlChannel || new BroadcastChannel('rps-stream-control');
+      bc.postMessage({ type: 'stream-cmd', payload });
+    } catch (_) {}
+  }
+
+  function _readStreamState() {
+    try {
+      const raw = localStorage.getItem(STREAM_STATE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function _refreshStreamManagerUI() {
+    const state = _readStreamState();
+    const navBtn = document.getElementById('stream-manage-nav-btn');
+    const statusEl = document.getElementById('stream-manage-status');
+    const channelEl = document.getElementById('stream-manage-channel');
+    const uptimeEl = document.getElementById('stream-manage-uptime');
+
+    const live = !!(state && state.live);
+    if (navBtn) {
+      navBtn.style.display = live ? 'inline-flex' : 'none';
+      navBtn.classList.toggle('live', live);
+    }
+    if (!statusEl || !channelEl || !uptimeEl) return;
+
+    if (!live) {
+      statusEl.textContent = 'Offline';
+      channelEl.textContent = 'None';
+      uptimeEl.textContent = '00:00:00';
+      return;
+    }
+
+    statusEl.textContent = 'Live';
+    channelEl.textContent = state.channelName || 'Streaming Channel';
+    const startedAt = Number(state.startedAt || 0);
+    const dur = startedAt ? Math.max(0, Date.now() - startedAt) : 0;
+    const total = Math.floor(dur / 1000);
+    const hh = String(Math.floor(total / 3600)).padStart(2, '0');
+    const mm = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+    const ss = String(total % 60).padStart(2, '0');
+    uptimeEl.textContent = hh + ':' + mm + ':' + ss;
   }
 
   function _toggleProfile(e) {

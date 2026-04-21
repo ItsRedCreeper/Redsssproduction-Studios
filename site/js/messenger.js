@@ -261,6 +261,7 @@ const Messenger = (() => {
     });
 
     _wireStreamingNavGuard();
+    _initStreamControlBridge();
 
     // Initialize
     loadFriends();
@@ -2000,6 +2001,10 @@ const Messenger = (() => {
   let _streamInlineFiles = [];
   let _streamInlineVideo = null;
   let _streamInlineVideoUrl = null;
+  const STREAM_STATE_KEY = 'rps_stream_state_v1';
+  const STREAM_CMD_KEY = 'rps_stream_cmd_v1';
+  let _streamControlChannel = null;
+  let _lastStreamCmdId = null;
   const _rtcConfig = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -2046,6 +2051,7 @@ const Messenger = (() => {
     _streamContext = null;
     _streamStartedAtMs = null;
     _isStreaming = false;
+    _publishStreamState(false);
     _setStreamManagerLive(false);
     _setStreamManagePanelOpen(false);
     document.getElementById('stream-chat-window').style.display = 'none';
@@ -2098,6 +2104,61 @@ const Messenger = (() => {
     const mm = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
     const ss = String(total % 60).padStart(2, '0');
     return hh + ':' + mm + ':' + ss;
+  }
+
+  function _initStreamControlBridge() {
+    window.addEventListener('storage', e => {
+      if (e.key !== STREAM_CMD_KEY || !e.newValue) return;
+      try {
+        const cmd = JSON.parse(e.newValue);
+        _handleStreamCommand(cmd);
+      } catch (_) {}
+    });
+    try {
+      _streamControlChannel = new BroadcastChannel('rps-stream-control');
+      _streamControlChannel.onmessage = evt => {
+        if (!evt || !evt.data) return;
+        if (evt.data.type === 'stream-cmd' && evt.data.payload) {
+          _handleStreamCommand(evt.data.payload);
+        }
+      };
+    } catch (_) {}
+  }
+
+  function _publishStreamState(live) {
+    if (live && _streamContext) {
+      const payload = {
+        live: true,
+        serverId: _streamContext.serverId,
+        channelId: _streamContext.channelId,
+        channelName: _streamContext.channelName,
+        startedAt: _streamStartedAtMs || Date.now(),
+        hostUrl: window.location.href,
+        hostUid: currentUser ? currentUser.uid : ''
+      };
+      localStorage.setItem(STREAM_STATE_KEY, JSON.stringify(payload));
+      try {
+        if (_streamControlChannel) _streamControlChannel.postMessage({ type: 'stream-state', payload });
+      } catch (_) {}
+      return;
+    }
+    localStorage.removeItem(STREAM_STATE_KEY);
+    try {
+      if (_streamControlChannel) _streamControlChannel.postMessage({ type: 'stream-state', payload: { live: false } });
+    } catch (_) {}
+  }
+
+  function _handleStreamCommand(cmd) {
+    if (!cmd || !cmd.id) return;
+    if (_lastStreamCmdId === cmd.id) return;
+    _lastStreamCmdId = cmd.id;
+    if (!_isStreaming || !_streamContext) return;
+    if (cmd.action === 'stop') {
+      _stopStreaming(_streamContext.serverId, _streamContext.channelId);
+    } else if (cmd.action === 'openChat') {
+      _openStreamChatWindow();
+      window.focus();
+    }
   }
 
   function _wireStreamingNavGuard() {
@@ -2272,6 +2333,7 @@ const Messenger = (() => {
     }
     _isStreaming = true;
     _streamStartedAtMs = Date.now();
+    _publishStreamState(true);
     _setStreamManagerLive(true);
     _setStreamManagePanelOpen(true);
     _startUptimeTimer();
@@ -2381,6 +2443,7 @@ const Messenger = (() => {
     const stop = document.getElementById('stream-stop-btn');
     if (goLive) goLive.style.display = '';
     if (stop) stop.style.display = 'none';
+    _publishStreamState(false);
     _setStreamManagerLive(false);
     _setStreamManagePanelOpen(false);
     document.getElementById('stream-chat-window').style.display = 'none';
@@ -2785,6 +2848,7 @@ const Messenger = (() => {
         .collection('streams').doc(currentUser.uid);
       streamRef.delete().catch(() => {});
     }
+    _publishStreamState(false);
     _cleanupStreaming();
   });
 
