@@ -3031,6 +3031,17 @@ body.messenger-page #app {
   text-overflow: ellipsis;
   display: block;
 }
+.stream-core-host-note {
+  position: absolute;
+  inset: auto 10px 42px 10px;
+  background: rgba(0,0,0,.55);
+  color: #ddd;
+  font-size: 11px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  text-align: center;
+  border: 1px solid rgba(255,255,255,.14);
+}
 
 .stream-empty {
   position: absolute;

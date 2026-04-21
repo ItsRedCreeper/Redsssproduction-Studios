@@ -2050,15 +2050,13 @@ const Messenger = (() => {
     _streamInlineVideo = null;
     _streamContext = null;
     _streamStartedAtMs = null;
-    _isStreaming = false;
-    _publishStreamState(false);
-    _setStreamManagerLive(false);
     _setStreamManagePanelOpen(false);
     document.getElementById('stream-chat-window').style.display = 'none';
     document.getElementById('stream-chat-picker').style.display = 'none';
     document.getElementById('stream-inline-chat-picker').style.display = 'none';
     _renderStreamChatStaging();
     _renderStreamInlineStaging();
+    _syncFromSharedStreamState();
   }
 
   function _setStreamManagerLive(isLive) {
@@ -2108,6 +2106,10 @@ const Messenger = (() => {
 
   function _initStreamControlBridge() {
     window.addEventListener('storage', e => {
+      if (e.key === STREAM_STATE_KEY) {
+        _syncFromSharedStreamState();
+        return;
+      }
       if (e.key !== STREAM_CMD_KEY || !e.newValue) return;
       try {
         const cmd = JSON.parse(e.newValue);
@@ -2118,33 +2120,56 @@ const Messenger = (() => {
       _streamControlChannel = new BroadcastChannel('rps-stream-control');
       _streamControlChannel.onmessage = evt => {
         if (!evt || !evt.data) return;
+        if (evt.data.type === 'stream-state') {
+          _syncFromSharedStreamState();
+          return;
+        }
         if (evt.data.type === 'stream-cmd' && evt.data.payload) {
           _handleStreamCommand(evt.data.payload);
         }
       };
     } catch (_) {}
+    _syncFromSharedStreamState();
   }
 
-  function _publishStreamState(live) {
-    if (live && _streamContext) {
-      const payload = {
-        live: true,
-        serverId: _streamContext.serverId,
-        channelId: _streamContext.channelId,
-        channelName: _streamContext.channelName,
-        startedAt: _streamStartedAtMs || Date.now(),
-        hostUrl: window.location.href,
-        hostUid: currentUser ? currentUser.uid : ''
-      };
-      localStorage.setItem(STREAM_STATE_KEY, JSON.stringify(payload));
-      try {
-        if (_streamControlChannel) _streamControlChannel.postMessage({ type: 'stream-state', payload });
-      } catch (_) {}
-      return;
-    }
-    localStorage.removeItem(STREAM_STATE_KEY);
+  function _readSharedStreamState() {
     try {
-      if (_streamControlChannel) _streamControlChannel.postMessage({ type: 'stream-state', payload: { live: false } });
+      const raw = localStorage.getItem(STREAM_STATE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function _syncFromSharedStreamState() {
+    const state = _readSharedStreamState();
+    const mine = !!(state && state.live && currentUser && state.hostUid === currentUser.uid);
+    _isStreaming = mine;
+    _streamStartedAtMs = mine ? Number(state.startedAt || Date.now()) : null;
+    _streamContext = mine
+      ? { serverId: state.serverId, channelId: state.channelId, channelName: state.channelName || 'Streaming Channel' }
+      : _streamContext;
+    _setStreamManagerLive(mine);
+    if (mine) _startUptimeTimer();
+    else if (_streamUptimeTimer) {
+      clearInterval(_streamUptimeTimer);
+      _streamUptimeTimer = null;
+    }
+    _updateStreamManagePanel();
+  }
+
+  function _sendCoreStreamCommand(action, extra) {
+    const payload = {
+      id: Date.now() + ':' + Math.random().toString(16).slice(2),
+      action,
+      by: currentUser ? currentUser.uid : '',
+      ...(extra || {})
+    };
+    localStorage.setItem(STREAM_CMD_KEY, JSON.stringify(payload));
+    try {
+      if (_streamControlChannel) {
+        _streamControlChannel.postMessage({ type: 'stream-cmd', payload });
+      }
     } catch (_) {}
   }
 
@@ -2152,28 +2177,14 @@ const Messenger = (() => {
     if (!cmd || !cmd.id) return;
     if (_lastStreamCmdId === cmd.id) return;
     _lastStreamCmdId = cmd.id;
-    if (!_isStreaming || !_streamContext) return;
-    if (cmd.action === 'stop') {
-      _stopStreaming(_streamContext.serverId, _streamContext.channelId);
-    } else if (cmd.action === 'openChat') {
+    if (cmd.action === 'openChat' && _streamContext) {
       _openStreamChatWindow();
       window.focus();
     }
   }
 
   function _wireStreamingNavGuard() {
-    document.addEventListener('click', e => {
-      const link = e.target.closest('a[href]');
-      if (!link) return;
-      if (!_isStreaming) return;
-      const href = link.getAttribute('href') || '';
-      if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
-      if (/^https?:\/\//i.test(href) && !href.includes(location.host)) return;
-      if (href.includes('messenger.html')) return;
-      e.preventDefault();
-      window.open(link.href, '_blank');
-      showToast('Opened in a new tab so your stream can continue.', 'info');
-    }, true);
+    // No-op now: streaming core runs in a dedicated background tab.
   }
 
   function openStreamingChannel(serverId, channelId, channelName) {
@@ -2281,6 +2292,14 @@ const Messenger = (() => {
       '';
     grid.appendChild(card);
 
+    if (streamerUid === currentUser.uid && !_localStream) {
+      const wrap = card.querySelector('.stream-video-wrap');
+      const info = document.createElement('div');
+      info.className = 'stream-core-host-note';
+      info.textContent = 'Streaming from background core tab';
+      wrap.appendChild(info);
+    }
+
     const fsBtn = card.querySelector('[data-fullscreen-uid="' + streamerUid + '"]');
     if (fsBtn) {
       fsBtn.addEventListener('click', ev => {
@@ -2311,67 +2330,36 @@ const Messenger = (() => {
 
   async function _startStreaming(serverId, channelId) {
     if (_isStreaming) return;
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-      showToast('Screen sharing is not supported on this device.', 'error');
+    _streamContext = { serverId, channelId, channelName: (_streamContext && _streamContext.channelName) || 'Streaming Channel' };
+
+    // Open/attach dedicated background stream-core tab and send start command.
+    const coreUrl = 'stream-core.html';
+    const coreTab = window.open(coreUrl, 'rpsStreamCore');
+    if (!coreTab) {
+      showToast('Popup blocked. Allow popups to start streaming.', 'error');
       return;
     }
-    try {
-      _localStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          cursor: 'always',
-          frameRate: { ideal: 60, max: 60 },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        },
-        audio: false
-      });
-    } catch (err) {
-      if (err.name !== 'NotAllowedError') {
-        showToast('Could not start screen share.', 'error');
-      }
-      return;
-    }
+    try { coreTab.blur(); window.focus(); } catch (_) {}
+
+    _sendCoreStreamCommand('start', {
+      serverId,
+      channelId,
+      channelName: _streamContext.channelName,
+      hostUid: currentUser.uid,
+      username: userProfile.username || 'Someone'
+    });
+
     _isStreaming = true;
     _streamStartedAtMs = Date.now();
-    _publishStreamState(true);
     _setStreamManagerLive(true);
     _setStreamManagePanelOpen(true);
     _startUptimeTimer();
     _updateStreamManagePanel();
 
-    // Show stop button, hide go live
+    // Show stop button, hide go live in UI manager immediately.
     document.getElementById('stream-stop-btn').style.display = '';
     document.getElementById('stream-go-live-btn').style.display = 'none';
-
-    // If the user stops sharing via browser's native button
-    _localStream.getVideoTracks()[0].addEventListener('ended', () => {
-      _stopStreaming(serverId, channelId);
-    });
-
-    // Create our stream doc
-    const streamRef = db.collection('servers').doc(serverId)
-      .collection('channels').doc(channelId)
-      .collection('streams').doc(currentUser.uid);
-    await streamRef.set({
-      username: userProfile.username || 'Someone',
-      startedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    // Listen for viewers joining our stream
-    const viewersRef = streamRef.collection('viewers');
-    const viewerUnsub = viewersRef.onSnapshot(snap => {
-      snap.docChanges().forEach(change => {
-        const viewerUid = change.doc.id;
-        if (viewerUid === currentUser.uid) return;
-        if (change.type === 'added') {
-          _createStreamerPC(serverId, channelId, viewerUid);
-        } else if (change.type === 'removed') {
-          const pc = _streamerPCs.get(viewerUid);
-          if (pc) { pc.close(); _streamerPCs.delete(viewerUid); }
-        }
-      });
-    });
-    _streamUnsubs.push(viewerUnsub);
+    showToast('Stream core started in a background tab.', 'success');
   }
 
   async function _createStreamerPC(serverId, channelId, viewerUid) {
@@ -2428,22 +2416,17 @@ const Messenger = (() => {
     if (!_isStreaming) return;
     _isStreaming = false;
 
-    // Stop local tracks immediately
-    if (_localStream) {
-      _localStream.getTracks().forEach(t => t.stop());
-      _localStream = null;
-    }
-
-    // Close all streamer PCs
-    _streamerPCs.forEach(pc => pc.close());
-    _streamerPCs.clear();
+    _sendCoreStreamCommand('stop', {
+      serverId,
+      channelId,
+      hostUid: currentUser ? currentUser.uid : ''
+    });
 
     // Show go live, hide stop
     const goLive = document.getElementById('stream-go-live-btn');
     const stop = document.getElementById('stream-stop-btn');
     if (goLive) goLive.style.display = '';
     if (stop) stop.style.display = 'none';
-    _publishStreamState(false);
     _setStreamManagerLive(false);
     _setStreamManagePanelOpen(false);
     document.getElementById('stream-chat-window').style.display = 'none';
@@ -2454,97 +2437,27 @@ const Messenger = (() => {
     _streamStartedAtMs = null;
     _updateStreamManagePanel();
 
-    // Delete our stream doc and subcollections
-    const streamRef = db.collection('servers').doc(serverId)
-      .collection('channels').doc(channelId)
-      .collection('streams').doc(currentUser.uid);
-    try {
-      const viewers = await streamRef.collection('viewers').get();
-      const batch = db.batch();
-      for (const vDoc of viewers.docs) {
-        const sCands = await vDoc.ref.collection('streamerCandidates').get();
-        sCands.forEach(c => batch.delete(c.ref));
-        const vCands = await vDoc.ref.collection('viewerCandidates').get();
-        vCands.forEach(c => batch.delete(c.ref));
-        batch.delete(vDoc.ref);
-      }
-      batch.delete(streamRef);
-      await batch.commit();
-    } catch (err) { console.error('Stop stream cleanup error:', err); }
+    // Local viewer-side cleanup while core tab performs host cleanup.
+    _streamerPCs.forEach(pc => pc.close());
+    _streamerPCs.clear();
   }
 
   function _captureStreamSnapshot() {
-    if (!_localStream) {
+    if (!_isStreaming) {
       showToast('Start streaming first.', 'error');
       return;
     }
-    const track = _localStream.getVideoTracks()[0];
-    if (!track) return;
-    const settings = track.getSettings ? track.getSettings() : {};
-    const width = settings.width || 1280;
-    const height = settings.height || 720;
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    const card = document.querySelector('[data-stream-uid="' + currentUser.uid + '"] video');
-    if (!card) {
-      showToast('Unable to capture frame.', 'error');
-      return;
-    }
-    ctx.drawImage(card, 0, 0, width, height);
-    canvas.toBlob(blob => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'stream-snapshot-' + Date.now() + '.png';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      showToast('Snapshot saved.', 'success');
-    }, 'image/png');
+    _sendCoreStreamCommand('snapshot', { hostUid: currentUser ? currentUser.uid : '' });
+    showToast('Snapshot requested from stream core tab.', 'info');
   }
 
   function _toggleStreamRecording() {
-    if (!_localStream) {
+    if (!_isStreaming) {
       showToast('Start streaming first.', 'error');
       return;
     }
-    if (_streamRecorder && _streamRecorder.state === 'recording') {
-      _streamRecorder.stop();
-      return;
-    }
-    try {
-      _streamRecordChunks = [];
-      _streamRecorder = new MediaRecorder(_localStream, { mimeType: 'video/webm;codecs=vp8' });
-      _streamRecorder.ondataavailable = e => {
-        if (e.data && e.data.size > 0) _streamRecordChunks.push(e.data);
-      };
-      _streamRecorder.onstop = () => {
-        const blob = new Blob(_streamRecordChunks, { type: 'video/webm' });
-        if (blob.size > 0) {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'stream-recording-' + Date.now() + '.webm';
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          URL.revokeObjectURL(url);
-          showToast('Recording downloaded.', 'success');
-        }
-        _streamRecordChunks = [];
-        _updateStreamManagePanel();
-      };
-      _streamRecorder.start(1000);
-      _updateStreamManagePanel();
-      showToast('Recording started.', 'info');
-    } catch (err) {
-      console.error(err);
-      showToast('Recording is not supported on this browser.', 'error');
-    }
+    _sendCoreStreamCommand('toggleRecord', { hostUid: currentUser ? currentUser.uid : '' });
+    showToast('Recording toggle sent to stream core tab.', 'info');
   }
 
   function _openStreamChatWindow() {
@@ -2842,13 +2755,6 @@ const Messenger = (() => {
 
   // Cleanup on page unload
   window.addEventListener('beforeunload', () => {
-    if (_isStreaming && currentChat && currentChat.type === 'streaming') {
-      const streamRef = db.collection('servers').doc(currentChat.serverId)
-        .collection('channels').doc(currentChat.channelId)
-        .collection('streams').doc(currentUser.uid);
-      streamRef.delete().catch(() => {});
-    }
-    _publishStreamState(false);
     _cleanupStreaming();
   });
 
