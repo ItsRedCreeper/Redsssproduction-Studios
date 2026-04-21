@@ -187,6 +187,50 @@ const Messenger = (() => {
     const discoverBtn = document.getElementById('discover-btn');
     if (discoverBtn) discoverBtn.addEventListener('click', showDiscover);
 
+    // Stream manager + stream chat window
+    document.getElementById('stream-manage-nav-btn').addEventListener('click', _toggleStreamManagePanel);
+    document.getElementById('stream-manage-close').addEventListener('click', () => _setStreamManagePanelOpen(false));
+    document.getElementById('stream-manage-chat-btn').addEventListener('click', _openStreamChatWindow);
+    document.getElementById('stream-manage-snap-btn').addEventListener('click', _captureStreamSnapshot);
+    document.getElementById('stream-manage-record-btn').addEventListener('click', _toggleStreamRecording);
+    document.getElementById('stream-manage-stop-btn').addEventListener('click', () => {
+      if (_streamContext && _streamContext.serverId && _streamContext.channelId) {
+        _stopStreaming(_streamContext.serverId, _streamContext.channelId);
+      }
+    });
+    document.getElementById('stream-chat-close').addEventListener('click', () => {
+      document.getElementById('stream-chat-window').style.display = 'none';
+    });
+    document.getElementById('stream-chat-picker-btn').addEventListener('click', () => {
+      const picker = document.getElementById('stream-chat-picker');
+      picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
+    });
+    document.querySelectorAll('.stream-chat-emoji').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById('stream-chat-input');
+        input.value += btn.dataset.emoji || '';
+        input.focus();
+      });
+    });
+    document.getElementById('stream-chat-upload-btn').addEventListener('click', () => {
+      document.getElementById('stream-chat-upload-input').click();
+    });
+    document.getElementById('stream-chat-video-btn').addEventListener('click', () => {
+      document.getElementById('stream-chat-video-input').click();
+    });
+    document.getElementById('stream-chat-upload-input').addEventListener('change', e => {
+      if (e.target.files.length) _addStreamChatFiles(e.target.files);
+      e.target.value = '';
+    });
+    document.getElementById('stream-chat-video-input').addEventListener('change', e => {
+      if (e.target.files.length) _addStreamChatVideo(e.target.files[0]);
+      e.target.value = '';
+    });
+    document.getElementById('stream-chat-send').addEventListener('click', _sendStreamChatMessage);
+    document.getElementById('stream-chat-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _sendStreamChatMessage(); }
+    });
+
     // Initialize
     loadFriends();
     _listenNonFriendDMs();
@@ -1911,7 +1955,17 @@ const Messenger = (() => {
   const _streamerPCs = new Map();            // viewerUid → RTCPeerConnection (when WE are streaming)
   const _viewerPCs = new Map();              // streamerUid → RTCPeerConnection (when we view others)
   let _streamUnsubs = [];
+  let _streamChatUnsub = null;
   let _isStreaming = false;
+  let _streamManagePanelOpen = false;
+  let _streamContext = null;                  // { serverId, channelId, channelName }
+  let _streamStartedAtMs = null;
+  let _streamUptimeTimer = null;
+  let _streamRecorder = null;
+  let _streamRecordChunks = [];
+  let _streamChatFiles = [];
+  let _streamChatVideo = null;
+  let _streamChatVideoUrl = null;
   const _rtcConfig = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -1920,6 +1974,15 @@ const Messenger = (() => {
   };
 
   function _cleanupStreaming() {
+    if (_streamUptimeTimer) {
+      clearInterval(_streamUptimeTimer);
+      _streamUptimeTimer = null;
+    }
+    if (_streamRecorder && _streamRecorder.state !== 'inactive') {
+      _streamRecorder.stop();
+    }
+    _streamRecorder = null;
+    _streamRecordChunks = [];
     if (_localStream) {
       _localStream.getTracks().forEach(t => t.stop());
       _localStream = null;
@@ -1930,12 +1993,69 @@ const Messenger = (() => {
     _viewerPCs.clear();
     _streamUnsubs.forEach(fn => fn());
     _streamUnsubs = [];
+    if (_streamChatUnsub) {
+      _streamChatUnsub();
+      _streamChatUnsub = null;
+    }
+    _streamContext = null;
+    _streamStartedAtMs = null;
     _isStreaming = false;
+    _setStreamManagerLive(false);
+    _setStreamManagePanelOpen(false);
+    document.getElementById('stream-chat-window').style.display = 'none';
+  }
+
+  function _setStreamManagerLive(isLive) {
+    const btn = document.getElementById('stream-manage-nav-btn');
+    if (!btn) return;
+    btn.style.display = isLive ? 'inline-flex' : 'none';
+    btn.classList.toggle('live', !!isLive);
+  }
+
+  function _setStreamManagePanelOpen(open) {
+    _streamManagePanelOpen = !!open;
+    document.getElementById('stream-manage-panel').style.display = open ? 'block' : 'none';
+  }
+
+  function _toggleStreamManagePanel() {
+    if (!_isStreaming) return;
+    _setStreamManagePanelOpen(!_streamManagePanelOpen);
+  }
+
+  function _updateStreamManagePanel() {
+    const statusEl = document.getElementById('stream-manage-status');
+    const channelEl = document.getElementById('stream-manage-channel');
+    const uptimeEl = document.getElementById('stream-manage-uptime');
+    const recordBtn = document.getElementById('stream-manage-record-btn');
+    statusEl.textContent = _isStreaming ? 'Live' : 'Offline';
+    channelEl.textContent = _streamContext ? _streamContext.channelName : 'None';
+    uptimeEl.textContent = _streamStartedAtMs ? _formatDuration(Date.now() - _streamStartedAtMs) : '00:00:00';
+    if (recordBtn) {
+      const recording = _streamRecorder && _streamRecorder.state === 'recording';
+      recordBtn.textContent = recording ? 'Stop Recording' : 'Start Recording';
+    }
+  }
+
+  function _startUptimeTimer() {
+    if (_streamUptimeTimer) clearInterval(_streamUptimeTimer);
+    _updateStreamManagePanel();
+    _streamUptimeTimer = setInterval(_updateStreamManagePanel, 1000);
+  }
+
+  function _formatDuration(ms) {
+    const total = Math.floor(ms / 1000);
+    const hh = String(Math.floor(total / 3600)).padStart(2, '0');
+    const mm = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+    const ss = String(total % 60).padStart(2, '0');
+    return hh + ':' + mm + ':' + ss;
   }
 
   function openStreamingChannel(serverId, channelId, channelName) {
     if (chatUnsub) { chatUnsub(); chatUnsub = null; }
     _cleanupStreaming();
+
+    _streamContext = { serverId, channelId, channelName };
+    _updateStreamManagePanel();
 
     currentChat = { type: 'streaming', serverId, channelId };
 
@@ -2024,10 +2144,11 @@ const Messenger = (() => {
         '<div class="stream-overlay">' +
           '<span class="stream-live-badge">LIVE</span>' +
         '</div>' +
+        '<div class="stream-card-bar">' +
+          '<span class="stream-card-name" title="' + esc(username) + '">' + esc(username) + '</span>' +
+        '</div>' +
       '</div>' +
-      '<div class="stream-card-bar">' +
-        '<span class="stream-card-name">' + esc(username) + '</span>' +
-      '</div>';
+      '';
     grid.appendChild(card);
   }
 
@@ -2048,7 +2169,12 @@ const Messenger = (() => {
     }
     try {
       _localStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'always' },
+        video: {
+          cursor: 'always',
+          frameRate: { ideal: 60, max: 60 },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
         audio: false
       });
     } catch (err) {
@@ -2058,6 +2184,11 @@ const Messenger = (() => {
       return;
     }
     _isStreaming = true;
+    _streamStartedAtMs = Date.now();
+    _setStreamManagerLive(true);
+    _setStreamManagePanelOpen(true);
+    _startUptimeTimer();
+    _updateStreamManagePanel();
 
     // Show stop button, hide go live
     document.getElementById('stream-stop-btn').style.display = '';
@@ -2097,7 +2228,19 @@ const Messenger = (() => {
   async function _createStreamerPC(serverId, channelId, viewerUid) {
     const pc = new RTCPeerConnection(_rtcConfig);
     _streamerPCs.set(viewerUid, pc);
-    _localStream.getTracks().forEach(track => pc.addTrack(track, _localStream));
+    _localStream.getTracks().forEach(track => {
+      const sender = pc.addTrack(track, _localStream);
+      if (track.kind === 'video' && sender && sender.getParameters) {
+        const p = sender.getParameters() || {};
+        if (!p.encodings || !p.encodings.length) p.encodings = [{}];
+        p.encodings[0].maxBitrate = 3500000;
+        p.encodings[0].maxFramerate = 60;
+        sender.setParameters(p).catch(() => {});
+      }
+      if (track.kind === 'video') {
+        try { track.contentHint = 'motion'; } catch (_) {}
+      }
+    });
 
     const viewerDocRef = db.collection('servers').doc(serverId)
       .collection('channels').doc(channelId)
@@ -2151,6 +2294,15 @@ const Messenger = (() => {
     const stop = document.getElementById('stream-stop-btn');
     if (goLive) goLive.style.display = '';
     if (stop) stop.style.display = 'none';
+    _setStreamManagerLive(false);
+    _setStreamManagePanelOpen(false);
+    document.getElementById('stream-chat-window').style.display = 'none';
+    if (_streamUptimeTimer) {
+      clearInterval(_streamUptimeTimer);
+      _streamUptimeTimer = null;
+    }
+    _streamStartedAtMs = null;
+    _updateStreamManagePanel();
 
     // Delete our stream doc and subcollections
     const streamRef = db.collection('servers').doc(serverId)
@@ -2169,6 +2321,224 @@ const Messenger = (() => {
       batch.delete(streamRef);
       await batch.commit();
     } catch (err) { console.error('Stop stream cleanup error:', err); }
+  }
+
+  function _captureStreamSnapshot() {
+    if (!_localStream) {
+      showToast('Start streaming first.', 'error');
+      return;
+    }
+    const track = _localStream.getVideoTracks()[0];
+    if (!track) return;
+    const settings = track.getSettings ? track.getSettings() : {};
+    const width = settings.width || 1280;
+    const height = settings.height || 720;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    const card = document.querySelector('[data-stream-uid="' + currentUser.uid + '"] video');
+    if (!card) {
+      showToast('Unable to capture frame.', 'error');
+      return;
+    }
+    ctx.drawImage(card, 0, 0, width, height);
+    canvas.toBlob(blob => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'stream-snapshot-' + Date.now() + '.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast('Snapshot saved.', 'success');
+    }, 'image/png');
+  }
+
+  function _toggleStreamRecording() {
+    if (!_localStream) {
+      showToast('Start streaming first.', 'error');
+      return;
+    }
+    if (_streamRecorder && _streamRecorder.state === 'recording') {
+      _streamRecorder.stop();
+      return;
+    }
+    try {
+      _streamRecordChunks = [];
+      _streamRecorder = new MediaRecorder(_localStream, { mimeType: 'video/webm;codecs=vp8' });
+      _streamRecorder.ondataavailable = e => {
+        if (e.data && e.data.size > 0) _streamRecordChunks.push(e.data);
+      };
+      _streamRecorder.onstop = () => {
+        const blob = new Blob(_streamRecordChunks, { type: 'video/webm' });
+        if (blob.size > 0) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'stream-recording-' + Date.now() + '.webm';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          showToast('Recording downloaded.', 'success');
+        }
+        _streamRecordChunks = [];
+        _updateStreamManagePanel();
+      };
+      _streamRecorder.start(1000);
+      _updateStreamManagePanel();
+      showToast('Recording started.', 'info');
+    } catch (err) {
+      console.error(err);
+      showToast('Recording is not supported on this browser.', 'error');
+    }
+  }
+
+  function _openStreamChatWindow() {
+    if (!_streamContext || !_streamContext.serverId || !_streamContext.channelId) {
+      showToast('Open a streaming channel first.', 'error');
+      return;
+    }
+    document.getElementById('stream-chat-window').style.display = 'flex';
+    document.getElementById('stream-chat-title').textContent = 'Stream Chat - ' + _streamContext.channelName;
+    _listenStreamChat();
+  }
+
+  function _listenStreamChat() {
+    if (!_streamContext) return;
+    if (_streamChatUnsub) { _streamChatUnsub(); _streamChatUnsub = null; }
+    const wrap = document.getElementById('stream-chat-messages');
+    wrap.innerHTML = '<div class="chat-empty">Loading...</div>';
+    _streamChatUnsub = db.collection('servers').doc(_streamContext.serverId)
+      .collection('channels').doc(_streamContext.channelId)
+      .collection('messages')
+      .orderBy('createdAt', 'asc')
+      .limitToLast(100)
+      .onSnapshot(snap => {
+        wrap.innerHTML = '';
+        if (snap.empty) {
+          wrap.innerHTML = '<div class="chat-empty">No messages yet. Start the conversation!</div>';
+          return;
+        }
+        snap.forEach(doc => {
+          wrap.appendChild(_renderStreamChatMessage(doc.data()));
+        });
+        wrap.scrollTop = wrap.scrollHeight;
+      });
+  }
+
+  function _renderStreamChatMessage(data) {
+    const row = document.createElement('div');
+    row.className = 'stream-chat-msg';
+    const prof = profileCache.get(data.uid) || {};
+    const name = prof.username || data.username || 'User';
+    let t = '';
+    if (data.createdAt && data.createdAt.toDate) t = data.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const parts = [];
+    if (data.text) parts.push('<div class="stream-chat-msg-text">' + esc(data.text) + '</div>');
+    if (data.images && data.images.length) {
+      data.images.forEach(url => parts.push('<div class="stream-chat-msg-text"><a href="' + esc(url) + '" target="_blank" rel="noopener">Image</a></div>'));
+    }
+    if (data.videoUrl) parts.push('<div class="stream-chat-msg-text"><a href="' + esc(data.videoUrl) + '" target="_blank" rel="noopener">Video</a></div>');
+    row.innerHTML =
+      '<div class="stream-chat-msg-head"><strong>' + esc(name) + '</strong><span>' + esc(t) + '</span></div>' +
+      parts.join('');
+    return row;
+  }
+
+  function _addStreamChatFiles(fileList) {
+    _streamChatFiles = _streamChatFiles.concat(Array.from(fileList));
+    _renderStreamChatStaging();
+  }
+
+  function _addStreamChatVideo(file) {
+    _streamChatVideo = file;
+    if (_streamChatVideoUrl) URL.revokeObjectURL(_streamChatVideoUrl);
+    _streamChatVideoUrl = URL.createObjectURL(file);
+    _renderStreamChatStaging();
+  }
+
+  function _renderStreamChatStaging() {
+    const el = document.getElementById('stream-chat-staging');
+    const parts = [];
+    if (_streamChatFiles.length) parts.push(_streamChatFiles.length + ' image(s) ready');
+    if (_streamChatVideo) parts.push('1 video ready');
+    if (!parts.length) {
+      el.style.display = 'none';
+      el.textContent = '';
+      return;
+    }
+    el.style.display = 'block';
+    el.textContent = parts.join(' • ');
+  }
+
+  async function _sendStreamChatMessage() {
+    if (!_streamContext) return;
+    const input = document.getElementById('stream-chat-input');
+    const text = input.value.trim();
+    const hasImages = _streamChatFiles.length > 0;
+    const hasVideo = !!_streamChatVideo;
+    if (!text && !hasImages && !hasVideo) return;
+    input.value = '';
+
+    let imageUrls = [];
+    if (hasImages) {
+      try {
+        imageUrls = await Promise.all(_streamChatFiles.map(async f => {
+          const fd = new FormData();
+          fd.append('file', f);
+          fd.append('upload_preset', CLOUDINARY_PRESET);
+          const res = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/image/upload', { method: 'POST', body: fd });
+          const d = await res.json();
+          if (!d.secure_url) throw new Error('Upload failed');
+          return d.secure_url;
+        }));
+      } catch {
+        showToast('Image upload failed.', 'error');
+        return;
+      }
+      _streamChatFiles = [];
+    }
+
+    let videoUrl = '';
+    if (hasVideo) {
+      try {
+        const fd = new FormData();
+        fd.append('file', _streamChatVideo);
+        fd.append('upload_preset', CLOUDINARY_PRESET);
+        const res = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/video/upload', { method: 'POST', body: fd });
+        const d = await res.json();
+        if (!d.secure_url) throw new Error('Upload failed');
+        videoUrl = d.secure_url;
+      } catch {
+        showToast('Video upload failed.', 'error');
+        return;
+      }
+      if (_streamChatVideoUrl) URL.revokeObjectURL(_streamChatVideoUrl);
+      _streamChatVideoUrl = null;
+      _streamChatVideo = null;
+    }
+
+    _renderStreamChatStaging();
+
+    const msgData = {
+      uid: currentUser.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    if (text) msgData.text = text;
+    if (imageUrls.length) msgData.images = imageUrls;
+    if (videoUrl) msgData.videoUrl = videoUrl;
+
+    try {
+      await db.collection('servers').doc(_streamContext.serverId)
+        .collection('channels').doc(_streamContext.channelId)
+        .collection('messages').add(msgData);
+    } catch {
+      showToast('Failed to send stream chat message.', 'error');
+    }
   }
 
   async function _joinStream(serverId, channelId, streamerUid) {
