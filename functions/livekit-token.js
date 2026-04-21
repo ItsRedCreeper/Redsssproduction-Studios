@@ -97,44 +97,50 @@ function _decodeJwt(token) {
 async function _createLiveKitToken({ apiKey, apiSecret, roomName, identity, canPublish }) {
   const now = Math.floor(Date.now() / 1000);
 
-  const header  = { alg: 'HS256', typ: 'JWT' };
-  const claims  = {
-    exp: now + 6 * 3600,   // 6-hour token
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const claims = {
+    exp: now + 6 * 3600,
     iss: apiKey,
     nbf: now,
     sub: identity,
     video: {
-      room:            roomName,
-      roomJoin:        true,
-      canPublish:      canPublish,
-      canSubscribe:    true,
-      canPublishData:  true
+      room:           roomName,
+      roomJoin:       true,
+      canPublish:     canPublish,
+      canSubscribe:   true,
+      canPublishData: true
     }
   };
 
-  const _b64url = str => {
-    return btoa(str)
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=/g, '');
-  };
+  // base64url-encode a Uint8Array without using btoa (avoids binary string pitfalls).
+  function b64url(bytes) {
+    const TABLE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 3) {
+      const a = bytes[i], b = bytes[i + 1] | 0, c = bytes[i + 2] | 0;
+      s += TABLE[a >> 2];
+      s += TABLE[((a & 3) << 4) | (b >> 4)];
+      if (i + 1 < bytes.length) s += TABLE[((b & 15) << 2) | (c >> 6)];
+      if (i + 2 < bytes.length) s += TABLE[c & 63];
+    }
+    return s;
+  }
 
-  const headerB64  = _b64url(JSON.stringify(header));
-  const claimsB64  = _b64url(JSON.stringify(claims));
-  const sigInput   = `${headerB64}.${claimsB64}`;
+  const enc = new TextEncoder();
+  const headerB64 = b64url(enc.encode(JSON.stringify(header)));
+  const claimsB64 = b64url(enc.encode(JSON.stringify(claims)));
+  const sigInput  = `${headerB64}.${claimsB64}`;
 
   const key = await crypto.subtle.importKey(
     'raw',
-    new TextEncoder().encode(apiSecret),
+    enc.encode(apiSecret),
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign']
   );
 
-  const sigBuffer = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(sigInput));
-  const sigBytes  = new Uint8Array(sigBuffer);
-  const sigStr    = Array.from(sigBytes, b => String.fromCharCode(b)).join('');
-  const sigB64    = _b64url(btoa(sigStr));
+  const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(sigInput));
+  const sig    = b64url(new Uint8Array(sigBuf));
 
-  return `${sigInput}.${sigB64}`;
+  return `${sigInput}.${sig}`;
 }
