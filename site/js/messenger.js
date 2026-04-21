@@ -2013,7 +2013,10 @@ const Messenger = (() => {
       { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun3.l.google.com:19302' },
       { urls: 'stun:stun4.l.google.com:19302' },
-      { urls: 'stun:stun.cloudflare.com:3478' }
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      { urls: 'turn:openrelay.metered.ca:80',  username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turns:openrelay.metered.ca:443',username: 'openrelayproject', credential: 'openrelayproject' }
     ],
     iceCandidatePoolSize: 10
   };
@@ -2427,12 +2430,12 @@ const Messenger = (() => {
       if (track.kind === 'video' && sender && sender.getParameters) {
         const p = sender.getParameters() || {};
         if (!p.encodings || !p.encodings.length) p.encodings = [{}];
-        p.encodings[0].maxBitrate = 3500000;
+        p.encodings[0].maxBitrate = 8000000;
         p.encodings[0].maxFramerate = 60;
         sender.setParameters(p).catch(() => {});
       }
       if (track.kind === 'video') {
-        try { track.contentHint = 'motion'; } catch (_) {}
+        try { track.contentHint = 'detail'; } catch (_) {}
       }
     });
 
@@ -2823,7 +2826,10 @@ const Messenger = (() => {
       .collection('streams').doc(streamerUid);
     const viewerDocRef = streamRef.collection('viewers').doc(currentUser.uid);
 
-    await viewerDocRef.set({ joined: true });
+    // Use a unique sessionId each join so the streamer can distinguish a
+    // fresh reconnect (Firestore 'modified') from answer/candidate writes.
+    const sessionId = Math.random().toString(36).slice(2);
+    await viewerDocRef.set({ joined: true, sessionId });
 
     const pc = new RTCPeerConnection(_rtcConfig);
     _viewerPCs.set(streamerUid, pc);
@@ -2831,11 +2837,26 @@ const Messenger = (() => {
     let remoteDescSet = false;
     const pendingCandidates = [];
 
+    // Use a local MediaStream so we don't depend on e.streams[0] which can
+    // be undefined on some browser/codec combinations.
+    const remoteStream = new MediaStream();
     pc.ontrack = e => {
+      remoteStream.addTrack(e.track);
       const card = document.querySelector('[data-stream-uid="' + streamerUid + '"]');
-      if (card && e.streams[0]) {
+      if (card) {
         const vid = card.querySelector('video');
-        if (vid) { vid.srcObject = e.streams[0]; vid.play().catch(() => {}); }
+        if (vid) {
+          if (!vid.srcObject) vid.srcObject = remoteStream;
+          vid.play().catch(() => {});
+        }
+      }
+    };
+
+    // Auto-retry ICE on connection failure (helps when STUN succeeds but path
+    // briefly drops; TURN relay should prevent most hard failures).
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'failed') {
+        pc.restartIce();
       }
     };
 

@@ -14,6 +14,7 @@
   let lastCmdId = null;
 
   const streamerPCs = new Map(); // viewerUid -> RTCPeerConnection
+  const _viewerSessions = new Map(); // viewerUid -> sessionId (tracks reconnects)
   const streamUnsubs = [];
   let streamControlChannel = null;
 
@@ -27,7 +28,10 @@
       { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun3.l.google.com:19302' },
       { urls: 'stun:stun4.l.google.com:19302' },
-      { urls: 'stun:stun.cloudflare.com:3478' }
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      { urls: 'turn:openrelay.metered.ca:80',  username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turns:openrelay.metered.ca:443',username: 'openrelayproject', credential: 'openrelayproject' }
     ],
     iceCandidatePoolSize: 10
   };
@@ -166,9 +170,19 @@
           const viewerUid = change.doc.id;
           if (viewerUid === currentUser.uid) return;
 
-          if (change.type === 'added') {
+          if (change.type === 'added' || change.type === 'modified') {
+            const data = change.doc.data() || {};
+            // Only create a new PC on a fresh join (new sessionId).
+            // 'modified' also fires when the viewer writes their answer — ignore those.
+            const sessionId = data.sessionId || 'default';
+            if (_viewerSessions.get(viewerUid) === sessionId) return;
+            _viewerSessions.set(viewerUid, sessionId);
+            // Close any stale PC for this viewer before creating a fresh one.
+            const old = streamerPCs.get(viewerUid);
+            if (old) { old.close(); streamerPCs.delete(viewerUid); }
             _createStreamerPC(viewerUid);
           } else if (change.type === 'removed') {
+            _viewerSessions.delete(viewerUid);
             const pc = streamerPCs.get(viewerUid);
             if (pc) {
               pc.close();
@@ -319,6 +333,7 @@
     streamContext = null;
     startedAt = 0;
     isLive = false;
+    _viewerSessions.clear();
     localStorage.removeItem(STREAM_STATE_KEY);
     try {
       if (streamControlChannel) streamControlChannel.postMessage({ type: 'stream-state', payload: { live: false } });
