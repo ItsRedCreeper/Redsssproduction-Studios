@@ -23,13 +23,18 @@
   const LIVEKIT_URL = 'wss://redsssproduction-studios-aiosfout.livekit.cloud';
 
   async function _getLiveKitToken(roomName, canPublish) {
-    const idToken = await auth.currentUser.getIdToken();
+    if (!roomName) throw new Error('Room name is empty — stream context not ready');
+    const idToken = await auth.currentUser.getIdToken(/* forceRefresh= */ true);
     const res = await fetch('/livekit-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken },
       body: JSON.stringify({ roomName, canPublish })
     });
-    if (!res.ok) throw new Error('LiveKit token fetch failed: ' + res.status);
+    if (!res.ok) {
+      let detail = '';
+      try { const j = await res.json(); detail = ' — ' + (j.error || JSON.stringify(j)); } catch (_) {}
+      throw new Error('LiveKit token fetch failed ' + res.status + detail);
+    }
     return (await res.json()).token;
   }
 
