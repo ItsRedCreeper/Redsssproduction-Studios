@@ -2317,7 +2317,7 @@ const Messenger = (() => {
       '';
     grid.appendChild(card);
 
-    if (fsBtn) {
+    const fsBtn = card.querySelector('[data-fullscreen-uid="' + streamerUid + '"]');
     if (fsBtn) {
       fsBtn.addEventListener('click', ev => {
         ev.stopPropagation();
