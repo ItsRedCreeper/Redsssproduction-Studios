@@ -177,6 +177,8 @@ const Nav = (() => {
     _wireChannelHub();
     _wireStreamListModal();
     _wireFloatingStreamViewer();
+    _ensureLightbox();
+    _wireLightboxDelegation();
 
     // Persist position/size of the stream manage panel and nav stream chat.
     const _managePanel = document.getElementById('stream-manage-panel');
@@ -278,6 +280,38 @@ const Nav = (() => {
       });
       const navReplyCancel = document.getElementById('nav-stream-reply-cancel');
       if (navReplyCancel) navReplyCancel.addEventListener('click', () => _navCancelReply());
+
+      // Upload buttons (images + video)
+      const uploadBtn = document.getElementById('nav-stream-chat-upload-btn');
+      const videoBtn = document.getElementById('nav-stream-chat-video-btn');
+      const uploadInput = document.getElementById('nav-stream-chat-upload-input');
+      const videoInput = document.getElementById('nav-stream-chat-video-input');
+      if (uploadBtn && uploadInput) {
+        uploadBtn.addEventListener('click', () => uploadInput.click());
+        uploadInput.addEventListener('change', e => {
+          const files = Array.from(e.target.files || []);
+          e.target.value = '';
+          if (!files.length) return;
+          // 10MB per image cap, max 4
+          for (const f of files) {
+            if (f.size > 10 * 1024 * 1024) { showToast(f.name + ' is larger than 10MB.', 'error'); continue; }
+            if (_navStreamFiles.length >= 4) { showToast('Max 4 images per message.', 'info'); break; }
+            _navStreamFiles.push(f);
+          }
+          _renderNavStreamStaging();
+        });
+      }
+      if (videoBtn && videoInput) {
+        videoBtn.addEventListener('click', () => videoInput.click());
+        videoInput.addEventListener('change', e => {
+          const file = e.target.files && e.target.files[0];
+          e.target.value = '';
+          if (!file) return;
+          if (file.size > 50 * 1024 * 1024) { showToast('Video is larger than 50MB.', 'error'); return; }
+          _navStreamVideo = file;
+          _renderNavStreamStaging();
+        });
+      }
 
       stopBtn?.addEventListener('click', () => {
         const state = _readStreamState();
@@ -444,7 +478,16 @@ const Nav = (() => {
             '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
           '</button>' +
         '</div>' +
+        '<div class="stream-chat-staging" id="nav-stream-chat-staging" style="display:none"></div>' +
         '<div class="stream-chat-input-row">' +
+          '<button class="img-upload-btn" id="nav-stream-chat-upload-btn" title="Upload Image / GIF">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>' +
+          '</button>' +
+          '<button class="img-upload-btn" id="nav-stream-chat-video-btn" title="Upload Video">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>' +
+          '</button>' +
+          '<input type="file" id="nav-stream-chat-upload-input" accept="image/*" multiple style="display:none">' +
+          '<input type="file" id="nav-stream-chat-video-input" accept="video/*" style="display:none">' +
           '<input class="chat-input" id="nav-stream-chat-input" placeholder="Message stream chat..." maxlength="2000">' +
           '<button class="chat-send" id="nav-stream-chat-send" title="Send">' +
             '<svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>' +
@@ -664,11 +707,11 @@ const Nav = (() => {
     }
 
     let contentHTML = '';
-    if (data.gifUrl) contentHTML += '<div class="msg-gif-wrap"><img class="msg-gif" src="' + _esc(data.gifUrl) + '" alt="GIF" loading="lazy"></div>';
+    if (data.gifUrl) contentHTML += '<div class="msg-gif-wrap"><img class="msg-gif lightbox-trigger" src="' + _esc(data.gifUrl) + '" alt="GIF" loading="lazy" data-src="' + _esc(data.gifUrl) + '"></div>';
     if (data.text) contentHTML += '<div class="msg-text">' + _esc(data.text) + (data.edited ? '<span class="msg-edited-tag">(edited)</span>' : '') + '</div>';
     if (data.images && data.images.length) {
       contentHTML += '<div class="msg-images' + (data.images.length === 1 ? ' single' : '') + '">' +
-        data.images.map(url => '<img class="msg-image" src="' + _esc(url) + '" alt="" loading="lazy">').join('') +
+        data.images.map(url => '<img class="msg-image lightbox-trigger" src="' + _esc(url) + '" alt="" loading="lazy" data-src="' + _esc(url) + '">').join('') +
         '</div>';
     }
     if (data.videoUrl) contentHTML += '<div class="msg-video-wrap"><video class="msg-video" src="' + _esc(data.videoUrl) + '" controls preload="metadata"></video></div>';
@@ -745,28 +788,118 @@ const Nav = (() => {
     });
   }
 
+  let _navStreamFiles = [];
+  let _navStreamVideo = null;
+
+  function _renderNavStreamStaging() {
+    const el = document.getElementById('nav-stream-chat-staging');
+    if (!el) return;
+    const parts = [];
+    if (_navStreamFiles.length) parts.push(_navStreamFiles.length + ' image(s) ready');
+    if (_navStreamVideo) parts.push('1 video ready');
+    if (!parts.length) { el.style.display = 'none'; el.textContent = ''; return; }
+    el.style.display = 'block';
+    el.textContent = parts.join(' \u2022 ');
+  }
+
+  async function _uploadToCloudinary(file, kind, onProgress) {
+    // kind = 'image' | 'video'. Uses XHR for timeout + progress + retries.
+    const endpoint = 'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/' + kind + '/upload';
+    const tryOnce = () => new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', endpoint);
+      xhr.timeout = kind === 'video' ? 120000 : 45000;
+      xhr.upload.onprogress = e => { if (onProgress && e.lengthComputable) onProgress(e.loaded / e.total); };
+      xhr.onload = () => {
+        try {
+          const d = JSON.parse(xhr.responseText || '{}');
+          if (xhr.status >= 200 && xhr.status < 300 && d.secure_url) resolve(d.secure_url);
+          else reject(new Error(d.error?.message || ('HTTP ' + xhr.status)));
+        } catch (e) { reject(e); }
+      };
+      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.ontimeout = () => reject(new Error('Upload timed out'));
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('upload_preset', CLOUDINARY_PRESET);
+      xhr.send(fd);
+    });
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { return await tryOnce(); }
+      catch (e) {
+        lastErr = e;
+        if (attempt < 2) await new Promise(r => setTimeout(r, 600 * (attempt + 1)));
+      }
+    }
+    throw lastErr || new Error('Upload failed');
+  }
+
   async function _sendNavStreamMessage() {
     if (!_navStreamChatCurrentUser) return;
+    // Prefer joined-channel context (user can chat without streaming).
+    // Fall back to stream state for the streamer themselves.
+    const joined = _readJoinedChannel();
     const state = _readStreamState();
-    if (!state || !state.live || !state.serverId || !state.channelId) return;
+    const serverId = joined?.serverId || (state && state.live && state.serverId);
+    const channelId = joined?.channelId || (state && state.live && state.channelId);
+    if (!serverId || !channelId) return;
+
     const input = document.getElementById('nav-stream-chat-input');
     if (!input) return;
     const text = input.value.trim();
-    if (!text) return;
+    const hasImages = _navStreamFiles.length > 0;
+    const hasVideo = !!_navStreamVideo;
+    if (!text && !hasImages && !hasVideo) return;
+
+    // Snapshot the input so we can restore on failure.
     input.value = '';
-    const msgData = { uid: _navStreamChatCurrentUser.uid, text, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+    const sendBtn = document.getElementById('nav-stream-chat-send');
+    if (sendBtn) sendBtn.disabled = true;
+
+    let imageUrls = [];
+    let videoUrl = '';
+    try {
+      if (hasImages) {
+        imageUrls = await Promise.all(_navStreamFiles.map(f => _uploadToCloudinary(f, 'image')));
+      }
+      if (hasVideo) {
+        videoUrl = await _uploadToCloudinary(_navStreamVideo, 'video');
+      }
+    } catch (err) {
+      console.error('Upload failed:', err);
+      showToast('Upload failed: ' + (err.message || 'unknown error'), 'error');
+      input.value = text;
+      if (sendBtn) sendBtn.disabled = false;
+      return;
+    }
+
+    _navStreamFiles = [];
+    _navStreamVideo = null;
+    _renderNavStreamStaging();
+
+    const msgData = {
+      uid: _navStreamChatCurrentUser.uid,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    if (text) msgData.text = text;
+    if (imageUrls.length) msgData.images = imageUrls;
+    if (videoUrl) msgData.videoUrl = videoUrl;
     if (_navStreamReplyState) {
       msgData.replyTo = _navStreamReplyState;
       _navCancelReply();
     }
     try {
-      await db.collection('servers').doc(state.serverId)
-        .collection('channels').doc(state.channelId)
+      await db.collection('servers').doc(serverId)
+        .collection('channels').doc(channelId)
         .collection('messages')
         .add(msgData);
-    } catch (_) {
+    } catch (e) {
+      console.error('Send failed:', e);
       input.value = text;
       showToast('Failed to send message.', 'error');
+    } finally {
+      if (sendBtn) sendBtn.disabled = false;
     }
   }
 
@@ -980,10 +1113,12 @@ const Nav = (() => {
     }
     document.getElementById('nav-popup-dm-btn').addEventListener('click', () => {
       overlay.classList.remove('open');
+      sessionStorage.setItem('_siteNav', '1');
       window.location.href = 'messenger.html?dm=' + encodeURIComponent(uid);
     });
     document.getElementById('nav-popup-view-more').addEventListener('click', () => {
       overlay.classList.remove('open');
+      sessionStorage.setItem('_siteNav', '1');
       window.location.href = 'friends.html?view=' + uid;
     });
   }
@@ -1029,11 +1164,10 @@ const Nav = (() => {
     if (!statusEl || !channelEl || !uptimeEl) return;
 
     if (!live) {
-      const navChatPanel = document.getElementById('nav-stream-chat-panel');
-      if (navChatPanel && navChatPanel.style.display !== 'none') {
-        navChatPanel.style.display = 'none';
-        if (_navStreamChatUnsub) { _navStreamChatUnsub(); _navStreamChatUnsub = null; }
-      }
+      // Don't auto-close nav-stream-chat-panel here — the user may have
+      // joined a stream channel without starting a broadcast, and chat
+      // should stay available for them. The channel hub's Leave button or
+      // the chat window's close button are the only ways to close it.
       const managePanel = document.getElementById('stream-manage-panel');
       if (managePanel && managePanel.style.display !== 'none') {
         managePanel.style.display = 'none';
@@ -1358,10 +1492,19 @@ const Nav = (() => {
 
     function _goOffline() {
       if (_pageClosing) return;
-      // If navigating to another page on this site, skip going offline
-      if (sessionStorage.getItem('_siteNav')) { sessionStorage.removeItem('_siteNav'); return; }
+      // If navigating to another page on this site, skip going offline.
+      // Also cancel the RTDB onDisconnect so the server doesn't mark us
+      // offline for the brief moment the websocket is closed between pages.
+      if (sessionStorage.getItem('_siteNav')) {
+        sessionStorage.removeItem('_siteNav');
+        try { if (presenceRef) presenceRef.onDisconnect().cancel(); } catch (_) {}
+        return;
+      }
       _pageClosing = true;
       clearTimeout(_awayTimer);
+      // Actually going offline — auto-leave any stream channel so we don't
+      // appear as a ghost participant after the browser closes.
+      try { localStorage.removeItem(JOINED_CHANNEL_KEY); } catch (_) {}
       const isAuto = (profile.status || 'auto') === 'auto';
       const rtdbPayload = JSON.stringify({ online: false, effectiveStatus: 'offline', statusMode: profile.status || 'auto' });
       const hdrs = { 'Content-Type': 'application/json' };
@@ -1384,10 +1527,16 @@ const Nav = (() => {
     window.addEventListener('pagehide', _goOffline);
     window.addEventListener('beforeunload', _goOffline);
 
-    // Flag same-site link clicks so _goOffline knows not to write offline
+    // Flag same-site link clicks so _goOffline knows not to write offline.
+    // Also cancel the RTDB onDisconnect right now — this gives it time to
+    // flush over the websocket before the navigation actually severs it,
+    // preventing a brief "offline" flash for friends/observers.
     document.addEventListener('click', e => {
       const a = e.target.closest('a[href]');
-      if (a && a.origin === location.origin) sessionStorage.setItem('_siteNav', '1');
+      if (a && a.origin === location.origin) {
+        sessionStorage.setItem('_siteNav', '1');
+        try { if (presenceRef) presenceRef.onDisconnect().cancel(); } catch (_) {}
+      }
     }, { capture: true });
 
     // Visibility change (tab hidden/shown)
@@ -1503,12 +1652,15 @@ const Nav = (() => {
 
   function _joinChannel(serverId, channelId, channelName) {
     if (!serverId || !channelId) return;
+    const prev = _readJoinedChannel();
+    const isNew = !prev || prev.serverId !== serverId || prev.channelId !== channelId;
     _writeJoinedChannel({
       serverId,
       channelId,
       channelName: channelName || 'Streaming Channel',
       joinedAt: Date.now()
     });
+    if (isNew) _showJoinedChannelToast(channelName || 'Streaming Channel');
   }
   function _leaveChannel() {
     // Close any open floating windows and stop all previews/viewer room.
@@ -1889,13 +2041,147 @@ const Nav = (() => {
     return () => _channelChangeListeners.delete(fn);
   }
 
+  /* ── Joined-channel toast popup ── */
+  let _joinToastTimer = null;
+  function _showJoinedChannelToast(channelName) {
+    let el = document.getElementById('joined-channel-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'joined-channel-toast';
+      el.className = 'joined-channel-toast';
+      el.innerHTML =
+        '<div class="joined-channel-toast-icon">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>' +
+        '</div>' +
+        '<div class="joined-channel-toast-body">' +
+          '<div class="joined-channel-toast-title">Joined stream channel</div>' +
+          '<div class="joined-channel-toast-name" id="joined-channel-toast-name"></div>' +
+        '</div>' +
+        '<button class="joined-channel-toast-close" id="joined-channel-toast-close" title="Dismiss">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+        '</button>';
+      document.body.appendChild(el);
+      el.querySelector('#joined-channel-toast-close').addEventListener('click', () => {
+        el.classList.remove('visible');
+        if (_joinToastTimer) { clearTimeout(_joinToastTimer); _joinToastTimer = null; }
+      });
+    }
+    el.querySelector('#joined-channel-toast-name').textContent = channelName || 'Streaming Channel';
+    // Trigger the slide-in; use rAF to ensure transition fires.
+    el.classList.remove('visible');
+    requestAnimationFrame(() => el.classList.add('visible'));
+    if (_joinToastTimer) clearTimeout(_joinToastTimer);
+    _joinToastTimer = setTimeout(() => {
+      el.classList.remove('visible');
+      _joinToastTimer = null;
+    }, 2000);
+  }
+
+  /* ── Shared lightbox (available on every page) ── */
+  function _ensureLightbox() {
+    if (document.getElementById('nav-lightbox')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'nav-lightbox';
+    overlay.className = 'lightbox-overlay';
+    overlay.innerHTML =
+      '<button class="lightbox-close" id="nav-lightbox-close" title="Close">\u2715</button>' +
+      '<div class="lightbox-controls">' +
+        '<button class="lightbox-ctrl-btn" id="nav-lightbox-zoom-out" title="Zoom out">\u2212</button>' +
+        '<span class="lightbox-zoom-level" id="nav-lightbox-zoom-level">100%</span>' +
+        '<button class="lightbox-ctrl-btn" id="nav-lightbox-zoom-in" title="Zoom in">+</button>' +
+      '</div>' +
+      '<div class="lightbox-img-wrap">' +
+        '<img class="lightbox-img" id="nav-lightbox-img" src="" alt="">' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    let scale = 1, panX = 0, panY = 0;
+    let dragging = false, dragStart = { x: 0, y: 0 }, panStart = { x: 0, y: 0 };
+    const img = document.getElementById('nav-lightbox-img');
+    const wrap = overlay.querySelector('.lightbox-img-wrap');
+    const zoomLevel = document.getElementById('nav-lightbox-zoom-level');
+
+    function applyTransform() {
+      img.style.transform = 'translate(' + panX + 'px, ' + panY + 'px) scale(' + scale + ')';
+      if (zoomLevel) zoomLevel.textContent = Math.round(scale * 100) + '%';
+      img.style.cursor = scale > 1 ? (dragging ? 'grabbing' : 'grab') : 'default';
+    }
+    function zoom(delta) {
+      scale = Math.max(0.25, Math.min(6, scale + delta));
+      if (scale <= 1) { panX = 0; panY = 0; }
+      applyTransform();
+    }
+    function close() {
+      overlay.classList.remove('open');
+      scale = 1; panX = 0; panY = 0;
+      applyTransform();
+    }
+    document.getElementById('nav-lightbox-close').addEventListener('click', close);
+    document.getElementById('nav-lightbox-zoom-in').addEventListener('click', () => zoom(0.5));
+    document.getElementById('nav-lightbox-zoom-out').addEventListener('click', () => zoom(-0.5));
+    overlay.addEventListener('click', e => { if (e.target === overlay || e.target === wrap) close(); });
+    overlay.addEventListener('wheel', e => { e.preventDefault(); zoom(e.deltaY < 0 ? 0.25 : -0.25); }, { passive: false });
+    img.addEventListener('mousedown', e => {
+      if (scale <= 1) return;
+      dragging = true;
+      dragStart = { x: e.clientX, y: e.clientY };
+      panStart = { x: panX, y: panY };
+      applyTransform();
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      panX = panStart.x + (e.clientX - dragStart.x);
+      panY = panStart.y + (e.clientY - dragStart.y);
+      applyTransform();
+    });
+    window.addEventListener('mouseup', () => { if (dragging) { dragging = false; applyTransform(); } });
+    document.addEventListener('keydown', e => {
+      if (!overlay.classList.contains('open')) return;
+      if (e.key === 'Escape') close();
+      else if (e.key === '+' || e.key === '=') zoom(0.5);
+      else if (e.key === '-') zoom(-0.5);
+    });
+
+    overlay._openWith = src => {
+      img.src = src;
+      scale = 1; panX = 0; panY = 0;
+      applyTransform();
+      overlay.classList.add('open');
+    };
+  }
+  function _openNavLightbox(src) {
+    _ensureLightbox();
+    document.getElementById('nav-lightbox')._openWith(src);
+  }
+  // Delegated click on any chat container for .lightbox-trigger
+  function _wireLightboxDelegation() {
+    if (document.body.dataset.rpsLightboxWired === '1') return;
+    document.body.dataset.rpsLightboxWired = '1';
+    document.addEventListener('click', e => {
+      const t = e.target.closest && e.target.closest('.lightbox-trigger');
+      if (!t) return;
+      // Only intercept if the image is inside a stream/chat/nav chat container.
+      const host = t.closest('#nav-stream-chat-messages, #stream-chat-messages, #stream-inline-chat-messages, #chat-messages');
+      if (!host) return;
+      // On messenger page, messenger.js has its own lightbox; use it when present.
+      if (host.id === 'chat-messages' && typeof window._rpsOpenLightbox === 'function') {
+        return; // messenger's listener handles it
+      }
+      e.preventDefault();
+      _openNavLightbox(t.dataset.src || t.src);
+    });
+  }
+
   return {
     init,
     initStreamManager: _initStreamManager,
     joinChannel: _joinChannel,
     leaveChannel: _leaveChannel,
     getJoinedChannel: _readJoinedChannel,
-    onChannelChange: _onChannelChange
+    onChannelChange: _onChannelChange,
+    uploadToCloudinary: _uploadToCloudinary,
+    openLightbox: _openNavLightbox
   };
 })();
 

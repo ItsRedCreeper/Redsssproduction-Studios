@@ -151,6 +151,17 @@ const Messenger = (() => {
       const t = e.target.closest('.lightbox-trigger');
       if (t) _openLightbox(t.dataset.src || t.src);
     });
+    // Same delegation for stream chat windows (floating + inline + nav)
+    ['stream-chat-messages', 'stream-inline-chat-messages'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('click', e => {
+        const t = e.target.closest('.lightbox-trigger');
+        if (t) _openLightbox(t.dataset.src || t.src);
+      });
+    });
+    // Expose for nav.js so images in nav floating chat also open the lightbox
+    window._rpsOpenLightbox = _openLightbox;
 
     // Create server
     document.getElementById('create-server-btn').addEventListener('click', () => {
@@ -254,17 +265,6 @@ const Messenger = (() => {
       document.getElementById('stream-chat-window'),
       document.getElementById('stream-chat-window').querySelector('.stream-chat-header')
     );
-    document.getElementById('stream-chat-picker-btn').addEventListener('click', () => {
-      const picker = document.getElementById('stream-chat-picker');
-      picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
-    });
-    document.querySelectorAll('.stream-chat-emoji').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const input = document.getElementById('stream-chat-input');
-        input.value += btn.dataset.emoji || '';
-        input.focus();
-      });
-    });
     document.getElementById('stream-chat-upload-btn').addEventListener('click', () => {
       document.getElementById('stream-chat-upload-input').click();
     });
@@ -282,17 +282,6 @@ const Messenger = (() => {
     document.getElementById('stream-chat-send').addEventListener('click', _sendStreamChatMessage);
     document.getElementById('stream-chat-input').addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _sendStreamChatMessage(); }
-    });
-    document.getElementById('stream-inline-chat-picker-btn').addEventListener('click', () => {
-      const picker = document.getElementById('stream-inline-chat-picker');
-      picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
-    });
-    document.querySelectorAll('.stream-inline-emoji').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const input = document.getElementById('stream-inline-chat-input');
-        input.value += btn.dataset.emoji || '';
-        input.focus();
-      });
     });
     document.getElementById('stream-inline-chat-upload-btn').addEventListener('click', () => {
       document.getElementById('stream-inline-chat-upload-input').click();
@@ -1885,6 +1874,7 @@ const Messenger = (() => {
     // Wire View More
     document.getElementById('popup-view-more').addEventListener('click', () => {
       overlay.classList.remove('open');
+      sessionStorage.setItem('_siteNav', '1');
       window.location.href = 'friends.html?view=' + uid;
     });
   }
@@ -2139,8 +2129,6 @@ const Messenger = (() => {
     _streamInlineVideo = null;
     _setStreamManagePanelOpen(false);
     document.getElementById('stream-chat-window').style.display = 'none';
-    document.getElementById('stream-chat-picker').style.display = 'none';
-    document.getElementById('stream-inline-chat-picker').style.display = 'none';
     _renderStreamChatStaging();
     _renderStreamInlineStaging();
   }
@@ -2771,11 +2759,11 @@ const Messenger = (() => {
       ? new Date(data.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       : '';
     let contentHTML = '';
-    if (data.gifUrl) contentHTML += '<div class="msg-gif-wrap"><img class="msg-gif" src="' + esc(data.gifUrl) + '" alt="GIF" loading="lazy"></div>';
+    if (data.gifUrl) contentHTML += '<div class="msg-gif-wrap"><img class="msg-gif lightbox-trigger" src="' + esc(data.gifUrl) + '" alt="GIF" loading="lazy" data-src="' + esc(data.gifUrl) + '"></div>';
     if (data.text) contentHTML += '<div class="msg-text">' + esc(data.text) + (data.edited ? '<span class="msg-edited-tag">(edited)</span>' : '') + '</div>';
     if (data.images && data.images.length) {
       contentHTML += '<div class="msg-images' + (data.images.length === 1 ? ' single' : '') + '">' +
-        data.images.map(url => '<img class="msg-image" src="' + esc(url) + '" alt="" loading="lazy">').join('') +
+        data.images.map(url => '<img class="msg-image lightbox-trigger" src="' + esc(url) + '" alt="" loading="lazy" data-src="' + esc(url) + '">').join('') +
         '</div>';
     }
     if (data.videoUrl) contentHTML += '<div class="msg-video-wrap"><video class="msg-video" src="' + esc(data.videoUrl) + '" controls preload="metadata"></video></div>';
@@ -2855,17 +2843,13 @@ const Messenger = (() => {
     let imageUrls = [];
     if (hasImages) {
       try {
-        imageUrls = await Promise.all(_streamChatFiles.map(async f => {
-          const fd = new FormData();
-          fd.append('file', f);
-          fd.append('upload_preset', CLOUDINARY_PRESET);
-          const res = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/image/upload', { method: 'POST', body: fd });
-          const d = await res.json();
-          if (!d.secure_url) throw new Error('Upload failed');
-          return d.secure_url;
-        }));
-      } catch {
-        showToast('Image upload failed.', 'error');
+        imageUrls = await Promise.all(_streamChatFiles.map(f =>
+          Nav.uploadToCloudinary(f, 'image')
+        ));
+      } catch (err) {
+        console.error(err);
+        showToast('Image upload failed: ' + (err.message || 'unknown'), 'error');
+        input.value = text;
         return;
       }
       _streamChatFiles = [];
@@ -2874,15 +2858,11 @@ const Messenger = (() => {
     let videoUrl = '';
     if (hasVideo) {
       try {
-        const fd = new FormData();
-        fd.append('file', _streamChatVideo);
-        fd.append('upload_preset', CLOUDINARY_PRESET);
-        const res = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/video/upload', { method: 'POST', body: fd });
-        const d = await res.json();
-        if (!d.secure_url) throw new Error('Upload failed');
-        videoUrl = d.secure_url;
-      } catch {
-        showToast('Video upload failed.', 'error');
+        videoUrl = await Nav.uploadToCloudinary(_streamChatVideo, 'video');
+      } catch (err) {
+        console.error(err);
+        showToast('Video upload failed: ' + (err.message || 'unknown'), 'error');
+        input.value = text;
         return;
       }
       if (_streamChatVideoUrl) URL.revokeObjectURL(_streamChatVideoUrl);
@@ -2947,17 +2927,13 @@ const Messenger = (() => {
     let imageUrls = [];
     if (hasImages) {
       try {
-        imageUrls = await Promise.all(_streamInlineFiles.map(async f => {
-          const fd = new FormData();
-          fd.append('file', f);
-          fd.append('upload_preset', CLOUDINARY_PRESET);
-          const res = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/image/upload', { method: 'POST', body: fd });
-          const d = await res.json();
-          if (!d.secure_url) throw new Error('Upload failed');
-          return d.secure_url;
-        }));
-      } catch {
-        showToast('Image upload failed.', 'error');
+        imageUrls = await Promise.all(_streamInlineFiles.map(f =>
+          Nav.uploadToCloudinary(f, 'image')
+        ));
+      } catch (err) {
+        console.error(err);
+        showToast('Image upload failed: ' + (err.message || 'unknown'), 'error');
+        input.value = text;
         return;
       }
       _streamInlineFiles = [];
@@ -2966,15 +2942,11 @@ const Messenger = (() => {
     let videoUrl = '';
     if (hasVideo) {
       try {
-        const fd = new FormData();
-        fd.append('file', _streamInlineVideo);
-        fd.append('upload_preset', CLOUDINARY_PRESET);
-        const res = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD + '/video/upload', { method: 'POST', body: fd });
-        const d = await res.json();
-        if (!d.secure_url) throw new Error('Upload failed');
-        videoUrl = d.secure_url;
-      } catch {
-        showToast('Video upload failed.', 'error');
+        videoUrl = await Nav.uploadToCloudinary(_streamInlineVideo, 'video');
+      } catch (err) {
+        console.error(err);
+        showToast('Video upload failed: ' + (err.message || 'unknown'), 'error');
+        input.value = text;
         return;
       }
       if (_streamInlineVideoUrl) URL.revokeObjectURL(_streamInlineVideoUrl);
