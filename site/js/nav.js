@@ -293,13 +293,57 @@ const Nav = (() => {
 
   function _startMainHeartbeat() {
     if (_mainHeartbeatTimer) clearInterval(_mainHeartbeatTimer);
+
+    // Give this tab a unique id so we can track how many site tabs are open.
+    const MAIN_TABS_KEY = 'rps_main_tabs_v1';
+    const TAB_STALE_MS = 6000;
+    const myTabId = 'tab_' + Date.now() + '_' + Math.random().toString(16).slice(2);
+
+    function _readTabs() {
+      try { return JSON.parse(localStorage.getItem(MAIN_TABS_KEY) || '{}'); }
+      catch (_) { return {}; }
+    }
+    function _writeTabs(tabs) {
+      try { localStorage.setItem(MAIN_TABS_KEY, JSON.stringify(tabs)); } catch (_) {}
+    }
+
     const write = () => {
       try { localStorage.setItem(MAIN_HEARTBEAT_KEY, String(Date.now())); } catch (_) {}
+      // Refresh our registry entry and prune stale ones
+      const tabs = _readTabs();
+      const now = Date.now();
+      tabs[myTabId] = now;
+      for (const id of Object.keys(tabs)) {
+        if (now - tabs[id] > TAB_STALE_MS) delete tabs[id];
+      }
+      _writeTabs(tabs);
     };
     write();
     _mainHeartbeatTimer = setInterval(write, 2000);
-    // Don't clear on unload — other site tabs might still be alive and will
-    // keep refreshing it. If they aren't, it naturally goes stale within ~10s.
+
+    // On tab close: remove self from registry. If we were the last tab AND a
+    // stream is active, tell the stream-core tab to force-stop immediately so
+    // it doesn't linger on screen or leave a ghost "live" state behind.
+    const _onUnload = () => {
+      const tabs = _readTabs();
+      delete tabs[myTabId];
+      // Prune stale entries so a crashed tab doesn't block cleanup forever.
+      const now = Date.now();
+      for (const id of Object.keys(tabs)) {
+        if (now - tabs[id] > TAB_STALE_MS) delete tabs[id];
+      }
+      const noMoreTabs = Object.keys(tabs).length === 0;
+      _writeTabs(tabs);
+      if (noMoreTabs) {
+        try {
+          localStorage.setItem('rps_force_stop_v1', '1');
+          // Drop heartbeat so the core tab's stale-check trips instantly too.
+          localStorage.removeItem(MAIN_HEARTBEAT_KEY);
+        } catch (_) {}
+      }
+    };
+    window.addEventListener('pagehide', _onUnload);
+    window.addEventListener('beforeunload', _onUnload);
   }
 
   function _ensureStreamManagerUI() {
@@ -856,7 +900,12 @@ const Nav = (() => {
     const recRow = document.getElementById('stream-manage-rec-row');
     const recTimeEl = document.getElementById('stream-manage-rec-time');
 
-    const live = !!(state && state.live);
+    // If the stream-core tab has gone silent for more than ~8s, treat the
+    // stream as dead so we don't keep a ghost button around after a crash.
+    let live = !!(state && state.live);
+    if (live && shared && shared.ts) {
+      if (Date.now() - Number(shared.ts || 0) > 10000) live = false;
+    }
     if (navBtn) {
       navBtn.style.display = live ? 'inline-flex' : 'none';
       navBtn.classList.toggle('live', live);

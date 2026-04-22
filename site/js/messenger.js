@@ -59,6 +59,11 @@ const Messenger = (() => {
       effectiveStatus: profile.effectiveStatus || 'online'
     });
 
+    // If a previous session left a stale stream doc around (crash, OS
+    // shutdown, forced quit), clear it up now so we never look "live" when
+    // nothing is actually publishing.
+    _cleanupStaleOwnStreams();
+
     // DM button
     document.getElementById('dm-btn').addEventListener('click', showDMView);
 
@@ -870,6 +875,11 @@ const Messenger = (() => {
     document.getElementById('channel-section').style.display = 'none';
     document.getElementById('members-sidebar').style.display = 'none';
     document.getElementById('chat-input-bar').style.display = 'none';
+    // Hide and tear down the streaming view so it doesn't overlay the grid
+    const _streamViewEl = document.getElementById('stream-view');
+    if (_streamViewEl) _streamViewEl.style.display = 'none';
+    document.getElementById('chat-messages').style.display = '';
+    _cleanupStreamingView();
     document.getElementById('chat-title').textContent = 'Discover Public Servers';
 
     const messagesEl = document.getElementById('chat-messages');
@@ -2142,6 +2152,40 @@ const Messenger = (() => {
     _syncFromSharedStreamState();
   }
 
+  // Best-effort: walk the servers the user belongs to and delete any stream
+  // docs under their uid that haven't received a heartbeat recently. Handles
+  // abrupt tab closures, OS shutdowns, and browser crashes during a stream.
+  async function _cleanupStaleOwnStreams() {
+    if (!currentUser) return;
+    const staleThresholdMs = 15000;
+    const now = Date.now();
+    try {
+      const memberships = await db.collection('users').doc(currentUser.uid)
+        .collection('servers').get();
+      const serverIds = memberships.docs.map(d => d.id);
+      for (const serverId of serverIds) {
+        try {
+          const channelsSnap = await db.collection('servers').doc(serverId)
+            .collection('channels').where('type', '==', 'streaming').get();
+          for (const chDoc of channelsSnap.docs) {
+            try {
+              const streamDocRef = chDoc.ref.collection('streams').doc(currentUser.uid);
+              const streamDoc = await streamDocRef.get();
+              if (!streamDoc.exists) continue;
+              const data = streamDoc.data() || {};
+              const hbMs = (data.lastHeartbeat && data.lastHeartbeat.toMillis)
+                ? data.lastHeartbeat.toMillis()
+                : ((data.startedAt && data.startedAt.toMillis) ? data.startedAt.toMillis() : 0);
+              if (!hbMs || (now - hbMs) > staleThresholdMs) {
+                streamDocRef.delete().catch(() => {});
+              }
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
   function _setStreamManagerLive(isLive) {
     const btn = document.getElementById('stream-manage-nav-btn');
     if (!btn) return;
@@ -2293,7 +2337,14 @@ const Messenger = (() => {
 
   function _syncFromSharedStreamState() {
     const state = _readSharedStreamState();
-    const mine = !!(state && state.live && currentUser && state.hostUid === currentUser.uid);
+    // Treat the state as offline if the stream-core tab hasn't refreshed it
+    // recently. This covers the case where the core tab was killed (browser
+    // quit, OS shutdown, crash) without running its beforeunload handler.
+    let mine = !!(state && state.live && currentUser && state.hostUid === currentUser.uid);
+    if (mine && state.ts && (Date.now() - Number(state.ts || 0) > 10000)) {
+      mine = false;
+      try { localStorage.removeItem(STREAM_STATE_KEY); } catch (_) {}
+    }
     _isStreaming = mine;
     _streamStartedAtMs = mine ? Number(state.startedAt || Date.now()) : null;
     _streamContext = mine
@@ -2425,6 +2476,9 @@ const Messenger = (() => {
           // stream — so the streamer can see their own output. We pass a
           // different identity (":v") so we don't kick the publisher off.
           _joinStream(serverId, channelId, streamerUid, data.livekitRoom, data.livekitUrl);
+        } else if (change.type === 'modified') {
+          // Keep the displayed name in sync if the streamer renamed themselves.
+          _updateStreamCardName(streamerUid, data.username || 'Someone');
         } else if (change.type === 'removed') {
           _removeStreamCard(streamerUid);
           // Close viewer PC for this streamer
@@ -2493,6 +2547,15 @@ const Messenger = (() => {
       if (vid) vid.srcObject = null;
       card.remove();
     }
+  }
+
+  function _updateStreamCardName(streamerUid, username) {
+    const card = document.querySelector('[data-stream-uid="' + streamerUid + '"]');
+    if (!card) return;
+    const nameEl = card.querySelector('.stream-card-name');
+    if (!nameEl) return;
+    nameEl.textContent = username;
+    nameEl.setAttribute('title', username);
   }
 
   async function _startStreaming(serverId, channelId) {
@@ -2934,10 +2997,28 @@ const Messenger = (() => {
     }
   }
 
-  // Cleanup on page unload
-  window.addEventListener('beforeunload', () => {
+  // Cleanup on page unload — also covers the "user closed main tab while
+  // streaming" case: we synchronously tell the stream-core tab to stop and
+  // best-effort delete our firestore stream doc so other viewers see us go
+  // offline immediately instead of staring at a frozen card.
+  function _onMainUnload() {
+    try {
+      if (_isStreaming && _streamContext && currentUser) {
+        // Broadcast a stop command to the core tab
+        try { _sendCoreStreamCommand('stop', { hostUid: currentUser.uid }); } catch (_) {}
+        // Best-effort firestore doc delete — runs sync within the unload tick
+        try {
+          db.collection('servers').doc(_streamContext.serverId)
+            .collection('channels').doc(_streamContext.channelId)
+            .collection('streams').doc(currentUser.uid)
+            .delete().catch(() => {});
+        } catch (_) {}
+      }
+    } catch (_) {}
     _cleanupStreaming();
-  });
+  }
+  window.addEventListener('beforeunload', _onMainUnload);
+  window.addEventListener('pagehide', _onMainUnload);
 
   async function _deleteMessage(docRef, data) {
     const cached = data && profileCache.get(data.uid);

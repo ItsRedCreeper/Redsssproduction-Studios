@@ -2057,6 +2057,11 @@ body.messenger-page #app {
 
 .chat-input {
   flex: 1;
+  /* Prevent the input from pushing past its flex container when the user types
+     a long line — without min-width:0, flex items default to min-width:auto
+     which equals the content's intrinsic width. */
+  min-width: 0;
+  width: 100%;
   padding: 10px 16px;
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -2403,8 +2408,11 @@ body.messenger-page #app {
   display: flex;
   gap: 10px;
   padding: 14px 20px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
-.reply-input-row .chat-input { flex: 1; }
+.reply-input-row .chat-input { flex: 1; min-width: 0; }
 
 /* ── Message actions (edit/delete/reply) ── */
 .msg {
@@ -3152,6 +3160,11 @@ body.messenger-page #app {
   display: flex;
   flex-direction: column;
   max-height: min(520px, calc(100vh - 100px));
+  /* Allow the user to resize the window by its bottom-right corner */
+  resize: both;
+  min-width: 260px;
+  min-height: 240px;
+  max-width: calc(100vw - 24px);
 }
 
 .stream-manage-panel { top: 62px; }

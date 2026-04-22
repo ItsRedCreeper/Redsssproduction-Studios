@@ -5,8 +5,8 @@
   const STREAM_CMD_KEY = 'rps_stream_cmd_v1';
   const STREAM_PENDING_START_KEY = 'rps_stream_pending_start_v1';
   const MAIN_HEARTBEAT_KEY = 'rps_main_heartbeat_v1';
-  const MAIN_HEARTBEAT_STALE_MS = 12000;   // main site considered gone after 12s
-  const MAIN_HEARTBEAT_IDLE_CLOSE_MS = 30000; // close idle core tab after 30s without main
+  const MAIN_HEARTBEAT_STALE_MS = 5000;    // main site considered gone after 5s of silence
+  const MAIN_HEARTBEAT_IDLE_CLOSE_MS = 8000; // close idle core tab after 8s without main
 
   let currentUser = null;
   let localStream = null;
@@ -181,6 +181,16 @@
   function _startHeartbeatWatch() {
     if (_heartbeatWatchTimer) clearInterval(_heartbeatWatchTimer);
     _heartbeatWatchTimer = setInterval(() => {
+      // Fast-path: if the main site set an explicit force-stop flag, honour it.
+      try {
+        if (localStorage.getItem('rps_force_stop_v1') === '1') {
+          localStorage.removeItem('rps_force_stop_v1');
+          if (isLive) _stopStream(true);
+          else _tryClose();
+          return;
+        }
+      } catch (_) {}
+
       const raw = localStorage.getItem(MAIN_HEARTBEAT_KEY);
       const ts = raw ? parseInt(raw, 10) : 0;
       const now = Date.now();
@@ -197,7 +207,7 @@
       } else if (!isLive && !isStarting && goneFor > MAIN_HEARTBEAT_IDLE_CLOSE_MS) {
         _tryClose();
       }
-    }, 2000);
+    }, 1000);
   }
 
   async function _handleCommand(cmd) {
@@ -318,9 +328,36 @@
       await streamRef.set({
         username: streamContext.username,
         startedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        lastHeartbeat: firebase.firestore.FieldValue.serverTimestamp(),
         livekitRoom: roomName,
         livekitUrl: LIVEKIT_URL
       });
+
+      // Watch our own user doc so we can push username renames onto the stream
+      // card in real time. Clean up on stop.
+      const userUnsub = db.collection('users').doc(currentUser.uid)
+        .onSnapshot(doc => {
+          if (!isLive || !streamContext) return;
+          const data = doc.data() || {};
+          const newName = data.username || streamContext.username;
+          if (newName && newName !== streamContext.username) {
+            streamContext.username = newName;
+            streamRef.update({ username: newName }).catch(() => {});
+          }
+        });
+      streamUnsubs.push(userUnsub);
+
+      // Refresh the lastHeartbeat field every 5s so that if this tab dies
+      // without a clean shutdown, the main site can detect stale docs and
+      // clean them up.
+      const hbTimer = setInterval(() => {
+        if (!isLive || !streamContext) return;
+        streamRef.update({ lastHeartbeat: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+        // Also refresh the shared localStorage state so site tabs can detect
+        // that the core tab is still alive via the state.ts field.
+        _publishState();
+      }, 3000);
+      streamUnsubs.push(() => clearInterval(hbTimer));
 
       _hideStartUI();
       _setStatus('Live! You can minimise this tab.');
@@ -408,6 +445,7 @@
     }
     const payload = {
       live: true,
+      ts: Date.now(),
       serverId: streamContext.serverId,
       channelId: streamContext.channelId,
       channelName: streamContext.channelName,
