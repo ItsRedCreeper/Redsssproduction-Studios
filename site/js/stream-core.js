@@ -4,10 +4,13 @@
   const STREAM_STATE_KEY = 'rps_stream_state_v1';
   const STREAM_CMD_KEY = 'rps_stream_cmd_v1';
   const STREAM_PENDING_START_KEY = 'rps_stream_pending_start_v1';
+  const MAIN_HEARTBEAT_KEY = 'rps_main_heartbeat_v1';
+  const MAIN_HEARTBEAT_STALE_MS = 12000;   // main site considered gone after 12s
+  const MAIN_HEARTBEAT_IDLE_CLOSE_MS = 30000; // close idle core tab after 30s without main
 
   let currentUser = null;
   let localStream = null;
-  let streamContext = null; // { serverId, channelId, channelName, username, controllerUrl }
+  let streamContext = null; // { serverId, channelId, channelName, username, controllerUrl, quality }
   let startedAt = 0;
   let isLive = false;
   let isStarting = false;
@@ -42,35 +45,80 @@
     return 'rps_' + streamContext.serverId + '_' + streamContext.channelId + '_' + currentUser.uid;
   }
 
-  let _pendingCmd = null;  // holds the start cmd until the user clicks the button
-  let _userReady = false;  // true once the user has clicked Share Screen
+  // Map a quality preset to getDisplayMedia constraints.
+  function _qualityToConstraints(q) {
+    const fps = (q && (q.fps === 60 || q.fps === '60')) ? 60 : 30;
+    let w = 1920, h = 1080;
+    switch (q && q.resolution) {
+      case '720p':  w = 1280; h = 720;  break;
+      case '1080p': w = 1920; h = 1080; break;
+      case '1440p': w = 2560; h = 1440; break;
+      case '4k':    w = 3840; h = 2160; break;
+      default:      w = 1920; h = 1080;
+    }
+    return {
+      video: {
+        cursor: 'always',
+        frameRate: { ideal: fps, max: fps },
+        width:  { ideal: w, max: w },
+        height: { ideal: h, max: h },
+        displaySurface: 'monitor',
+        resizeMode: 'none'
+      },
+      audio: false
+    };
+  }
+
+  // Map quality preset to a LiveKit bitrate budget.
+  function _qualityToBitrate(q) {
+    const fps = (q && (q.fps === 60 || q.fps === '60')) ? 60 : 30;
+    switch (q && q.resolution) {
+      case '720p':  return fps === 60 ? 3_000_000 : 2_000_000;
+      case '1080p': return fps === 60 ? 5_000_000 : 3_500_000;
+      case '1440p': return fps === 60 ? 8_000_000 : 5_500_000;
+      case '4k':    return fps === 60 ? 14_000_000 : 9_000_000;
+      default:      return 3_500_000;
+    }
+  }
 
   function _setStatus(msg) {
     const el = document.getElementById('status');
     if (el) el.textContent = msg;
   }
 
-  function _hideStartUI() {
-    const ui = document.getElementById('start-ui');
-    if (ui) ui.style.display = 'none';
+  function _showFallbackButton(msg) {
+    const startUi = document.getElementById('start-ui');
+    const idleUi = document.getElementById('idle-ui');
+    if (idleUi) idleUi.style.display = 'none';
+    if (startUi) startUi.style.display = 'flex';
+    if (msg) _setStatus(msg);
+    const btn = document.getElementById('start-btn');
+    if (btn) btn.disabled = false;
   }
 
-  // Wire the start button — must happen before auth resolves so the element exists.
+  function _hideStartUI() {
+    const startUi = document.getElementById('start-ui');
+    const idleUi = document.getElementById('idle-ui');
+    if (startUi) startUi.style.display = 'none';
+    if (idleUi) idleUi.style.display = 'none';
+  }
+
+  // Wire the fallback button for browsers that reject programmatic getDisplayMedia.
   document.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById('start-btn');
     if (!btn) return;
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       _setStatus('Starting screen share...');
-      _userReady = true;
       if (_pendingCmd) {
-        await _handleCommand(_pendingCmd);
+        const cmd = _pendingCmd;
         _pendingCmd = null;
-      } else {
-        _setStatus('Waiting for stream command...');
+        await _startStream(cmd);
       }
     });
   });
+
+  let _pendingCmd = null;  // the most recent start cmd, ready to run
 
   auth.onAuthStateChanged(async user => {
     if (!user) {
@@ -79,8 +127,9 @@
     }
     currentUser = user;
     _initBridge();
-    // Read the pending start payload but don't call getDisplayMedia yet —
-    // wait for the user to click the button (guarantees user gesture in Chrome).
+    _startHeartbeatWatch();
+
+    // Check for a pending start payload written by messenger.js
     const raw = localStorage.getItem(STREAM_PENDING_START_KEY);
     if (raw) {
       try {
@@ -88,12 +137,7 @@
         if (cmd && cmd.hostUid === currentUser.uid && cmd.action === 'start'
             && cmd.ts && Date.now() - cmd.ts <= 60000) {
           localStorage.removeItem(STREAM_PENDING_START_KEY);
-          if (_userReady) {
-            await _handleCommand(cmd);
-          } else {
-            _pendingCmd = cmd;
-            _setStatus('Auth ready. Click "Share Screen & Go Live" to begin.');
-          }
+          await _startStream(cmd);
           return;
         }
       } catch (_) {}
@@ -122,6 +166,31 @@
     } catch (_) {}
   }
 
+  // Watch the main site's heartbeat — if it stops, tear down the stream and close.
+  let _heartbeatWatchTimer = null;
+  let _noHeartbeatSince = 0;
+  function _startHeartbeatWatch() {
+    if (_heartbeatWatchTimer) clearInterval(_heartbeatWatchTimer);
+    _heartbeatWatchTimer = setInterval(() => {
+      const raw = localStorage.getItem(MAIN_HEARTBEAT_KEY);
+      const ts = raw ? parseInt(raw, 10) : 0;
+      const now = Date.now();
+      const alive = ts && (now - ts) < MAIN_HEARTBEAT_STALE_MS;
+      if (alive) {
+        _noHeartbeatSince = 0;
+        return;
+      }
+      if (!_noHeartbeatSince) _noHeartbeatSince = now;
+      const goneFor = now - _noHeartbeatSince;
+      if (isLive && goneFor > MAIN_HEARTBEAT_STALE_MS) {
+        _setStatus('Main site closed — stopping stream.');
+        _stopStream(true);
+      } else if (!isLive && !isStarting && goneFor > MAIN_HEARTBEAT_IDLE_CLOSE_MS) {
+        _tryClose();
+      }
+    }, 2000);
+  }
+
   async function _handleCommand(cmd) {
     if (!cmd || !cmd.id) return;
     if (lastCmdId === cmd.id) return;
@@ -131,12 +200,6 @@
     if (cmd.hostUid && cmd.hostUid !== currentUser.uid) return;
 
     if (cmd.action === 'start') {
-      // If the user hasn't clicked the button yet, queue the command.
-      if (!_userReady) {
-        _pendingCmd = cmd;
-        _setStatus('Stream command received. Click "Share Screen & Go Live" to begin.');
-        return;
-      }
       await _startStream(cmd);
       return;
     }
@@ -145,7 +208,6 @@
       return;
     }
     if (cmd.action === 'openChat') {
-      // Core tab has no chat UI; no-op.
       return;
     }
     if (cmd.action === 'snapshot') {
@@ -158,11 +220,12 @@
     }
   }
 
-  function _consumePendingStart() { /* replaced by button-gated flow */ }
-
   async function _startStream(cmd) {
     if (isLive || isStarting) return;
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      _setStatus('This browser does not support screen sharing.');
+      return;
+    }
     isStarting = true;
 
     streamContext = {
@@ -170,32 +233,29 @@
       channelId: cmd.channelId,
       channelName: cmd.channelName || 'Streaming Channel',
       username: cmd.username || 'Someone',
-      controllerUrl: cmd.controllerUrl || 'messenger.html'
+      controllerUrl: cmd.controllerUrl || 'messenger.html',
+      quality: cmd.quality || { resolution: '1080p', fps: 30 }
     };
 
     try {
       _setStatus('Requesting screen share...');
-      localStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          cursor: 'always',
-          frameRate: { ideal: 60, max: 60 },
-          width: { ideal: 2560, max: 3840 },
-          height: { ideal: 1440, max: 2160 },
-          displaySurface: 'monitor',
-          resizeMode: 'none'
-        },
-        audio: false
-      });
-    } catch (_) {
-      streamContext = null;
-      isStarting = false;
-      _setStatus('Screen share cancelled or denied. Close this tab and try again.');
-      const btn = document.getElementById('start-btn');
-      if (btn) btn.disabled = false;
-      return;
-    }
+      const constraints = _qualityToConstraints(streamContext.quality);
+      try {
+        localStream = await navigator.mediaDevices.getDisplayMedia(constraints);
+      } catch (gdmErr) {
+        // Browser rejected — most likely missing user gesture. Show the fallback button.
+        streamContext = null;
+        isStarting = false;
+        _pendingCmd = cmd;
+        const name = gdmErr && gdmErr.name ? gdmErr.name : '';
+        if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'InvalidStateError') {
+          _showFallbackButton('Your browser needs a click to allow screen share.');
+        } else {
+          _showFallbackButton('Screen share cancelled. Click below to try again.');
+        }
+        return;
+      }
 
-    try {
       const vid = document.getElementById('core-video');
       if (vid) vid.srcObject = localStream;
 
@@ -208,8 +268,6 @@
       const roomName = _livekitRoomName();
       const token = await _getLiveKitToken(roomName, true);
       livekitRoom = new LivekitClient.Room({ adaptiveStream: false, dynacast: false });
-      // Force TURN relay so restrictive networks (Chromebook Wi-Fi, corporate firewalls)
-      // that block UDP can still connect via TCP/TLS over port 443.
       await Promise.race([
         livekitRoom.connect(LIVEKIT_URL, token, {
           rtcConfig: { iceTransportPolicy: 'relay' }
@@ -218,17 +276,17 @@
       ]);
 
       const videoTrack = localStream.getVideoTracks()[0];
+      const bitrate = _qualityToBitrate(streamContext.quality);
+      const fps = (streamContext.quality && (streamContext.quality.fps === 60 || streamContext.quality.fps === '60')) ? 60 : 30;
       await livekitRoom.localParticipant.publishTrack(videoTrack, {
         source: LivekitClient.Track.Source.ScreenShare,
-        videoEncoding: { maxBitrate: 3_000_000, maxFramerate: 30 }
+        videoEncoding: { maxBitrate: bitrate, maxFramerate: fps }
       });
 
-      // Only mark live AFTER we have published successfully.
       isLive = true;
       startedAt = Date.now();
       _publishState();
 
-      // Write the stream doc so viewers know where to connect.
       const streamRef = _streamRef();
       await streamRef.set({
         username: streamContext.username,
@@ -242,7 +300,6 @@
     } catch (err) {
       console.error('Stream start failed:', err);
       _setStatus('Failed to start stream: ' + (err && err.message ? err.message : 'unknown error'));
-      // Cleanup partial state so user can retry.
       if (livekitRoom) {
         try { await livekitRoom.disconnect(); } catch (_) {}
         livekitRoom = null;
@@ -254,8 +311,7 @@
       streamContext = null;
       isLive = false;
       _clearState();
-      const btn = document.getElementById('start-btn');
-      if (btn) btn.disabled = false;
+      _showFallbackButton();
     } finally {
       isStarting = false;
     }

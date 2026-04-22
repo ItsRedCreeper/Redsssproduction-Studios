@@ -3176,6 +3176,26 @@ body.messenger-page #app {
   margin-top: 10px;
 }
 
+.stream-quality-select {
+  background: var(--bg-panel, #202327);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 62%;
+  cursor: pointer;
+}
+.stream-quality-select:focus { outline: none; border-color: var(--accent, #5865f2); }
+.stream-manage-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 6px 0 2px;
+  line-height: 1.35;
+  opacity: 0.8;
+}
+
 .stream-chat-window {
   bottom: 16px;
   height: min(520px, calc(100vh - 92px));

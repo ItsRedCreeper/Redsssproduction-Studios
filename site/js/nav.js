@@ -11,6 +11,8 @@ const Nav = (() => {
   const IDLE_MS = 10 * 60 * 1000; // 10 minutes
   const STREAM_STATE_KEY = 'rps_stream_state_v1';
   const STREAM_CMD_KEY = 'rps_stream_cmd_v1';
+  const MAIN_HEARTBEAT_KEY = 'rps_main_heartbeat_v1';
+  let _mainHeartbeatTimer = null;
   let _streamStateTimer = null;
   let _streamControlChannel = null;
   let _navStreamChatUnsub = null;
@@ -162,6 +164,10 @@ const Nav = (() => {
     _navStreamChatCurrentUser = user;
     const isMessengerPage = document.body.classList.contains('messenger-page');
 
+    // Main-site heartbeat — tells the stream-core tab that a real site page is
+    // still open. If this stops writing, the core tab self-destructs.
+    _startMainHeartbeat();
+
     const navBtn = document.getElementById('stream-manage-nav-btn');
     const panel = document.getElementById('stream-manage-panel');
     const closeBtn = document.getElementById('stream-manage-close');
@@ -226,6 +232,17 @@ const Nav = (() => {
         }
       };
     } catch (_) {}
+  }
+
+  function _startMainHeartbeat() {
+    if (_mainHeartbeatTimer) clearInterval(_mainHeartbeatTimer);
+    const write = () => {
+      try { localStorage.setItem(MAIN_HEARTBEAT_KEY, String(Date.now())); } catch (_) {}
+    };
+    write();
+    _mainHeartbeatTimer = setInterval(write, 2000);
+    // Don't clear on unload — other site tabs might still be alive and will
+    // keep refreshing it. If they aren't, it naturally goes stale within ~10s.
   }
 
   function _ensureStreamManagerUI() {

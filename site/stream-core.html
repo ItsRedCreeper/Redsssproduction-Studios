@@ -34,6 +34,26 @@
     }
     #start-ui h2 { margin: 0; font-size: 1.3rem; }
     #start-ui p { margin: 0; color: #aaa; font-size: 0.9rem; }
+    #idle-ui {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      text-align: center;
+      padding: 32px;
+    }
+    #idle-ui h2 { margin: 0; font-size: 1.3rem; }
+    #idle-ui p { margin: 0; color: #aaa; font-size: 0.9rem; }
+    #status {
+      position: fixed;
+      bottom: 16px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #aaa;
+      min-height: 1.2em;
+    }
     #start-btn {
       margin-top: 8px;
       padding: 12px 32px;
@@ -47,18 +67,23 @@
     }
     #start-btn:hover { background: #c02020; }
     #start-btn:disabled { background: #555; cursor: default; }
-    #status { font-size: 0.85rem; color: #aaa; min-height: 1.2em; }
   </style>
 </head>
 <body>
   <video id="core-video" autoplay playsinline muted></video>
 
-  <div id="start-ui">
+  <div id="start-ui" style="display:none">
     <h2>RedsssProduction Studios — Stream Core</h2>
-    <p>Click the button below to share your screen and go live.</p>
+    <p>Your browser blocked the automatic screen-share prompt. Click below to continue.</p>
     <button id="start-btn">Share Screen &amp; Go Live</button>
-    <div id="status">Waiting for you to click...</div>
   </div>
+
+  <div id="idle-ui">
+    <h2>RedsssProduction Studios — Stream Core</h2>
+    <p>Starting your stream...</p>
+  </div>
+
+  <div id="status">Preparing...</div>
 
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>

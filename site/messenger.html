@@ -381,6 +381,25 @@
       <div class="stream-manage-row"><span>Status</span><strong id="stream-manage-status">Offline</strong></div>
       <div class="stream-manage-row"><span>Channel</span><strong id="stream-manage-channel">None</strong></div>
       <div class="stream-manage-row"><span>Uptime</span><strong id="stream-manage-uptime">00:00:00</strong></div>
+      <div class="stream-manage-row">
+        <span>Resolution</span>
+        <select id="stream-manage-resolution" class="stream-quality-select">
+          <option value="720p">720p</option>
+          <option value="1080p" selected>1080p (HD)</option>
+          <option value="1440p">1440p (2K)</option>
+          <option value="4k">4K</option>
+        </select>
+      </div>
+      <div class="stream-manage-row">
+        <span>Frame rate</span>
+        <select id="stream-manage-fps" class="stream-quality-select">
+          <option value="30" selected>30 FPS</option>
+          <option value="60">60 FPS</option>
+        </select>
+      </div>
+      <div class="stream-manage-hint" id="stream-manage-quality-hint">
+        Changes apply the next time you start a stream.
+      </div>
       <div class="stream-manage-actions">
         <button class="btn btn-sm" id="stream-manage-chat-btn">Chat</button>
         <button class="btn btn-sm" id="stream-manage-snap-btn">Take Picture</button>

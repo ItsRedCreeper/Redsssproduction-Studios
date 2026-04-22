@@ -198,6 +198,28 @@ const Messenger = (() => {
         _stopStreaming(_streamContext.serverId, _streamContext.channelId);
       }
     });
+
+    // Quality selectors — populate from localStorage and save on change.
+    (function _wireStreamQualitySelectors() {
+      const resEl = document.getElementById('stream-manage-resolution');
+      const fpsEl = document.getElementById('stream-manage-fps');
+      if (!resEl || !fpsEl) return;
+      const q = _loadStreamQuality();
+      resEl.value = q.resolution;
+      fpsEl.value = String(q.fps);
+      const onChange = () => {
+        const next = {
+          resolution: resEl.value,
+          fps: parseInt(fpsEl.value, 10) === 60 ? 60 : 30
+        };
+        _saveStreamQuality(next);
+        if (_isStreaming) {
+          showToast('Quality change will apply the next time you start a stream.', 'info');
+        }
+      };
+      resEl.addEventListener('change', onChange);
+      fpsEl.addEventListener('change', onChange);
+    })();
     document.getElementById('stream-chat-close').addEventListener('click', () => {
       document.getElementById('stream-chat-window').style.display = 'none';
     });
@@ -2003,9 +2025,27 @@ const Messenger = (() => {
   const STREAM_STATE_KEY = 'rps_stream_state_v1';
   const STREAM_CMD_KEY = 'rps_stream_cmd_v1';
   const STREAM_PENDING_START_KEY = 'rps_stream_pending_start_v1';
+  const STREAM_QUALITY_KEY = 'rps_stream_quality_v1';
   let _streamControlChannel = null;
   let _lastStreamCmdId = null;
   const LIVEKIT_URL = 'wss://redsssproduction-studios-aiosfout.livekit.cloud';
+
+  function _loadStreamQuality() {
+    try {
+      const raw = localStorage.getItem(STREAM_QUALITY_KEY);
+      if (!raw) return { resolution: '1080p', fps: 30 };
+      const q = JSON.parse(raw);
+      const resolution = ['720p', '1080p', '1440p', '4k'].includes(q && q.resolution) ? q.resolution : '1080p';
+      const fps = (q && (q.fps === 60 || q.fps === '60')) ? 60 : 30;
+      return { resolution, fps };
+    } catch (_) {
+      return { resolution: '1080p', fps: 30 };
+    }
+  }
+
+  function _saveStreamQuality(q) {
+    try { localStorage.setItem(STREAM_QUALITY_KEY, JSON.stringify(q)); } catch (_) {}
+  }
 
   async function _getLiveKitToken(roomName, canPublish) {
     const idToken = await auth.currentUser.getIdToken(/* forceRefresh= */ true);
@@ -2371,6 +2411,7 @@ const Messenger = (() => {
     if (_isStreaming) return;
     _streamContext = { serverId, channelId, channelName: (_streamContext && _streamContext.channelName) || 'Streaming Channel' };
 
+    const quality = _loadStreamQuality();
     const startPayload = {
       id: Date.now() + ':pending-start',
       ts: Date.now(),
@@ -2381,7 +2422,8 @@ const Messenger = (() => {
       channelId,
       channelName: _streamContext.channelName,
       username: userProfile.username || 'Someone',
-      controllerUrl: window.location.href
+      controllerUrl: window.location.href,
+      quality
     };
     localStorage.setItem(STREAM_PENDING_START_KEY, JSON.stringify(startPayload));
 
@@ -2420,7 +2462,8 @@ const Messenger = (() => {
         channelName: _streamContext.channelName,
         hostUid: currentUser.uid,
         username: userProfile.username || 'Someone',
-        controllerUrl: window.location.href
+        controllerUrl: window.location.href,
+        quality
       });
     }, 700);
 
@@ -2433,7 +2476,7 @@ const Messenger = (() => {
 
     document.getElementById('stream-stop-btn').style.display = '';
     document.getElementById('stream-go-live-btn').style.display = 'none';
-    showToast('Check the stream tab — click "Share Screen & Go Live" there to start.', 'info');
+    showToast('Screen share prompt opened in a new tab. Pick what to share.', 'info');
   }
 
   async function _stopStreaming(serverId, channelId) {
