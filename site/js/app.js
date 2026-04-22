@@ -132,13 +132,29 @@ const App = (() => {
 
   /* ── Load user profile from Firestore ── */
   async function _loadUserProfile() {
+    const fallback = () => ({
+      username: currentUser.displayName || 'User', avatar: '',
+      status: 'auto', effectiveStatus: 'online'
+    });
     try {
-      const doc = await db.collection('users').doc(currentUser.uid).get();
-      userProfile = doc.exists
-        ? doc.data()
-        : { username: currentUser.displayName || 'User', avatar: '', status: 'auto', effectiveStatus: 'online' };
+      const timeoutP = new Promise((_, rej) =>
+        setTimeout(() => rej(new Error('timeout')), 2000));
+      const docP = db.collection('users').doc(currentUser.uid).get();
+      const doc  = await Promise.race([docP, timeoutP]);
+      userProfile = doc.exists ? doc.data() : fallback();
+      // If we timed out and used the fallback, patch in the real data once it arrives.
+      docP.then(late => {
+        if (!late.exists) return;
+        userProfile = late.data();
+        _renderUserUI();
+      }).catch(() => {});
     } catch {
-      userProfile = { username: currentUser.displayName || 'User', avatar: '', status: 'auto', effectiveStatus: 'online' };
+      userProfile = fallback();
+      db.collection('users').doc(currentUser.uid).get().then(late => {
+        if (!late.exists) return;
+        userProfile = late.data();
+        _renderUserUI();
+      }).catch(() => {});
     }
   }
 

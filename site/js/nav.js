@@ -34,15 +34,31 @@ const Nav = (() => {
           return;
         }
 
-        // Load Firestore profile
+        // Load Firestore profile — 2 s timeout so a slow Firestore cold-start
+        // never holds up the loading screen.  If we time out we show the app
+        // with a sensible fallback and silently patch once the data arrives.
+        const _fallbackProfile = () => ({
+          username: user.displayName || 'User', avatar: '',
+          status: 'auto', effectiveStatus: 'online'
+        });
         let profile;
+        let _timedOut = false;
+        const _docPromise = db.collection('users').doc(user.uid).get();
         try {
-          const doc = await db.collection('users').doc(user.uid).get();
-          profile = doc.exists
-            ? doc.data()
-            : { username: user.displayName || 'User', avatar: '', status: 'auto', effectiveStatus: 'online' };
+          const timeoutP = new Promise((_, rej) =>
+            setTimeout(() => rej(new Error('timeout')), 2000));
+          const doc = await Promise.race([_docPromise, timeoutP]);
+          profile = doc.exists ? doc.data() : _fallbackProfile();
         } catch {
-          profile = { username: user.displayName || 'User', avatar: '', status: 'auto', effectiveStatus: 'online' };
+          // Timed out or hard error — show the app now with a fallback profile,
+          // then silently update the UI once the real data arrives.
+          _timedOut = true;
+          profile = _fallbackProfile();
+          _docPromise.then(late => {
+            if (!late.exists) return;
+            _currentProfile = late.data();
+            _renderUserUI(user, _currentProfile);
+          }).catch(() => {});
         }
 
         // Show app
