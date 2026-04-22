@@ -3550,6 +3550,276 @@ body.messenger-page #app {
 .picker-tab-btn:hover { background: var(--bg-tertiary); color: var(--text); }
 .picker-tab-btn.active { color: var(--red); border-bottom: 2px solid var(--red); }
 
+/* ═══════════════════ Stream Channel Hub (Discord-style join) ═══════════════════ */
+.stream-channel-nav-btn {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--red);
+  background: linear-gradient(135deg, var(--red-dark), var(--red));
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+  box-shadow: 0 0 0 2px rgba(192,57,43,.15);
+}
+.stream-channel-nav-btn:hover { filter: brightness(1.1); }
+.stream-channel-live-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #43b581;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.stream-channel-hub {
+  position: fixed;
+  z-index: 2500;
+  width: 220px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  overflow: hidden;
+  display: none;
+}
+.stream-channel-hub-header {
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stream-channel-hub-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+}
+.stream-hub-btn {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  font-size: 13px;
+}
+
+/* Stream list modal (medium-sized popup with previews) */
+.stream-list-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.stream-list-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  backdrop-filter: blur(2px);
+}
+.stream-list-window {
+  position: relative;
+  width: min(720px, 92vw);
+  max-height: 80vh;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0,0,0,.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.stream-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  color: var(--text);
+}
+.stream-list-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.stream-list-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform .15s, border-color .15s;
+  display: flex;
+  flex-direction: column;
+}
+.stream-list-card:hover { transform: translateY(-2px); border-color: var(--red); }
+.stream-list-card-video-wrap {
+  position: relative;
+  aspect-ratio: 16/9;
+  background: #000;
+}
+.stream-list-card-video-wrap video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.stream-list-live-dot {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.stream-list-live-dot::before { content: 'LIVE'; }
+.stream-list-card-bar {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+}
+.stream-list-card-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+/* Floating stream viewer (small, resizable, draggable) */
+.floating-stream-viewer {
+  position: fixed;
+  z-index: 2600;
+  min-width: 280px;
+  min-height: 200px;
+  width: 360px;
+  height: 260px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  resize: both;
+}
+.floating-stream-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  cursor: move;
+  user-select: none;
+}
+.floating-stream-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.floating-stream-actions {
+  display: flex;
+  gap: 4px;
+}
+.floating-stream-icon {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.floating-stream-icon:hover { color: var(--text); background: var(--bg-hover); }
+.floating-stream-video-wrap {
+  flex: 1;
+  background: #000;
+  min-height: 0;
+}
+.floating-stream-video-wrap video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.floating-stream-footer {
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+.floating-stream-volume-slider {
+  flex: 1;
+  accent-color: var(--red);
+  cursor: pointer;
+}
+
+/* Fullscreen pop-out overlay for the floating viewer */
+.floating-stream-popout-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  background: rgba(0,0,0,.97);
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.floating-stream-popout-overlay video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.floating-stream-popout-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.2);
+  background: rgba(0,0,0,.6);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.floating-stream-popout-close:hover { background: rgba(255,255,255,.15); }
+
 .picker-tab-content {
   flex: 1;
   overflow: hidden;

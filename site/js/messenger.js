@@ -316,6 +316,22 @@ const Messenger = (() => {
     _wireStreamingNavGuard();
     _initStreamControlBridge();
 
+    // React when the user leaves the stream channel from anywhere (e.g. hub
+    // popup on home page). If we're currently viewing that channel, clean up
+    // and switch back to the DM list.
+    if (typeof Nav !== 'undefined' && Nav.onChannelChange) {
+      Nav.onChannelChange(ch => {
+        if (ch) return; // joined/renamed — nothing to do here
+        if (_streamContext) {
+          _cleanupStreamingView();
+          _streamContext = null;
+          const sv = document.getElementById('stream-view');
+          if (sv) sv.style.display = 'none';
+          if (currentChat && currentChat.type === 'streaming') showDMView();
+        }
+      });
+    }
+
     // Initialize
     loadFriends();
     _listenNonFriendDMs();
@@ -2438,6 +2454,13 @@ const Messenger = (() => {
     _cleanupStreamingView();
 
     _streamContext = { serverId, channelId, channelName };
+
+    // Auto-join this channel — exposes the Stream Channel nav button and
+    // keeps the user "in" this channel even after they navigate to another
+    // page (home, games, friends, support).
+    if (typeof Nav !== 'undefined' && Nav.joinChannel) {
+      Nav.joinChannel(serverId, channelId, channelName);
+    }
     _updateStreamManagePanel();
 
     currentChat = { type: 'streaming', serverId, channelId };

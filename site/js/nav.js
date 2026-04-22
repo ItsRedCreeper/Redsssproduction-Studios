@@ -173,6 +173,17 @@ const Nav = (() => {
     // still open. If this stops writing, the core tab self-destructs.
     _startMainHeartbeat();
 
+    // Wire up the new channel-hub UI (works on every page).
+    _wireChannelHub();
+    _wireStreamListModal();
+    _wireFloatingStreamViewer();
+
+    // Persist position/size of the stream manage panel and nav stream chat.
+    const _managePanel = document.getElementById('stream-manage-panel');
+    if (_managePanel) _trackLayout(_managePanel, 'rps_manage_panel_v1');
+    const _navChatPanel = document.getElementById('nav-stream-chat-panel');
+    if (_navChatPanel) _trackLayout(_navChatPanel, CHAT_WINDOW_LAYOUT_KEY);
+
     const navBtn = document.getElementById('stream-manage-nav-btn');
     const panel = document.getElementById('stream-manage-panel');
     const closeBtn = document.getElementById('stream-manage-close');
@@ -453,6 +464,107 @@ const Nav = (() => {
       ov.appendChild(pu);
       document.body.appendChild(ov);
     }
+
+    // ───── Stream Channel button (shows when user has joined a stream channel) ─────
+    // Order in nav-right: [stream-manage-nav-btn] [stream-channel-nav-btn] [notif-wrapper] ...
+    if (!document.getElementById('stream-channel-nav-btn')) {
+      const btn = document.createElement('button');
+      btn.id = 'stream-channel-nav-btn';
+      btn.className = 'stream-channel-nav-btn';
+      btn.style.display = 'none';
+      btn.title = 'Stream Channel';
+      btn.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M5 3h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-4l-5 4v-4H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/>' +
+        '</svg>' +
+        '<span class="stream-channel-live-dot"></span>';
+      const notifWrap = navRight.querySelector('.notif-wrapper');
+      if (notifWrap) navRight.insertBefore(btn, notifWrap);
+      else navRight.prepend(btn);
+    }
+
+    // Small popup menu shown below the Stream Channel button
+    if (!document.getElementById('stream-channel-hub')) {
+      const hub = document.createElement('div');
+      hub.id = 'stream-channel-hub';
+      hub.className = 'stream-channel-hub';
+      hub.style.display = 'none';
+      hub.innerHTML =
+        '<div class="stream-channel-hub-header">' +
+          '<span id="stream-channel-hub-title">Stream Channel</span>' +
+        '</div>' +
+        '<div class="stream-channel-hub-body">' +
+          '<button class="btn btn-sm stream-hub-btn" id="stream-hub-chat-btn">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
+            ' Chat' +
+          '</button>' +
+          '<button class="btn btn-sm stream-hub-btn" id="stream-hub-watch-btn">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>' +
+            ' Watch Streams' +
+          '</button>' +
+          '<button class="btn btn-sm btn-danger stream-hub-btn" id="stream-hub-leave-btn">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>' +
+            ' Leave Channel' +
+          '</button>' +
+        '</div>';
+      document.body.appendChild(hub);
+    }
+
+    // Medium modal showing previews of all streams in the joined channel
+    if (!document.getElementById('stream-list-modal')) {
+      const modal = document.createElement('div');
+      modal.id = 'stream-list-modal';
+      modal.className = 'stream-list-modal';
+      modal.style.display = 'none';
+      modal.innerHTML =
+        '<div class="stream-list-overlay" id="stream-list-overlay"></div>' +
+        '<div class="stream-list-window">' +
+          '<div class="stream-list-header">' +
+            '<span id="stream-list-title">Live Streams</span>' +
+            '<button class="stream-chat-close" id="stream-list-close" title="Close">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+            '</button>' +
+          '</div>' +
+          '<div class="stream-list-body" id="stream-list-body">' +
+            '<div class="chat-empty">Loading streams...</div>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(modal);
+    }
+
+    // Small resizable floating stream viewer (video)
+    if (!document.getElementById('floating-stream-viewer')) {
+      const viewer = document.createElement('div');
+      viewer.id = 'floating-stream-viewer';
+      viewer.className = 'floating-stream-viewer';
+      viewer.style.display = 'none';
+      viewer.innerHTML =
+        '<div class="floating-stream-header">' +
+          '<span class="floating-stream-title" id="floating-stream-title">Stream</span>' +
+          '<div class="floating-stream-actions">' +
+            '<button class="floating-stream-icon" id="floating-stream-popout-btn" title="Pop out (fullscreen)">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>' +
+            '</button>' +
+            '<button class="floating-stream-icon" id="floating-stream-close-btn" title="Close">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="floating-stream-video-wrap">' +
+          '<video id="floating-stream-video" autoplay playsinline></video>' +
+        '</div>' +
+        '<div class="floating-stream-footer">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>' +
+          '<input type="range" id="floating-stream-volume" min="0" max="100" value="100" class="floating-stream-volume-slider">' +
+        '</div>' +
+        '<div class="floating-stream-popout-overlay" id="floating-stream-popout-overlay" style="display:none">' +
+          '<video id="floating-stream-popout-video" autoplay playsinline></video>' +
+          '<button class="floating-stream-popout-close" id="floating-stream-popout-close" title="Exit fullscreen">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+          '</button>' +
+        '</div>';
+      document.body.appendChild(viewer);
+    }
   }
 
   function _sendStreamCommand(cmd) {
@@ -483,6 +595,8 @@ const Nav = (() => {
   function _openNavStreamChat(state) {
     const panel = document.getElementById('nav-stream-chat-panel');
     if (!panel) return;
+    // Restore persisted position/size before showing.
+    _applyLayout(panel, CHAT_WINDOW_LAYOUT_KEY, { left: window.innerWidth - 340, top: 80, width: 320, height: 440 });
     panel.style.display = 'flex';
     const titleEl = document.getElementById('nav-stream-chat-title');
     if (titleEl) titleEl.textContent = 'Stream Chat \u2014 ' + _esc(state.channelName || 'Streaming Channel');
@@ -1357,7 +1471,432 @@ const Nav = (() => {
     return d.innerHTML;
   }
 
-  return { init, initStreamManager: _initStreamManager };
+  /* ═════════════════════════════════════════════════════════════════════
+     STREAM CHANNEL HUB — "join a channel like in Discord" system.
+     Works on every page that loads nav.js. State is persisted in
+     localStorage so the user stays in their channel across navigations.
+     ═════════════════════════════════════════════════════════════════════ */
+
+  const JOINED_CHANNEL_KEY = 'rps_joined_channel_v1';
+  const CHAT_WINDOW_LAYOUT_KEY = 'rps_chat_window_v1';
+  const VIEWER_WINDOW_LAYOUT_KEY = 'rps_stream_viewer_v1';
+  const VIEWER_VOLUME_KEY = 'rps_stream_viewer_volume_v1';
+
+  const _channelChangeListeners = new Set();
+  let _hubStreamsUnsub = null;          // onSnapshot for the list modal
+  let _hubPreviewRooms = new Map();     // uid -> LiveKit room (preview)
+  let _viewerRoom = null;               // LiveKit room for the active floating viewer
+  let _viewerCurrentStream = null;      // { uid, username, livekitRoom, livekitUrl }
+
+  function _readJoinedChannel() {
+    try { return JSON.parse(localStorage.getItem(JOINED_CHANNEL_KEY) || 'null'); }
+    catch (_) { return null; }
+  }
+  function _writeJoinedChannel(ch) {
+    try {
+      if (ch) localStorage.setItem(JOINED_CHANNEL_KEY, JSON.stringify(ch));
+      else localStorage.removeItem(JOINED_CHANNEL_KEY);
+    } catch (_) {}
+    _channelChangeListeners.forEach(fn => { try { fn(ch); } catch (_) {} });
+    _refreshChannelHubUI();
+  }
+
+  function _joinChannel(serverId, channelId, channelName) {
+    if (!serverId || !channelId) return;
+    _writeJoinedChannel({
+      serverId,
+      channelId,
+      channelName: channelName || 'Streaming Channel',
+      joinedAt: Date.now()
+    });
+  }
+  function _leaveChannel() {
+    // Close any open floating windows and stop all previews/viewer room.
+    _closeFloatingStreamViewer();
+    _closeStreamListModal();
+    const chatPanel = document.getElementById('nav-stream-chat-panel');
+    if (chatPanel) chatPanel.style.display = 'none';
+    if (_navStreamChatUnsub) { _navStreamChatUnsub(); _navStreamChatUnsub = null; }
+    _writeJoinedChannel(null);
+  }
+
+  function _refreshChannelHubUI() {
+    const btn = document.getElementById('stream-channel-nav-btn');
+    if (!btn) return;
+    const ch = _readJoinedChannel();
+    btn.style.display = ch ? 'inline-flex' : 'none';
+    btn.title = ch ? ('In channel: ' + (ch.channelName || 'Streaming Channel')) : 'Stream Channel';
+    // Hide the hub popup too if we've just left.
+    if (!ch) {
+      const hub = document.getElementById('stream-channel-hub');
+      if (hub) hub.style.display = 'none';
+    }
+  }
+
+  function _positionHub() {
+    const btn = document.getElementById('stream-channel-nav-btn');
+    const hub = document.getElementById('stream-channel-hub');
+    if (!btn || !hub) return;
+    const rect = btn.getBoundingClientRect();
+    const hubW = 220;
+    let left = rect.right - hubW;
+    if (left < 8) left = 8;
+    if (left + hubW > window.innerWidth - 8) left = window.innerWidth - hubW - 8;
+    hub.style.left = left + 'px';
+    hub.style.top = (rect.bottom + 8) + 'px';
+  }
+
+  function _wireChannelHub() {
+    const btn = document.getElementById('stream-channel-nav-btn');
+    const hub = document.getElementById('stream-channel-hub');
+    if (!btn || !hub) return;
+
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const open = hub.style.display === 'block';
+      hub.style.display = open ? 'none' : 'block';
+      if (!open) {
+        _positionHub();
+        const ch = _readJoinedChannel();
+        const title = document.getElementById('stream-channel-hub-title');
+        if (title) title.textContent = ch ? (ch.channelName || 'Stream Channel') : 'Stream Channel';
+      }
+    });
+
+    document.addEventListener('click', e => {
+      if (hub.style.display !== 'block') return;
+      if (hub.contains(e.target) || btn.contains(e.target)) return;
+      hub.style.display = 'none';
+    });
+    window.addEventListener('resize', _positionHub);
+
+    const chatBtn = document.getElementById('stream-hub-chat-btn');
+    if (chatBtn) chatBtn.addEventListener('click', () => {
+      hub.style.display = 'none';
+      const ch = _readJoinedChannel();
+      if (!ch) { showToast('You are not in a stream channel.', 'info'); return; }
+      _openNavStreamChat({ serverId: ch.serverId, channelId: ch.channelId, channelName: ch.channelName });
+    });
+
+    const watchBtn = document.getElementById('stream-hub-watch-btn');
+    if (watchBtn) watchBtn.addEventListener('click', () => {
+      hub.style.display = 'none';
+      _openStreamListModal();
+    });
+
+    const leaveBtn = document.getElementById('stream-hub-leave-btn');
+    if (leaveBtn) leaveBtn.addEventListener('click', () => {
+      hub.style.display = 'none';
+      _leaveChannel();
+      showToast('Left stream channel.', 'info');
+    });
+
+    // Cross-tab sync
+    window.addEventListener('storage', e => {
+      if (e.key === JOINED_CHANNEL_KEY) {
+        _refreshChannelHubUI();
+        _channelChangeListeners.forEach(fn => {
+          try { fn(_readJoinedChannel()); } catch (_) {}
+        });
+      }
+    });
+
+    _refreshChannelHubUI();
+  }
+
+  /* ── Stream list modal (previews of all live streams in the joined channel) ── */
+
+  function _openStreamListModal() {
+    const modal = document.getElementById('stream-list-modal');
+    const body = document.getElementById('stream-list-body');
+    if (!modal || !body) return;
+    const ch = _readJoinedChannel();
+    if (!ch) { showToast('You are not in a stream channel.', 'info'); return; }
+    modal.style.display = 'flex';
+    const title = document.getElementById('stream-list-title');
+    if (title) title.textContent = 'Live Streams — ' + (ch.channelName || 'Streaming Channel');
+    body.innerHTML = '<div class="chat-empty">Loading streams...</div>';
+
+    if (_hubStreamsUnsub) { _hubStreamsUnsub(); _hubStreamsUnsub = null; }
+    const ref = db.collection('servers').doc(ch.serverId)
+      .collection('channels').doc(ch.channelId)
+      .collection('streams');
+
+    _hubStreamsUnsub = ref.onSnapshot(snap => {
+      if (snap.empty) {
+        body.innerHTML = '<div class="chat-empty">No one is streaming in this channel right now.</div>';
+        _stopAllPreviewRooms();
+        return;
+      }
+      // Render list
+      body.innerHTML = '';
+      const seenUids = new Set();
+      snap.forEach(doc => {
+        const data = doc.data() || {};
+        const uid = doc.id;
+        seenUids.add(uid);
+        const card = document.createElement('div');
+        card.className = 'stream-list-card';
+        card.setAttribute('data-stream-uid', uid);
+        card.innerHTML =
+          '<div class="stream-list-card-video-wrap">' +
+            '<video autoplay playsinline muted></video>' +
+            '<span class="stream-list-live-dot"></span>' +
+          '</div>' +
+          '<div class="stream-list-card-bar">' +
+            '<span class="stream-list-card-name">' + _esc(data.username || 'Someone') + '</span>' +
+          '</div>';
+        card.addEventListener('click', () => {
+          _closeStreamListModal();
+          _openFloatingStreamViewer({
+            uid,
+            username: data.username || 'Someone',
+            livekitRoom: data.livekitRoom,
+            livekitUrl: data.livekitUrl
+          });
+        });
+        body.appendChild(card);
+        // Kick off a muted preview LiveKit connection
+        _startPreviewRoom(uid, data);
+      });
+      // Disconnect any preview rooms that no longer match live streams
+      for (const [uid, room] of _hubPreviewRooms) {
+        if (!seenUids.has(uid)) {
+          try { room.disconnect(); } catch (_) {}
+          _hubPreviewRooms.delete(uid);
+        }
+      }
+    });
+  }
+
+  function _closeStreamListModal() {
+    const modal = document.getElementById('stream-list-modal');
+    if (modal) modal.style.display = 'none';
+    if (_hubStreamsUnsub) { _hubStreamsUnsub(); _hubStreamsUnsub = null; }
+    _stopAllPreviewRooms();
+  }
+
+  function _stopAllPreviewRooms() {
+    for (const [uid, room] of _hubPreviewRooms) {
+      try { room.disconnect(); } catch (_) {}
+    }
+    _hubPreviewRooms.clear();
+  }
+
+  async function _startPreviewRoom(uid, data) {
+    if (_hubPreviewRooms.has(uid)) return;
+    if (typeof LivekitClient === 'undefined') return;
+    if (!data.livekitRoom || !data.livekitUrl) return;
+    try {
+      const token = await _getNavLiveKitToken(data.livekitRoom, ':p' + uid.slice(0, 4));
+      const room = new LivekitClient.Room({ adaptiveStream: true, dynacast: false });
+      _hubPreviewRooms.set(uid, room);
+      room.on(LivekitClient.RoomEvent.TrackSubscribed, track => {
+        if (track.kind !== LivekitClient.Track.Kind.Video) return;
+        const card = document.querySelector('.stream-list-card[data-stream-uid="' + uid + '"] video');
+        if (card) { track.attach(card); card.play().catch(() => {}); }
+      });
+      room.on(LivekitClient.RoomEvent.Disconnected, () => { _hubPreviewRooms.delete(uid); });
+      await room.connect(data.livekitUrl, token, { rtcConfig: { iceTransportPolicy: 'relay' } });
+    } catch (err) {
+      console.error('Preview LiveKit error:', err);
+      _hubPreviewRooms.delete(uid);
+    }
+  }
+
+  async function _getNavLiveKitToken(roomName, identitySuffix) {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Not signed in');
+    const idToken = await user.getIdToken(false);
+    const params = new URLSearchParams({ roomName, canPublish: '0' });
+    if (identitySuffix) params.set('identitySuffix', identitySuffix);
+    const res = await fetch('/livekit-token?' + params.toString(), {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + idToken }
+    });
+    if (!res.ok) throw new Error('Token ' + res.status);
+    return (await res.json()).token;
+  }
+
+  /* ── Floating stream viewer (small, draggable, resizable) ── */
+
+  async function _openFloatingStreamViewer(stream) {
+    const viewer = document.getElementById('floating-stream-viewer');
+    const video = document.getElementById('floating-stream-video');
+    const title = document.getElementById('floating-stream-title');
+    if (!viewer || !video) return;
+
+    // Restore position/size
+    _applyLayout(viewer, VIEWER_WINDOW_LAYOUT_KEY, { left: 20, top: 80, width: 360, height: 260 });
+    viewer.style.display = 'flex';
+    if (title) title.textContent = (stream.username || 'Stream');
+
+    // Disconnect any previous viewer room
+    if (_viewerRoom) { try { _viewerRoom.disconnect(); } catch (_) {} _viewerRoom = null; }
+    _viewerCurrentStream = stream;
+
+    if (typeof LivekitClient === 'undefined') {
+      showToast('Stream SDK not loaded yet.', 'error');
+      return;
+    }
+    if (!stream.livekitRoom || !stream.livekitUrl) {
+      showToast('Stream is not ready yet.', 'info');
+      return;
+    }
+
+    try {
+      const token = await _getNavLiveKitToken(stream.livekitRoom, ':f' + stream.uid.slice(0, 4));
+      const room = new LivekitClient.Room({ adaptiveStream: true, dynacast: false });
+      _viewerRoom = room;
+      room.on(LivekitClient.RoomEvent.TrackSubscribed, track => {
+        if (track.kind !== LivekitClient.Track.Kind.Video) return;
+        track.attach(video);
+        const po = document.getElementById('floating-stream-popout-video');
+        if (po) track.attach(po);
+        video.play().catch(() => {});
+      });
+      room.on(LivekitClient.RoomEvent.Disconnected, () => { if (_viewerRoom === room) _viewerRoom = null; });
+      await room.connect(stream.livekitUrl, token, { rtcConfig: { iceTransportPolicy: 'relay' } });
+    } catch (err) {
+      console.error('Viewer LiveKit error:', err);
+      showToast('Failed to load stream.', 'error');
+    }
+
+    // Apply persisted volume
+    try {
+      const v = parseFloat(localStorage.getItem(VIEWER_VOLUME_KEY));
+      if (!isNaN(v)) {
+        video.volume = Math.max(0, Math.min(1, v));
+        const slider = document.getElementById('floating-stream-volume');
+        if (slider) slider.value = String(Math.round(video.volume * 100));
+      }
+    } catch (_) {}
+  }
+
+  function _closeFloatingStreamViewer() {
+    const viewer = document.getElementById('floating-stream-viewer');
+    const video = document.getElementById('floating-stream-video');
+    const overlay = document.getElementById('floating-stream-popout-overlay');
+    if (viewer) viewer.style.display = 'none';
+    if (overlay) overlay.style.display = 'none';
+    if (video) { try { video.pause(); } catch (_) {} video.srcObject = null; }
+    const po = document.getElementById('floating-stream-popout-video');
+    if (po) { try { po.pause(); } catch (_) {} po.srcObject = null; }
+    if (_viewerRoom) { try { _viewerRoom.disconnect(); } catch (_) {} _viewerRoom = null; }
+    _viewerCurrentStream = null;
+  }
+
+  function _wireFloatingStreamViewer() {
+    const viewer = document.getElementById('floating-stream-viewer');
+    if (!viewer) return;
+    const header = viewer.querySelector('.floating-stream-header');
+    if (header) _makeDraggable(viewer, header);
+    _trackLayout(viewer, VIEWER_WINDOW_LAYOUT_KEY);
+
+    const closeBtn = document.getElementById('floating-stream-close-btn');
+    if (closeBtn) closeBtn.addEventListener('click', _closeFloatingStreamViewer);
+
+    const popoutBtn = document.getElementById('floating-stream-popout-btn');
+    const overlay = document.getElementById('floating-stream-popout-overlay');
+    const popoutClose = document.getElementById('floating-stream-popout-close');
+    if (popoutBtn && overlay) popoutBtn.addEventListener('click', () => {
+      overlay.style.display = 'flex';
+    });
+    if (popoutClose && overlay) popoutClose.addEventListener('click', () => {
+      overlay.style.display = 'none';
+    });
+
+    const slider = document.getElementById('floating-stream-volume');
+    const video = document.getElementById('floating-stream-video');
+    const poVideo = document.getElementById('floating-stream-popout-video');
+    if (slider && video) {
+      slider.addEventListener('input', () => {
+        const v = Math.max(0, Math.min(1, Number(slider.value) / 100));
+        video.volume = v;
+        if (poVideo) poVideo.volume = v;
+        try { localStorage.setItem(VIEWER_VOLUME_KEY, String(v)); } catch (_) {}
+      });
+    }
+
+    // Escape closes whichever window is on top (popout > viewer > list modal)
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      if (overlay && overlay.style.display === 'flex') { overlay.style.display = 'none'; return; }
+      if (viewer.style.display === 'flex') { _closeFloatingStreamViewer(); return; }
+      const list = document.getElementById('stream-list-modal');
+      if (list && list.style.display === 'flex') { _closeStreamListModal(); return; }
+      const chat = document.getElementById('nav-stream-chat-panel');
+      if (chat && chat.style.display === 'flex') {
+        chat.style.display = 'none';
+        if (_navStreamChatUnsub) { _navStreamChatUnsub(); _navStreamChatUnsub = null; }
+      }
+    });
+  }
+
+  function _wireStreamListModal() {
+    const modal = document.getElementById('stream-list-modal');
+    if (!modal) return;
+    const closeBtn = document.getElementById('stream-list-close');
+    const overlay = document.getElementById('stream-list-overlay');
+    if (closeBtn) closeBtn.addEventListener('click', _closeStreamListModal);
+    if (overlay) overlay.addEventListener('click', _closeStreamListModal);
+  }
+
+  /* ── Layout persistence helpers ── */
+
+  function _applyLayout(el, key, defaults) {
+    let data = null;
+    try { data = JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) {}
+    const layout = { ...defaults, ...(data || {}) };
+    // Clamp to viewport so the window is always visible.
+    const maxLeft = Math.max(0, window.innerWidth - 80);
+    const maxTop = Math.max(0, window.innerHeight - 80);
+    el.style.left = Math.max(0, Math.min(layout.left, maxLeft)) + 'px';
+    el.style.top = Math.max(0, Math.min(layout.top, maxTop)) + 'px';
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+    if (layout.width) el.style.width = layout.width + 'px';
+    if (layout.height) el.style.height = layout.height + 'px';
+  }
+
+  function _trackLayout(el, key) {
+    const save = () => {
+      try {
+        const left = parseInt(el.style.left, 10) || el.offsetLeft || 0;
+        const top = parseInt(el.style.top, 10) || el.offsetTop || 0;
+        const width = el.offsetWidth;
+        const height = el.offsetHeight;
+        localStorage.setItem(key, JSON.stringify({ left, top, width, height }));
+      } catch (_) {}
+    };
+    // Size changes → ResizeObserver
+    try {
+      const ro = new ResizeObserver(save);
+      ro.observe(el);
+    } catch (_) {}
+    // Position changes are saved by _makeDraggable on mouseup — but we also
+    // run save() on mouseup/touchend here as a safety net in case the drag
+    // handler isn't wired.
+    el.addEventListener('mouseup', save);
+    el.addEventListener('touchend', save);
+  }
+
+  /* ── Public API for messenger.js ── */
+  function _onChannelChange(fn) {
+    _channelChangeListeners.add(fn);
+    // Also immediately fire with current state for easy subscription.
+    try { fn(_readJoinedChannel()); } catch (_) {}
+    return () => _channelChangeListeners.delete(fn);
+  }
+
+  return {
+    init,
+    initStreamManager: _initStreamManager,
+    joinChannel: _joinChannel,
+    leaveChannel: _leaveChannel,
+    getJoinedChannel: _readJoinedChannel,
+    onChannelChange: _onChannelChange
+  };
 })();
 
 /* ── showToast — global helper available on all pages that load nav.js ── */
