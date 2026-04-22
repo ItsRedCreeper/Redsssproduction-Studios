@@ -3015,24 +3015,14 @@ const Messenger = (() => {
     }
   }
 
-  // Cleanup on page unload — also covers the "user closed main tab while
-  // streaming" case: we synchronously tell the stream-core tab to stop and
-  // best-effort delete our firestore stream doc so other viewers see us go
-  // offline immediately instead of staring at a frozen card.
+  // Cleanup local state on page unload.
+  // NOTE: we intentionally do NOT send a 'stop' command to the stream-core
+  // tab here.  pagehide/beforeunload fires on every same-site navigation, so
+  // sending 'stop' would kill the stream whenever the user clicks a different
+  // page.  Actual cleanup when the browser is closed is handled by:
+  //   • stream-core.js: keepalive REST DELETE on its own beforeunload
+  //   • stream-core.js: heartbeat watchdog stops stream after 12s of silence
   function _onMainUnload() {
-    try {
-      if (_isStreaming && _streamContext && currentUser) {
-        // Broadcast a stop command to the core tab
-        try { _sendCoreStreamCommand('stop', { hostUid: currentUser.uid }); } catch (_) {}
-        // Best-effort firestore doc delete — runs sync within the unload tick
-        try {
-          db.collection('servers').doc(_streamContext.serverId)
-            .collection('channels').doc(_streamContext.channelId)
-            .collection('streams').doc(currentUser.uid)
-            .delete().catch(() => {});
-        } catch (_) {}
-      }
-    } catch (_) {}
     _cleanupStreaming();
   }
   window.addEventListener('beforeunload', _onMainUnload);
