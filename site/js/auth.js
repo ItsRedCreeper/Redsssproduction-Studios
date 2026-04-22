@@ -148,12 +148,40 @@ const Auth = (() => {
     try {
       const result = await auth.signInWithPopup(googleProvider);
       if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
-        const name = result.user.displayName || 'User';
-        await createUserProfile(result.user, name, result.user.photoURL || '');
+        const baseName = result.user.displayName || 'User';
+        const uniqueName = await _findUniqueUsername(baseName);
+        await createUserProfile(result.user, uniqueName, result.user.photoURL || '');
       }
     } catch (err) {
       showToast(friendlyError(err.code), 'error');
     }
+  }
+
+  // Return a username that does not already exist in Firestore. If `base` is
+  // taken, append a short random suffix until we find a free one. The check is
+  // best-effort — a race between two signups can still produce a duplicate, but
+  // in practice this closes the window from "seconds" to "milliseconds".
+  async function _findUniqueUsername(base) {
+    const cleanBase = (base || 'User').slice(0, 24).trim() || 'User';
+    const lower = cleanBase.toLowerCase();
+    try {
+      const existing = await db.collection('users').where('usernameLower', '==', lower).limit(1).get();
+      if (existing.empty) return cleanBase;
+    } catch (_) {
+      return cleanBase; // firestore read failed — just use the base
+    }
+    // Collision — try up to 8 variants.
+    for (let i = 0; i < 8; i++) {
+      const suffix = Math.floor(Math.random() * 9000 + 1000);
+      const candidate = cleanBase + suffix;
+      try {
+        const snap = await db.collection('users').where('usernameLower', '==', candidate.toLowerCase()).limit(1).get();
+        if (snap.empty) return candidate;
+      } catch (_) {
+        return candidate;
+      }
+    }
+    return cleanBase + Date.now().toString().slice(-5);
   }
 
   async function createUserProfile(user, username, avatar) {

@@ -22,6 +22,15 @@
 
   let recorder = null;
   let recordChunks = [];
+  let recordStartedAt = 0;
+  let recordPausedAccumulatedMs = 0;
+  let recordPausedAt = 0;
+  let streamPaused = false;
+  // Reference to the publisher's LiveKit track publication — needed so we can
+  // swap in a frozen-frame track when pausing the stream.
+  let publishedVideoTrack = null;     // LocalVideoTrack currently being published
+  let originalScreenTrack = null;     // MediaStreamTrack from getDisplayMedia
+  let frozenFrameStream = null;       // MediaStream from canvas.captureStream
 
   const LIVEKIT_URL = 'wss://redsssproduction-studios-aiosfout.livekit.cloud';
 
@@ -218,6 +227,22 @@
       _toggleRecord();
       return;
     }
+    if (cmd.action === 'pauseRecord') {
+      _pauseRecord();
+      return;
+    }
+    if (cmd.action === 'resumeRecord') {
+      _resumeRecord();
+      return;
+    }
+    if (cmd.action === 'pauseStream') {
+      await _pauseStream();
+      return;
+    }
+    if (cmd.action === 'resumeStream') {
+      await _resumeStream();
+      return;
+    }
   }
 
   async function _startStream(cmd) {
@@ -276,12 +301,14 @@
       ]);
 
       const videoTrack = localStream.getVideoTracks()[0];
+      originalScreenTrack = videoTrack;
       const bitrate = _qualityToBitrate(streamContext.quality);
       const fps = (streamContext.quality && (streamContext.quality.fps === 60 || streamContext.quality.fps === '60')) ? 60 : 30;
-      await livekitRoom.localParticipant.publishTrack(videoTrack, {
+      const publication = await livekitRoom.localParticipant.publishTrack(videoTrack, {
         source: LivekitClient.Track.Source.ScreenShare,
         videoEncoding: { maxBitrate: bitrate, maxFramerate: fps }
       });
+      publishedVideoTrack = publication && publication.track ? publication.track : null;
 
       isLive = true;
       startedAt = Date.now();
@@ -335,6 +362,19 @@
     if (recorder && recorder.state !== 'inactive') recorder.stop();
     recorder = null;
     recordChunks = [];
+    recordStartedAt = 0;
+    recordPausedAccumulatedMs = 0;
+    recordPausedAt = 0;
+    streamPaused = false;
+    if (frozenFrameStream) {
+      frozenFrameStream.getTracks().forEach(t => {
+        if (t._freezeTicker) { clearInterval(t._freezeTicker); t._freezeTicker = null; }
+        t.stop();
+      });
+      frozenFrameStream = null;
+    }
+    originalScreenTrack = null;
+    publishedVideoTrack = null;
 
     if (livekitRoom) {
       try { await livekitRoom.disconnect(); } catch (_) {}
@@ -361,6 +401,11 @@
 
   function _publishState() {
     if (!isLive || !streamContext || !currentUser) return;
+    let recordStatus = 'idle';
+    if (recorder) {
+      if (recorder.state === 'recording') recordStatus = 'recording';
+      else if (recorder.state === 'paused') recordStatus = 'paused';
+    }
     const payload = {
       live: true,
       serverId: streamContext.serverId,
@@ -369,7 +414,12 @@
       startedAt,
       hostUrl: window.location.href,
       controllerUrl: streamContext.controllerUrl || 'messenger.html',
-      hostUid: currentUser.uid
+      hostUid: currentUser.uid,
+      streamPaused: !!streamPaused,
+      recordStatus,
+      recordStartedAt,
+      recordPausedAccumulatedMs,
+      recordPausedAt
     };
     localStorage.setItem(STREAM_STATE_KEY, JSON.stringify(payload));
     try {
@@ -413,7 +463,7 @@
 
   function _toggleRecord() {
     if (!localStream) return;
-    if (recorder && recorder.state === 'recording') {
+    if (recorder && recorder.state !== 'inactive') {
       recorder.stop();
       return;
     }
@@ -426,6 +476,11 @@
       recorder.onstop = () => {
         const blob = new Blob(recordChunks, { type: 'video/webm' });
         recordChunks = [];
+        recordStartedAt = 0;
+        recordPausedAccumulatedMs = 0;
+        recordPausedAt = 0;
+        recorder = null;
+        _publishState();
         if (!blob.size) return;
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -437,7 +492,99 @@
         URL.revokeObjectURL(url);
       };
       recorder.start(1000);
+      recordStartedAt = Date.now();
+      recordPausedAccumulatedMs = 0;
+      recordPausedAt = 0;
+      _publishState();
     } catch (_) {}
+  }
+
+  function _pauseRecord() {
+    if (!recorder || recorder.state !== 'recording') return;
+    try {
+      recorder.pause();
+      recordPausedAt = Date.now();
+      _publishState();
+    } catch (_) {}
+  }
+
+  function _resumeRecord() {
+    if (!recorder || recorder.state !== 'paused') return;
+    try {
+      if (recordPausedAt) {
+        recordPausedAccumulatedMs += (Date.now() - recordPausedAt);
+        recordPausedAt = 0;
+      }
+      recorder.resume();
+      _publishState();
+    } catch (_) {}
+  }
+
+  async function _pauseStream() {
+    if (!isLive || streamPaused || !livekitRoom || !originalScreenTrack) return;
+    try {
+      // Capture the current frame onto a canvas and publish that canvas's
+      // captureStream(0) track in place of the live screen track. captureStream(0)
+      // means "emit a new frame only when requestFrame() is called", which gives
+      // us a static image — i.e. a freeze-frame.
+      const vid = document.getElementById('core-video');
+      if (!vid || !vid.videoWidth || !vid.videoHeight) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = vid.videoWidth;
+      canvas.height = vid.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
+
+      frozenFrameStream = canvas.captureStream(0);
+      const frozenTrack = frozenFrameStream.getVideoTracks()[0];
+      // Keep sending the same frame regularly so viewers don't see a stall.
+      frozenTrack._freezeTicker = setInterval(() => {
+        try { if (frozenTrack.requestFrame) frozenTrack.requestFrame(); } catch (_) {}
+      }, 500);
+
+      if (publishedVideoTrack && publishedVideoTrack.replaceTrack) {
+        await publishedVideoTrack.replaceTrack(frozenTrack);
+      } else if (publishedVideoTrack && publishedVideoTrack.mediaStreamTrack) {
+        // Fallback — unpublish and republish (slower).
+        await livekitRoom.localParticipant.unpublishTrack(publishedVideoTrack);
+        const pub = await livekitRoom.localParticipant.publishTrack(frozenTrack, {
+          source: LivekitClient.Track.Source.ScreenShare
+        });
+        publishedVideoTrack = pub && pub.track ? pub.track : publishedVideoTrack;
+      }
+      streamPaused = true;
+      _setStatus('Stream paused (frozen frame).');
+      _publishState();
+    } catch (err) {
+      console.error('Pause stream failed:', err);
+    }
+  }
+
+  async function _resumeStream() {
+    if (!isLive || !streamPaused || !livekitRoom || !originalScreenTrack) return;
+    try {
+      if (publishedVideoTrack && publishedVideoTrack.replaceTrack) {
+        await publishedVideoTrack.replaceTrack(originalScreenTrack);
+      } else if (publishedVideoTrack) {
+        await livekitRoom.localParticipant.unpublishTrack(publishedVideoTrack);
+        const pub = await livekitRoom.localParticipant.publishTrack(originalScreenTrack, {
+          source: LivekitClient.Track.Source.ScreenShare
+        });
+        publishedVideoTrack = pub && pub.track ? pub.track : publishedVideoTrack;
+      }
+      if (frozenFrameStream) {
+        frozenFrameStream.getTracks().forEach(t => {
+          if (t._freezeTicker) { clearInterval(t._freezeTicker); t._freezeTicker = null; }
+          t.stop();
+        });
+        frozenFrameStream = null;
+      }
+      streamPaused = false;
+      _setStatus('Live!');
+      _publishState();
+    } catch (err) {
+      console.error('Resume stream failed:', err);
+    }
   }
 
   function _tryClose() {

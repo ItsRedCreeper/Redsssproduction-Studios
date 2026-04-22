@@ -33,6 +33,10 @@ export async function onRequestPost(context) {
   const url = new URL(request.url);
   const roomName  = url.searchParams.get('roomName')  || '';
   const canPublish = url.searchParams.get('canPublish') === '1';
+  // Optional identity suffix (e.g. ":v" so a streamer can also watch their
+  // own room without kicking the publisher off).  Limited to safe chars.
+  const rawSuffix = url.searchParams.get('identitySuffix') || '';
+  const identitySuffix = /^[A-Za-z0-9:_.-]{0,16}$/.test(rawSuffix) ? rawSuffix : '';
 
   if (!roomName || typeof roomName !== 'string' || roomName.length > 128) {
     return _json({ error: 'Bad Request: invalid roomName', roomName: roomName.slice(0, 50) }, 400);
@@ -51,7 +55,7 @@ export async function onRequestPost(context) {
       apiKey,
       apiSecret,
       roomName,
-      identity: uid,
+      identity: uid + identitySuffix,
       canPublish: !!canPublish
     });
     return _json({ token });

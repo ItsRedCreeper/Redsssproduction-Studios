@@ -193,6 +193,22 @@ const Messenger = (() => {
     document.getElementById('stream-manage-chat-btn').addEventListener('click', _openStreamChatWindow);
     document.getElementById('stream-manage-snap-btn').addEventListener('click', _captureStreamSnapshot);
     document.getElementById('stream-manage-record-btn').addEventListener('click', _toggleStreamRecording);
+    const recPauseBtn = document.getElementById('stream-manage-record-pause-btn');
+    if (recPauseBtn) {
+      recPauseBtn.addEventListener('click', () => {
+        const state = _readSharedStreamState();
+        const action = (state && state.recordStatus === 'paused') ? 'resumeRecord' : 'pauseRecord';
+        _sendCoreStreamCommand(action, { hostUid: currentUser.uid });
+      });
+    }
+    const pauseBtn = document.getElementById('stream-manage-pause-btn');
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', () => {
+        const state = _readSharedStreamState();
+        const action = (state && state.streamPaused) ? 'resumeStream' : 'pauseStream';
+        _sendCoreStreamCommand(action, { hostUid: currentUser.uid });
+      });
+    }
     document.getElementById('stream-manage-stop-btn').addEventListener('click', () => {
       if (_streamContext && _streamContext.serverId && _streamContext.channelId) {
         _stopStreaming(_streamContext.serverId, _streamContext.channelId);
@@ -2047,9 +2063,10 @@ const Messenger = (() => {
     try { localStorage.setItem(STREAM_QUALITY_KEY, JSON.stringify(q)); } catch (_) {}
   }
 
-  async function _getLiveKitToken(roomName, canPublish) {
+  async function _getLiveKitToken(roomName, canPublish, identitySuffix) {
     const idToken = await auth.currentUser.getIdToken(/* forceRefresh= */ true);
     const params = new URLSearchParams({ roomName, canPublish: canPublish ? '1' : '0' });
+    if (identitySuffix) params.set('identitySuffix', identitySuffix);
     const res = await fetch('/livekit-token?' + params.toString(), {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + idToken }
@@ -2137,12 +2154,39 @@ const Messenger = (() => {
     const channelEl = document.getElementById('stream-manage-channel');
     const uptimeEl = document.getElementById('stream-manage-uptime');
     const recordBtn = document.getElementById('stream-manage-record-btn');
-    statusEl.textContent = _isStreaming ? 'Live' : 'Offline';
+    const recPauseBtn = document.getElementById('stream-manage-record-pause-btn');
+    const recRow = document.getElementById('stream-manage-rec-row');
+    const recTimeEl = document.getElementById('stream-manage-rec-time');
+    const pauseBtn = document.getElementById('stream-manage-pause-btn');
+    const state = _readSharedStreamState();
+
+    statusEl.textContent = _isStreaming ? (state && state.streamPaused ? 'Paused' : 'Live') : 'Offline';
     channelEl.textContent = _streamContext ? _streamContext.channelName : 'None';
     uptimeEl.textContent = _streamStartedAtMs ? _formatDuration(Date.now() - _streamStartedAtMs) : '00:00:00';
+
+    const recStatus = state && state.recordStatus;
+    const recording = recStatus === 'recording' || recStatus === 'paused';
     if (recordBtn) {
-      const recording = _streamRecorder && _streamRecorder.state === 'recording';
       recordBtn.textContent = recording ? 'Stop Recording' : 'Start Recording';
+    }
+    if (recPauseBtn) {
+      recPauseBtn.style.display = recording ? '' : 'none';
+      recPauseBtn.textContent = recStatus === 'paused' ? 'Resume Rec' : 'Pause Rec';
+    }
+    if (recRow && recTimeEl) {
+      if (recording && state && state.recordStartedAt) {
+        recRow.style.display = '';
+        let elapsed = Date.now() - state.recordStartedAt - (state.recordPausedAccumulatedMs || 0);
+        if (recStatus === 'paused' && state.recordPausedAt) {
+          elapsed -= (Date.now() - state.recordPausedAt);
+        }
+        recTimeEl.textContent = _formatDuration(Math.max(0, elapsed));
+      } else {
+        recRow.style.display = 'none';
+      }
+    }
+    if (pauseBtn) {
+      pauseBtn.textContent = (state && state.streamPaused) ? 'Resume Stream' : 'Pause Stream';
     }
   }
 
@@ -2327,16 +2371,10 @@ const Messenger = (() => {
 
         if (change.type === 'added') {
           _addStreamCard(streamerUid, data.username || 'Someone');
-          if (streamerUid === currentUser.uid && _localStream) {
-            // Attach our own local stream to our card
-            const myCard = document.querySelector('[data-stream-uid="' + streamerUid + '"]');
-            if (myCard) {
-              const vid = myCard.querySelector('video');
-              if (vid) { vid.srcObject = _localStream; vid.play().catch(() => {}); }
-            }
-          } else if (streamerUid !== currentUser.uid) {
-            _joinStream(serverId, channelId, streamerUid, data.livekitRoom, data.livekitUrl);
-          }
+          // Always join the LiveKit room as a subscriber — even for our own
+          // stream — so the streamer can see their own output. We pass a
+          // different identity (":v") so we don't kick the publisher off.
+          _joinStream(serverId, channelId, streamerUid, data.livekitRoom, data.livekitUrl);
         } else if (change.type === 'removed') {
           _removeStreamCard(streamerUid);
           // Close viewer PC for this streamer
@@ -2815,7 +2853,9 @@ const Messenger = (() => {
 
     try {
       const wsUrl = livekitUrl || LIVEKIT_URL;
-      const token = await _getLiveKitToken(livekitRoomName, false);
+      // Use ":v" suffix so we never collide with the publisher identity —
+      // critical for our own card (streamer joining own room to see output).
+      const token = await _getLiveKitToken(livekitRoomName, false, ':v');
 
       const room = new LivekitClient.Room({ adaptiveStream: true, dynacast: false });
       _viewerRooms.set(streamerUid, room);

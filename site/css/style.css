@@ -2957,16 +2957,22 @@ body.messenger-page #app {
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-auto-rows: max-content;
   gap: 12px;
   padding: 16px;
   overflow-y: auto;
+  overflow-x: hidden;
   align-content: start;
+  align-items: start;
 }
 .stream-card {
   background: #000;
   border-radius: var(--r);
   overflow: hidden;
   border: 1px solid var(--border);
+  align-self: start;
+  width: 100%;
+  max-width: 100%;
 }
 .stream-card .stream-video-wrap {
   position: relative;
@@ -3032,6 +3038,15 @@ body.messenger-page #app {
   overflow: hidden;
   text-overflow: ellipsis;
   display: block;
+}
+
+@media (max-width: 720px) {
+  .stream-grid {
+    grid-template-columns: 1fr;
+    padding: 10px;
+    gap: 10px;
+  }
+  .stream-inline-chat { display: none; }
 }
 .stream-core-host-note {
   position: absolute;
