@@ -16,6 +16,11 @@
   let isStarting = false;
   let lastCmdId = null;
 
+  // Cached ID token — kept fresh so the beforeunload keepalive fetch can
+  // delete the firestore stream doc even when async SDK calls won't complete.
+  const FIRESTORE_PROJECT = 'redsssproduction-studios-86bec';
+  let _cachedIdToken = null;
+
   let livekitRoom = null;
   const streamUnsubs = [];
   let streamControlChannel = null;
@@ -138,6 +143,15 @@
     _initBridge();
     _startHeartbeatWatch();
 
+    // Keep an in-memory copy of the ID token so the beforeunload handler can
+    // synchronously fire a keepalive DELETE to the Firestore REST API if the
+    // async SDK calls don't get a chance to finish.
+    async function _refreshToken() {
+      try { _cachedIdToken = await currentUser.getIdToken(false); } catch (_) {}
+    }
+    _refreshToken();
+    setInterval(_refreshToken, 30 * 60 * 1000); // refresh every 30 min
+
     // Check for a pending start payload written by messenger.js
     const raw = localStorage.getItem(STREAM_PENDING_START_KEY);
     if (raw) {
@@ -199,8 +213,15 @@
         _noHeartbeatSince = 0;
         return;
       }
-      if (!_noHeartbeatSince) _noHeartbeatSince = now;
-      const goneFor = now - _noHeartbeatSince;
+      // Don't accumulate the stale timer while we're starting up (screen
+      // picker is open, LiveKit is connecting, etc.).  If we did, a fast
+      // user who picks a screen in <5 s would see the tab close immediately
+      // after going live because goneFor was already >= STALE_MS.
+      if (!_noHeartbeatSince && !isStarting) _noHeartbeatSince = now;
+      // Also reset the counter the instant we go live so the main site gets
+      // a fresh window to prove it's still open.
+      if (isLive && _noHeartbeatSince && _noHeartbeatSince < startedAt) _noHeartbeatSince = startedAt;
+      const goneFor = _noHeartbeatSince ? now - _noHeartbeatSince : 0;
       if (isLive && goneFor > MAIN_HEARTBEAT_STALE_MS) {
         _setStatus('Main site closed — stopping stream.');
         _stopStream(true);
@@ -632,6 +653,21 @@
   }
 
   window.addEventListener('beforeunload', () => {
+    // Best-effort synchronous keepalive DELETE to the Firestore REST API so
+    // the stream card disappears for viewers even when async SDK calls can't
+    // complete in time (which is always the case in beforeunload).
+    if (isLive && streamContext && currentUser && _cachedIdToken) {
+      try {
+        const { serverId, channelId } = streamContext;
+        const docPath = `servers/${serverId}/channels/${channelId}/streams/${currentUser.uid}`;
+        const url = `https://firestore.googleapis.com/v1/projects/${FIRESTORE_PROJECT}/databases/(default)/documents/${docPath}`;
+        fetch(url, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${_cachedIdToken}` },
+          keepalive: true
+        });
+      } catch (_) {}
+    }
     if (isLive) {
       _stopStream(false);
     } else {

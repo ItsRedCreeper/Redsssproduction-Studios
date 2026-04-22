@@ -900,11 +900,11 @@ const Nav = (() => {
     const recRow = document.getElementById('stream-manage-rec-row');
     const recTimeEl = document.getElementById('stream-manage-rec-time');
 
-    // If the stream-core tab has gone silent for more than ~8s, treat the
+    // If the stream-core tab has gone silent for more than ~4s, treat the
     // stream as dead so we don't keep a ghost button around after a crash.
     let live = !!(state && state.live);
     if (live && shared && shared.ts) {
-      if (Date.now() - Number(shared.ts || 0) > 10000) live = false;
+      if (Date.now() - Number(shared.ts || 0) > 4000) live = false;
     }
     if (navBtn) {
       navBtn.style.display = live ? 'inline-flex' : 'none';
@@ -1355,7 +1355,7 @@ const Nav = (() => {
     return d.innerHTML;
   }
 
-  return { init };
+  return { init, initStreamManager: _initStreamManager };
 })();
 
 /* ── showToast — global helper available on all pages that load nav.js ── */

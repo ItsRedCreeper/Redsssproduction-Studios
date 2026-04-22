@@ -1098,6 +1098,7 @@ a.nav-link:hover { text-decoration: none; }
 .profile-dd-avatar {
   width: 48px;
   height: 48px;
+  flex-shrink: 0;
   border-radius: 50%;
   background: var(--red-dark);
   display: flex;

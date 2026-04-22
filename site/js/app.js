@@ -55,6 +55,9 @@ const App = (() => {
         _listenNotifications();
         _listenFriendRequests();
         _loadFeaturedGames();
+        // Wire up the stream manager button (same one used on all other pages)
+        // so users can manage an active stream without leaving the home page.
+        Nav.initStreamManager(user);
         // Delay stats so the current user's presence write completes first;
         // then refresh every 30s to stay live
         setTimeout(() => {
