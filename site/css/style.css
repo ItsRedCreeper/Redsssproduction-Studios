@@ -1947,6 +1947,7 @@ body.messenger-page #app {
   flex-direction: column;
   background: var(--bg-tertiary);
   min-width: 0;
+  overflow: hidden;
 }
 
 .chat-header {
@@ -2048,6 +2049,10 @@ body.messenger-page #app {
   border-top: 1px solid var(--border);
   background: var(--bg-secondary);
   flex-shrink: 0;
+  /* prevent overflow behind members sidebar */
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .chat-input {
@@ -2368,6 +2373,8 @@ body.messenger-page #app {
 .chat-input-bar {
   flex-direction: column;
   padding: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 .reply-bar {
   display: flex;
@@ -3131,13 +3138,20 @@ body.messenger-page #app {
 .stream-manage-panel,
 .stream-chat-window {
   position: fixed;
+  /* default position — JS overrides after first drag */
   right: 16px;
+  bottom: 80px;
   width: min(360px, calc(100vw - 24px));
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow);
   z-index: 5200;
+  /* prevent content from overflowing */
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: min(520px, calc(100vh - 100px));
 }
 
 .stream-manage-panel { top: 62px; }
@@ -3151,7 +3165,12 @@ body.messenger-page #app {
   border-bottom: 1px solid var(--border);
   font-size: 13px;
   font-weight: 700;
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
 }
+.stream-chat-header:active,
+.stream-manage-header:active { cursor: grabbing; }
 
 .stream-manage-close,
 .stream-chat-close {
@@ -3211,12 +3230,7 @@ body.messenger-page #app {
   opacity: 0.8;
 }
 
-.stream-chat-window {
-  bottom: 16px;
-  height: min(520px, calc(100vh - 92px));
-  display: flex;
-  flex-direction: column;
-}
+/* second .stream-chat-window block — keep in sync with first */
 .stream-chat-messages {
   flex: 1;
   overflow-y: auto;

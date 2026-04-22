@@ -190,6 +190,11 @@ const Messenger = (() => {
     // Stream manager + stream chat window
     document.getElementById('stream-manage-nav-btn').addEventListener('click', _toggleStreamManagePanel);
     document.getElementById('stream-manage-close').addEventListener('click', () => _setStreamManagePanelOpen(false));
+    // Make both floating panels draggable
+    _makeDraggable(
+      document.getElementById('stream-manage-panel'),
+      document.getElementById('stream-manage-panel').querySelector('.stream-manage-header')
+    );
     document.getElementById('stream-manage-chat-btn').addEventListener('click', _openStreamChatWindow);
     document.getElementById('stream-manage-snap-btn').addEventListener('click', _captureStreamSnapshot);
     document.getElementById('stream-manage-record-btn').addEventListener('click', _toggleStreamRecording);
@@ -239,6 +244,11 @@ const Messenger = (() => {
     document.getElementById('stream-chat-close').addEventListener('click', () => {
       document.getElementById('stream-chat-window').style.display = 'none';
     });
+    // Make the stream chat window draggable by its header
+    _makeDraggable(
+      document.getElementById('stream-chat-window'),
+      document.getElementById('stream-chat-window').querySelector('.stream-chat-header')
+    );
     document.getElementById('stream-chat-picker-btn').addEventListener('click', () => {
       const picker = document.getElementById('stream-chat-picker');
       picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
@@ -2194,6 +2204,46 @@ const Messenger = (() => {
     if (_streamUptimeTimer) clearInterval(_streamUptimeTimer);
     _updateStreamManagePanel();
     _streamUptimeTimer = setInterval(_updateStreamManagePanel, 1000);
+  }
+
+  // Make a fixed-position panel draggable by clicking/dragging its header.
+  function _makeDraggable(panel, handle) {
+    if (!panel || !handle) return;
+    let dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
+    handle.addEventListener('mousedown', e => {
+      // Don't start drag on button clicks inside the header
+      if (e.target.closest('button')) return;
+      e.preventDefault();
+      dragging = true;
+      const rect = panel.getBoundingClientRect();
+      // Anchor by top-left when dragging starts
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.left = rect.left + 'px';
+      panel.style.top  = rect.top  + 'px';
+      startX = e.clientX;
+      startY = e.clientY;
+      origLeft = rect.left;
+      origTop  = rect.top;
+      handle.style.cursor = 'grabbing';
+    });
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      let newLeft = origLeft + dx;
+      let newTop  = origTop  + dy;
+      // Clamp inside viewport
+      const pw = panel.offsetWidth;
+      const ph = panel.offsetHeight;
+      newLeft = Math.max(0, Math.min(newLeft, window.innerWidth  - pw));
+      newTop  = Math.max(0, Math.min(newTop,  window.innerHeight - ph));
+      panel.style.left = newLeft + 'px';
+      panel.style.top  = newTop  + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+      if (dragging) { dragging = false; handle.style.cursor = ''; }
+    });
   }
 
   function _formatDuration(ms) {

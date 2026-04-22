@@ -181,6 +181,9 @@ const Nav = (() => {
       });
       closeBtn?.addEventListener('click', () => { panel.style.display = 'none'; });
 
+      // Make panels draggable
+      _makeDraggable(panel, panel.querySelector('.stream-manage-header'));
+
       chatBtn?.addEventListener('click', () => {
         const state = _readStreamState();
         if (!state || !state.live) {
@@ -190,6 +193,57 @@ const Nav = (() => {
         _openNavStreamChat(state);
       });
 
+      // Take Picture (snapshot of current remote stream)
+      const snapBtn = document.getElementById('stream-manage-snap-btn');
+      if (snapBtn) snapBtn.addEventListener('click', _navTakeSnapshot);
+
+      // Pause / Resume stream
+      const pauseBtn = document.getElementById('stream-manage-pause-btn');
+      if (pauseBtn) pauseBtn.addEventListener('click', () => {
+        const state = _readStreamState();
+        const shared = _readSharedState();
+        const action = (shared && shared.streamPaused) ? 'resumeStream' : 'pauseStream';
+        if (state && state.live) _sendStreamCommand({ action, by: user.uid });
+      });
+
+      // Record toggle
+      const recBtn = document.getElementById('stream-manage-record-btn');
+      if (recBtn) recBtn.addEventListener('click', () => {
+        const state = _readStreamState();
+        if (state && state.live) _sendStreamCommand({ action: 'toggleRecord', by: user.uid });
+      });
+
+      // Pause / Resume recording
+      const recPauseBtn = document.getElementById('stream-manage-record-pause-btn');
+      if (recPauseBtn) recPauseBtn.addEventListener('click', () => {
+        const shared = _readSharedState();
+        const action = (shared && shared.recordStatus === 'paused') ? 'resumeRecord' : 'pauseRecord';
+        const state = _readStreamState();
+        if (state && state.live) _sendStreamCommand({ action, by: user.uid });
+      });
+
+      // Quality selects
+      const resEl = document.getElementById('stream-manage-res');
+      const fpsEl = document.getElementById('stream-manage-fps');
+      if (resEl && fpsEl) {
+        const QUALITY_KEY = 'rps_stream_quality_v1';
+        const _loadQuality = () => {
+          try {
+            const q = JSON.parse(localStorage.getItem(QUALITY_KEY) || '{}');
+            if (q.resolution) resEl.value = q.resolution;
+            if (q.fps) fpsEl.value = String(q.fps);
+          } catch (_) {}
+        };
+        const _saveQuality = () => {
+          try {
+            localStorage.setItem(QUALITY_KEY, JSON.stringify({ resolution: resEl.value, fps: Number(fpsEl.value) }));
+          } catch (_) {}
+        };
+        _loadQuality();
+        resEl.addEventListener('change', _saveQuality);
+        fpsEl.addEventListener('change', _saveQuality);
+      }
+
       const navChatClose = document.getElementById('nav-stream-chat-close');
       if (navChatClose) navChatClose.addEventListener('click', () => {
         const p = document.getElementById('nav-stream-chat-panel');
@@ -197,6 +251,9 @@ const Nav = (() => {
         if (_navStreamChatUnsub) { _navStreamChatUnsub(); _navStreamChatUnsub = null; }
         _navCancelReply();
       });
+      const navChatPanel = document.getElementById('nav-stream-chat-panel');
+      if (navChatPanel) _makeDraggable(navChatPanel, navChatPanel.querySelector('.stream-chat-header'));
+
       const navChatSend = document.getElementById('nav-stream-chat-send');
       const navChatInput = document.getElementById('nav-stream-chat-input');
       if (navChatSend) navChatSend.addEventListener('click', () => _sendNavStreamMessage());
@@ -277,8 +334,31 @@ const Nav = (() => {
           '<div class="stream-manage-row"><span>Status</span><strong id="stream-manage-status">Offline</strong></div>' +
           '<div class="stream-manage-row"><span>Channel</span><strong id="stream-manage-channel">None</strong></div>' +
           '<div class="stream-manage-row"><span>Uptime</span><strong id="stream-manage-uptime">00:00:00</strong></div>' +
+          '<div class="stream-manage-row" id="stream-manage-rec-row" style="display:none">' +
+            '<span>Recording</span><strong id="stream-manage-rec-time">00:00:00</strong>' +
+          '</div>' +
+          '<div class="stream-manage-row" style="padding:8px 0 2px;border:none">' +
+            '<span style="font-size:11px;color:var(--text-muted)">Resolution</span>' +
+            '<select class="stream-quality-select" id="stream-manage-res" style="font-size:11px">' +
+              '<option value="720">720p</option>' +
+              '<option value="1080" selected>1080p</option>' +
+              '<option value="1440">1440p</option>' +
+              '<option value="4k">4K</option>' +
+            '</select>' +
+          '</div>' +
+          '<div class="stream-manage-row" style="padding:2px 0 8px;border:none">' +
+            '<span style="font-size:11px;color:var(--text-muted)">Frame Rate</span>' +
+            '<select class="stream-quality-select" id="stream-manage-fps" style="font-size:11px">' +
+              '<option value="30" selected>30 fps</option>' +
+              '<option value="60">60 fps</option>' +
+            '</select>' +
+          '</div>' +
           '<div class="stream-manage-actions">' +
             '<button class="btn btn-sm" id="stream-manage-chat-btn">Chat</button>' +
+            '<button class="btn btn-sm" id="stream-manage-snap-btn">Take Picture</button>' +
+            '<button class="btn btn-sm" id="stream-manage-pause-btn">Pause Stream</button>' +
+            '<button class="btn btn-sm" id="stream-manage-record-btn">Start Recording</button>' +
+            '<button class="btn btn-sm" id="stream-manage-record-pause-btn" style="display:none">Pause Rec</button>' +
             '<button class="btn btn-danger btn-sm" id="stream-manage-stop-btn">Stop Stream</button>' +
           '</div>' +
         '</div>';
@@ -765,10 +845,16 @@ const Nav = (() => {
 
   function _refreshStreamManagerUI() {
     const state = _readStreamState();
+    const shared = _readSharedState();
     const navBtn = document.getElementById('stream-manage-nav-btn');
     const statusEl = document.getElementById('stream-manage-status');
     const channelEl = document.getElementById('stream-manage-channel');
     const uptimeEl = document.getElementById('stream-manage-uptime');
+    const pauseBtn = document.getElementById('stream-manage-pause-btn');
+    const recBtn = document.getElementById('stream-manage-record-btn');
+    const recPauseBtn = document.getElementById('stream-manage-record-pause-btn');
+    const recRow = document.getElementById('stream-manage-rec-row');
+    const recTimeEl = document.getElementById('stream-manage-rec-time');
 
     const live = !!(state && state.live);
     if (navBtn) {
@@ -793,7 +879,8 @@ const Nav = (() => {
       return;
     }
 
-    statusEl.textContent = 'Live';
+    const streamPaused = !!(shared && shared.streamPaused);
+    statusEl.textContent = streamPaused ? 'Paused' : 'Live';
     channelEl.textContent = state.channelName || 'Streaming Channel';
     const startedAt = Number(state.startedAt || 0);
     const dur = startedAt ? Math.max(0, Date.now() - startedAt) : 0;
@@ -802,6 +889,86 @@ const Nav = (() => {
     const mm = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
     const ss = String(total % 60).padStart(2, '0');
     uptimeEl.textContent = hh + ':' + mm + ':' + ss;
+
+    if (pauseBtn) pauseBtn.textContent = streamPaused ? 'Resume Stream' : 'Pause Stream';
+
+    const recStatus = shared && shared.recordStatus;
+    const recording = recStatus === 'recording' || recStatus === 'paused';
+    if (recBtn) recBtn.textContent = recording ? 'Stop Recording' : 'Start Recording';
+    if (recPauseBtn) {
+      recPauseBtn.style.display = recording ? '' : 'none';
+      recPauseBtn.textContent = recStatus === 'paused' ? 'Resume Rec' : 'Pause Rec';
+    }
+    if (recRow && recTimeEl) {
+      if (recording && shared && shared.recordStartedAt) {
+        recRow.style.display = '';
+        let elapsed = Date.now() - shared.recordStartedAt - (shared.recordPausedAccumulatedMs || 0);
+        if (recStatus === 'paused' && shared.recordPausedAt) elapsed -= (Date.now() - shared.recordPausedAt);
+        const t = Math.max(0, Math.floor(elapsed / 1000));
+        recTimeEl.textContent =
+          String(Math.floor(t / 3600)).padStart(2, '0') + ':' +
+          String(Math.floor((t % 3600) / 60)).padStart(2, '0') + ':' +
+          String(t % 60).padStart(2, '0');
+      } else {
+        recRow.style.display = 'none';
+      }
+    }
+  }
+
+  // Read the stream-core shared state (recording/pause info)
+  function _readSharedState() {
+    try { return JSON.parse(localStorage.getItem('rps_stream_state_v1') || 'null'); } catch (_) { return null; }
+  }
+
+  // Snapshot: open any visible remote video and download a frame
+  function _navTakeSnapshot() {
+    const video = document.querySelector('.stream-card video') || document.querySelector('video');
+    if (!video || !video.videoWidth) { showToast('No stream video to capture.', 'info'); return; }
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      canvas.toBlob(blob => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'snapshot-' + Date.now() + '.png';
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    } catch (_) { showToast('Snapshot failed.', 'error'); }
+  }
+
+  // Make a fixed-position floating panel draggable by its header element.
+  function _makeDraggable(panel, handle) {
+    if (!panel || !handle) return;
+    let dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
+    handle.addEventListener('mousedown', e => {
+      if (e.target.closest('button')) return;
+      e.preventDefault();
+      dragging = true;
+      const rect = panel.getBoundingClientRect();
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.left = rect.left + 'px';
+      panel.style.top  = rect.top  + 'px';
+      startX = e.clientX; startY = e.clientY;
+      origLeft = rect.left; origTop = rect.top;
+      handle.style.cursor = 'grabbing';
+    });
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      let newLeft = origLeft + (e.clientX - startX);
+      let newTop  = origTop  + (e.clientY - startY);
+      newLeft = Math.max(0, Math.min(newLeft, window.innerWidth  - panel.offsetWidth));
+      newTop  = Math.max(0, Math.min(newTop,  window.innerHeight - panel.offsetHeight));
+      panel.style.left = newLeft + 'px';
+      panel.style.top  = newTop  + 'px';
+    });
+    document.addEventListener('mouseup', () => {
+      if (dragging) { dragging = false; handle.style.cursor = ''; }
+    });
   }
 
   function _toggleProfile(e) {
