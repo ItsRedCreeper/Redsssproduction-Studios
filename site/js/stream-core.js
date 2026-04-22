@@ -5,8 +5,17 @@
   const STREAM_CMD_KEY = 'rps_stream_cmd_v1';
   const STREAM_PENDING_START_KEY = 'rps_stream_pending_start_v1';
   const MAIN_HEARTBEAT_KEY = 'rps_main_heartbeat_v1';
-  const MAIN_HEARTBEAT_STALE_MS = 5000;    // main site considered gone after 5s of silence
-  const MAIN_HEARTBEAT_IDLE_CLOSE_MS = 8000; // close idle core tab after 8s without main
+  // Tighter than before — but generous enough that page-to-page navigation
+  // (which briefly tears down the old heartbeat writer before the new page
+  // boots) doesn't trip a false "main site is gone" cleanup.
+  const MAIN_HEARTBEAT_STALE_MS = 12000;
+  const MAIN_HEARTBEAT_IDLE_CLOSE_MS = 20000;
+  // Don't enforce heartbeat staleness for this long after the core tab loads.
+  // Otherwise a fast Go Live can race the very first heartbeat write on the
+  // main tab and the core tab kills itself before it ever sees one.
+  const STARTUP_GRACE_MS = 20000;
+  const _coreLoadedAt = Date.now();
+  let _everSawHeartbeat = false;
 
   let currentUser = null;
   let localStream = null;
@@ -210,9 +219,14 @@
       const now = Date.now();
       const alive = ts && (now - ts) < MAIN_HEARTBEAT_STALE_MS;
       if (alive) {
+        _everSawHeartbeat = true;
         _noHeartbeatSince = 0;
         return;
       }
+      // Startup grace: never act on missing heartbeat until either we've seen
+      // one once, or the grace window has elapsed. Without this, opening the
+      // core tab a hair before the main page boots would close the core tab.
+      if (!_everSawHeartbeat && (now - _coreLoadedAt) < STARTUP_GRACE_MS) return;
       // Don't accumulate the stale timer while we're starting up (screen
       // picker is open, LiveKit is connecting, etc.).  If we did, a fast
       // user who picks a screen in <5 s would see the tab close immediately

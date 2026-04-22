@@ -321,26 +321,21 @@ const Nav = (() => {
     write();
     _mainHeartbeatTimer = setInterval(write, 2000);
 
-    // On tab close: remove self from registry. If we were the last tab AND a
-    // stream is active, tell the stream-core tab to force-stop immediately so
-    // it doesn't linger on screen or leave a ghost "live" state behind.
+    // On tab close: only remove ourselves from the registry. We deliberately
+    // do NOT write rps_force_stop_v1 or remove the heartbeat here — when the
+    // user navigates between same-site pages, the OLD page unloads BEFORE the
+    // NEW page has had a chance to register, which would otherwise look like
+    // "all tabs gone" and force-stop a healthy stream.
+    //
+    // Real "all tabs gone" cases (browser quit, OS shutdown, last tab closed)
+    // are caught by the stream-core heartbeat watcher: it sees the registry
+    // stop refreshing and the heartbeat go stale, then cleans up itself.
     const _onUnload = () => {
-      const tabs = _readTabs();
-      delete tabs[myTabId];
-      // Prune stale entries so a crashed tab doesn't block cleanup forever.
-      const now = Date.now();
-      for (const id of Object.keys(tabs)) {
-        if (now - tabs[id] > TAB_STALE_MS) delete tabs[id];
-      }
-      const noMoreTabs = Object.keys(tabs).length === 0;
-      _writeTabs(tabs);
-      if (noMoreTabs) {
-        try {
-          localStorage.setItem('rps_force_stop_v1', '1');
-          // Drop heartbeat so the core tab's stale-check trips instantly too.
-          localStorage.removeItem(MAIN_HEARTBEAT_KEY);
-        } catch (_) {}
-      }
+      try {
+        const tabs = _readTabs();
+        delete tabs[myTabId];
+        _writeTabs(tabs);
+      } catch (_) {}
     };
     window.addEventListener('pagehide', _onUnload);
     window.addEventListener('beforeunload', _onUnload);

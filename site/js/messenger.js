@@ -2324,6 +2324,10 @@ const Messenger = (() => {
       };
     } catch (_) {}
     _syncFromSharedStreamState();
+    // Periodic poll so a crashed/closed stream-core tab (which stops firing
+    // storage / BroadcastChannel events) is still detected within a couple
+    // of seconds via the staleness check in _syncFromSharedStreamState.
+    setInterval(_syncFromSharedStreamState, 2000);
   }
 
   function _readSharedStreamState() {
@@ -2341,7 +2345,7 @@ const Messenger = (() => {
     // recently. This covers the case where the core tab was killed (browser
     // quit, OS shutdown, crash) without running its beforeunload handler.
     let mine = !!(state && state.live && currentUser && state.hostUid === currentUser.uid);
-    if (mine && state.ts && (Date.now() - Number(state.ts || 0) > 10000)) {
+    if (mine && state.ts && (Date.now() - Number(state.ts || 0) > 8000)) {
       mine = false;
       try { localStorage.removeItem(STREAM_STATE_KEY); } catch (_) {}
     }
@@ -2357,6 +2361,20 @@ const Messenger = (() => {
       _streamUptimeTimer = null;
     }
     _updateStreamManagePanel();
+    // Keep the per-channel Go Live / Stop Stream buttons in sync with the
+    // shared state, so closing the stream-core tab flips the in-channel UI
+    // back to "Go Live" instead of leaving a dead "Stop Stream" button.
+    _refreshChannelStreamButtons();
+  }
+
+  function _refreshChannelStreamButtons() {
+    const goLive = document.getElementById('stream-go-live-btn');
+    const stop = document.getElementById('stream-stop-btn');
+    if (!goLive || !stop) return;
+    const channelId = currentChat && currentChat.channelId;
+    const alreadyLive = _isStreaming && _streamContext && channelId && _streamContext.channelId === channelId;
+    goLive.style.display = alreadyLive ? 'none' : '';
+    stop.style.display = alreadyLive ? '' : 'none';
   }
 
   function _sendCoreStreamCommand(action, extra) {
