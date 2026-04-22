@@ -8,13 +8,14 @@
   // Tighter than before — but generous enough that page-to-page navigation
   // (which briefly tears down the old heartbeat writer before the new page
   // boots) doesn't trip a false "main site is gone" cleanup.
-  const MAIN_HEARTBEAT_STALE_MS = 12000;
-  const MAIN_HEARTBEAT_IDLE_CLOSE_MS = 20000;
-  // Don't enforce heartbeat staleness for this long after the core tab loads.
-  // Otherwise a fast Go Live can race the very first heartbeat write on the
-  // main tab and the core tab kills itself before it ever sees one.
-  const STARTUP_GRACE_MS = 20000;
-  const _coreLoadedAt = Date.now();
+  // How long the heartbeat can be absent before we consider the main site gone.
+  // nav.js writes every 1 s; same-site navigation writes immediately on script
+  // parse, so the gap is <500 ms. 5 s is ample for navigation and still fast
+  // enough to clean up within ~5 s of the browser being closed.
+  const MAIN_HEARTBEAT_STALE_MS = 5000;
+  // Whether we have ever seen a heartbeat on this core tab. Used to ignore
+  // the absence of a heartbeat before the main page has had a chance to write
+  // its first one (startup race).
   let _everSawHeartbeat = false;
 
   let currentUser = null;
@@ -223,24 +224,23 @@
         _noHeartbeatSince = 0;
         return;
       }
-      // Startup grace: never act on missing heartbeat until either we've seen
-      // one once, or the grace window has elapsed. Without this, opening the
-      // core tab a hair before the main page boots would close the core tab.
-      if (!_everSawHeartbeat && (now - _coreLoadedAt) < STARTUP_GRACE_MS) return;
-      // Don't accumulate the stale timer while we're starting up (screen
-      // picker is open, LiveKit is connecting, etc.).  If we did, a fast
-      // user who picks a screen in <5 s would see the tab close immediately
-      // after going live because goneFor was already >= STALE_MS.
-      if (!_noHeartbeatSince && !isStarting) _noHeartbeatSince = now;
-      // Also reset the counter the instant we go live so the main site gets
-      // a fresh window to prove it's still open.
-      if (isLive && _noHeartbeatSince && _noHeartbeatSince < startedAt) _noHeartbeatSince = startedAt;
-      const goneFor = _noHeartbeatSince ? now - _noHeartbeatSince : 0;
+      // Never act on a missing heartbeat until we have seen at least one.
+      // This fully eliminates the startup race: if the core tab opens before
+      // the main page has written its first heartbeat, we just wait.
+      if (!_everSawHeartbeat) return;
+      // While the user is picking a screen or LiveKit is connecting, don't
+      // start the stale countdown — the main tab is still alive.
+      if (isStarting) return;
+      if (!_noHeartbeatSince) _noHeartbeatSince = now;
+      // Reset after stream start so a fresh stale window begins.
+      if (isLive && _noHeartbeatSince < startedAt) _noHeartbeatSince = startedAt;
+      const goneFor = now - _noHeartbeatSince;
+      // Only act on live streams — never idle-close the core tab.
+      // An idle core tab is harmless; closing it speculatively causes
+      // startup races that are harder to fix than leaving it open.
       if (isLive && goneFor > MAIN_HEARTBEAT_STALE_MS) {
         _setStatus('Main site closed — stopping stream.');
         _stopStream(true);
-      } else if (!isLive && !isStarting && goneFor > MAIN_HEARTBEAT_IDLE_CLOSE_MS) {
-        _tryClose();
       }
     }, 1000);
   }

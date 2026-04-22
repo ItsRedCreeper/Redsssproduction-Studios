@@ -4,6 +4,11 @@
    Pages: games.html, messenger.html, support.html, friends.html
    ─────────────────────────────────────────────── */
 
+// Write the heartbeat immediately when this script is parsed so the
+// stream-core tab sees a live timestamp even during same-site navigation
+// (before auth resolves and _startMainHeartbeat() runs).
+try { localStorage.setItem('rps_main_heartbeat_v1', String(Date.now())); } catch (_) {}
+
 const Nav = (() => {
 
   let _idleTimer = null;
@@ -319,7 +324,9 @@ const Nav = (() => {
       _writeTabs(tabs);
     };
     write();
-    _mainHeartbeatTimer = setInterval(write, 2000);
+    // 1 s interval — gives stream-core fast close detection while still
+    // tolerating the brief gap during same-site page navigation.
+    _mainHeartbeatTimer = setInterval(write, 1000);
 
     // On tab close: only remove ourselves from the registry. We deliberately
     // do NOT write rps_force_stop_v1 or remove the heartbeat here — when the
