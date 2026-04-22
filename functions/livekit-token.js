@@ -29,23 +29,13 @@ export async function onRequestPost(context) {
   }
   const uid = payload.sub;
 
-  // ── Parse body ────────────────────────────────────────────────────────────
-  let body;
-  let rawBody = '';
-  try {
-    rawBody = await request.text();
-    body = JSON.parse(rawBody);
-  } catch (parseErr) {
-    return _json({
-      error: 'Bad Request',
-      detail: 'body parse failed: ' + (parseErr && parseErr.message),
-      received: rawBody.slice(0, 200)
-    }, 400);
-  }
+  // ── Parse params (sent as query string to survive any redirect) ───────────
+  const url = new URL(request.url);
+  const roomName  = url.searchParams.get('roomName')  || '';
+  const canPublish = url.searchParams.get('canPublish') === '1';
 
-  const { roomName, canPublish } = body;
   if (!roomName || typeof roomName !== 'string' || roomName.length > 128) {
-    return _json({ error: 'Bad Request: invalid roomName', roomName: String(roomName).slice(0, 50) }, 400);
+    return _json({ error: 'Bad Request: invalid roomName', roomName: roomName.slice(0, 50) }, 400);
   }
 
   // ── Check env vars ────────────────────────────────────────────────────────

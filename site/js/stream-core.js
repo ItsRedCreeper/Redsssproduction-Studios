@@ -25,10 +25,10 @@
   async function _getLiveKitToken(roomName, canPublish) {
     if (!roomName) throw new Error('Room name is empty — stream context not ready');
     const idToken = await auth.currentUser.getIdToken(/* forceRefresh= */ true);
-    const res = await fetch('/livekit-token', {
+    const params = new URLSearchParams({ roomName, canPublish: canPublish ? '1' : '0' });
+    const res = await fetch('/livekit-token?' + params.toString(), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken },
-      body: JSON.stringify({ roomName, canPublish })
+      headers: { 'Authorization': 'Bearer ' + idToken }
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '(unreadable)');
