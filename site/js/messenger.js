@@ -451,25 +451,34 @@ const Messenger = (() => {
         if (!_rtdbDMListeners.has(uid)) {
           try {
             const presRef = firebase.database().ref('presence/' + uid);
+            // Grace period — RTDB may briefly flap to online:false during
+            // same-site page navigation. Wait before writing offline so a
+            // fast re-connect cancels it.
+            let _offlineTimer = null;
             const rtdbHandler = snap => {
               const val = snap.val();
               if (val && val.online === false) {
-                const current = _dmProfiles.get(uid);
-                const friendIsAuto = !current || !current.status || current.status === 'auto';
-                // Only sync effective offline to Firestore for auto-status users;
-                // manual-status users keep their chosen status even when browser is closed.
-                if (friendIsAuto) {
-                  _rtdbOfflineSet.add(uid);
-                  db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
-                  if (current) {
-                    _dmProfiles.set(uid, { ...current, effectiveStatus: 'offline' });
-                    const cached = profileCache.get(uid);
-                    if (cached) profileCache.set(uid, { ...cached, effectiveStatus: 'offline' });
-                    _patchRenderedMessages(uid);
-                    _renderDMFriendsList();
+                if (_offlineTimer) clearTimeout(_offlineTimer);
+                _offlineTimer = setTimeout(() => {
+                  _offlineTimer = null;
+                  const current = _dmProfiles.get(uid);
+                  const friendIsAuto = !current || !current.status || current.status === 'auto';
+                  // Only sync effective offline to Firestore for auto-status users;
+                  // manual-status users keep their chosen status even when browser is closed.
+                  if (friendIsAuto) {
+                    _rtdbOfflineSet.add(uid);
+                    db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+                    if (current) {
+                      _dmProfiles.set(uid, { ...current, effectiveStatus: 'offline' });
+                      const cached = profileCache.get(uid);
+                      if (cached) profileCache.set(uid, { ...cached, effectiveStatus: 'offline' });
+                      _patchRenderedMessages(uid);
+                      _renderDMFriendsList();
+                    }
                   }
-                }
+                }, 3500);
               } else if (val && val.online === true) {
+                if (_offlineTimer) { clearTimeout(_offlineTimer); _offlineTimer = null; }
                 _rtdbOfflineSet.delete(uid);
                 // Re-read the stored profile with the override removed and re-render
                 const cur = _dmProfiles.get(uid);
@@ -1316,20 +1325,27 @@ const Messenger = (() => {
       if (!_rtdbMemberListeners.has(uid)) {
         try {
           const presRef = firebase.database().ref('presence/' + uid);
+          // Grace period — ignore transient offline during same-site nav.
+          let _offlineTimer = null;
           const rtdbHandler = snap => {
             const val = snap.val();
             if (val && val.online === false) {
-              _rtdbMemberOffline.add(uid);
-              db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
-              const cur = _memberProfiles.get(uid);
-              if (cur) {
-                _memberProfiles.set(uid, { ...cur, effectiveStatus: 'offline' });
-                const cached = profileCache.get(uid);
-                if (cached) profileCache.set(uid, { ...cached, effectiveStatus: 'offline' });
-                _patchRenderedMessages(uid);
-                _renderMembersList();
-              }
+              if (_offlineTimer) clearTimeout(_offlineTimer);
+              _offlineTimer = setTimeout(() => {
+                _offlineTimer = null;
+                _rtdbMemberOffline.add(uid);
+                db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+                const cur = _memberProfiles.get(uid);
+                if (cur) {
+                  _memberProfiles.set(uid, { ...cur, effectiveStatus: 'offline' });
+                  const cached = profileCache.get(uid);
+                  if (cached) profileCache.set(uid, { ...cached, effectiveStatus: 'offline' });
+                  _patchRenderedMessages(uid);
+                  _renderMembersList();
+                }
+              }, 3500);
             } else if (val && val.online === true) {
+              if (_offlineTimer) { clearTimeout(_offlineTimer); _offlineTimer = null; }
               _rtdbMemberOffline.delete(uid);
               const cur = _memberProfiles.get(uid);
               if (cur && cur.effectiveStatus === 'offline') {

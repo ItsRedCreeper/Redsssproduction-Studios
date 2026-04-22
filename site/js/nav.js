@@ -194,10 +194,18 @@ const Nav = (() => {
 
     if (!isMessengerPage) {
       navBtn?.addEventListener('click', () => {
-        if (panel.style.display === 'none' || !panel.style.display) panel.style.display = 'block';
-        else panel.style.display = 'none';
+        if (panel.style.display === 'none' || !panel.style.display) {
+          panel.style.display = 'block';
+          _writeWindowsOpen({ manage: true });
+        } else {
+          panel.style.display = 'none';
+          _writeWindowsOpen({ manage: false });
+        }
       });
-      closeBtn?.addEventListener('click', () => { panel.style.display = 'none'; });
+      closeBtn?.addEventListener('click', () => {
+        panel.style.display = 'none';
+        _writeWindowsOpen({ manage: false });
+      });
 
       // Make panels draggable
       _makeDraggable(panel, panel.querySelector('.stream-manage-header'));
@@ -268,6 +276,7 @@ const Nav = (() => {
         if (p) p.style.display = 'none';
         if (_navStreamChatUnsub) { _navStreamChatUnsub(); _navStreamChatUnsub = null; }
         _navCancelReply();
+        _writeWindowsOpen({ chat: false });
       });
       const navChatPanel = document.getElementById('nav-stream-chat-panel');
       if (navChatPanel) _makeDraggable(navChatPanel, navChatPanel.querySelector('.stream-chat-header'));
@@ -339,6 +348,48 @@ const Nav = (() => {
         }
       };
     } catch (_) {}
+
+    // ── Restore windows that were open on the previous page ──
+    _restoreOpenWindows();
+  }
+
+  /* ── Re-open floating windows that were open before navigation. ── */
+  function _restoreOpenWindows() {
+    let opened;
+    try { opened = _readWindowsOpen(); } catch (_) { opened = {}; }
+    if (!opened) return;
+
+    // Chat window — only restore if the user is still in a channel.
+    const joined = _readJoinedChannel();
+    if (opened.chat && joined) {
+      try {
+        _openNavStreamChat({
+          serverId: joined.serverId,
+          channelId: joined.channelId,
+          channelName: joined.channelName
+        });
+      } catch (_) {}
+    } else if (opened.chat && !joined) {
+      // No longer in a channel — clear the stale flag.
+      _writeWindowsOpen({ chat: false });
+    }
+
+    // Floating stream viewer — requires saved stream info.
+    if (opened.viewer && opened.viewerStream &&
+        opened.viewerStream.uid && opened.viewerStream.livekitRoom && opened.viewerStream.livekitUrl) {
+      try { _openFloatingStreamViewer(opened.viewerStream); } catch (_) {}
+    } else if (opened.viewer) {
+      _writeWindowsOpen({ viewer: false, viewerStream: null });
+    }
+
+    // Stream manage panel (streamer-only, non-messenger pages).
+    if (opened.manage) {
+      const mp = document.getElementById('stream-manage-panel');
+      if (mp) {
+        mp.style.display = 'block';
+        try { _applyLayout(mp, 'rps_manage_panel_v1', { left: 20, top: 80, width: 280, height: 'auto' }); } catch (_) {}
+      }
+    }
   }
 
   function _startMainHeartbeat() {
@@ -641,6 +692,7 @@ const Nav = (() => {
     // Restore persisted position/size before showing.
     _applyLayout(panel, CHAT_WINDOW_LAYOUT_KEY, { left: window.innerWidth - 340, top: 80, width: 320, height: 440 });
     panel.style.display = 'flex';
+    _writeWindowsOpen({ chat: true });
     const titleEl = document.getElementById('nav-stream-chat-title');
     if (titleEl) titleEl.textContent = 'Stream Chat \u2014 ' + _esc(state.channelName || 'Streaming Channel');
     if (!state.serverId || !state.channelId) return;
@@ -1630,6 +1682,20 @@ const Nav = (() => {
   const CHAT_WINDOW_LAYOUT_KEY = 'rps_chat_window_v1';
   const VIEWER_WINDOW_LAYOUT_KEY = 'rps_stream_viewer_v1';
   const VIEWER_VOLUME_KEY = 'rps_stream_viewer_volume_v1';
+  const WINDOWS_OPEN_KEY = 'rps_windows_open_v1';
+
+  /* ── Cross-page window open/close persistence ────────────────────────
+     Tracks which floating windows were open so they reappear when the
+     user navigates to another page. { chat, viewer, viewerStream, manage } */
+  function _readWindowsOpen() {
+    try { return JSON.parse(localStorage.getItem(WINDOWS_OPEN_KEY) || '{}') || {}; }
+    catch (_) { return {}; }
+  }
+  function _writeWindowsOpen(patch) {
+    const s = _readWindowsOpen();
+    Object.assign(s, patch);
+    try { localStorage.setItem(WINDOWS_OPEN_KEY, JSON.stringify(s)); } catch (_) {}
+  }
 
   const _channelChangeListeners = new Set();
   let _hubStreamsUnsub = null;          // onSnapshot for the list modal
@@ -1669,6 +1735,7 @@ const Nav = (() => {
     const chatPanel = document.getElementById('nav-stream-chat-panel');
     if (chatPanel) chatPanel.style.display = 'none';
     if (_navStreamChatUnsub) { _navStreamChatUnsub(); _navStreamChatUnsub = null; }
+    _writeWindowsOpen({ chat: false });
     _writeJoinedChannel(null);
   }
 
@@ -1882,6 +1949,10 @@ const Nav = (() => {
     _applyLayout(viewer, VIEWER_WINDOW_LAYOUT_KEY, { left: 20, top: 80, width: 360, height: 260 });
     viewer.style.display = 'flex';
     if (title) title.textContent = (stream.username || 'Stream');
+    _writeWindowsOpen({ viewer: true, viewerStream: {
+      uid: stream.uid, username: stream.username,
+      livekitRoom: stream.livekitRoom, livekitUrl: stream.livekitUrl
+    } });
 
     // Disconnect any previous viewer room
     if (_viewerRoom) { try { _viewerRoom.disconnect(); } catch (_) {} _viewerRoom = null; }
@@ -1936,6 +2007,7 @@ const Nav = (() => {
     if (po) { try { po.pause(); } catch (_) {} po.srcObject = null; }
     if (_viewerRoom) { try { _viewerRoom.disconnect(); } catch (_) {} _viewerRoom = null; }
     _viewerCurrentStream = null;
+    _writeWindowsOpen({ viewer: false, viewerStream: null });
   }
 
   function _wireFloatingStreamViewer() {
@@ -1981,6 +2053,7 @@ const Nav = (() => {
       if (chat && chat.style.display === 'flex') {
         chat.style.display = 'none';
         if (_navStreamChatUnsub) { _navStreamChatUnsub(); _navStreamChatUnsub = null; }
+        _writeWindowsOpen({ chat: false });
       }
     });
   }

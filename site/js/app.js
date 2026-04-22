@@ -439,7 +439,13 @@ const App = (() => {
     function _goOffline() {
       if (_pageClosing) return;
       // If navigating to another page on this site, skip going offline
-      if (sessionStorage.getItem('_siteNav')) { sessionStorage.removeItem('_siteNav'); return; }
+      if (sessionStorage.getItem('_siteNav')) {
+        sessionStorage.removeItem('_siteNav');
+        // Cancel the server-side onDisconnect so RTDB doesn't flap to offline
+        // while the WebSocket closes during navigation.
+        try { if (presenceRef) presenceRef.onDisconnect().cancel(); } catch (_) {}
+        return;
+      }
       _pageClosing = true;
       clearTimeout(_awayTimer);
       const rtdbPayload = JSON.stringify({ online: false, effectiveStatus: 'offline' });
@@ -462,10 +468,15 @@ const App = (() => {
     window.addEventListener('pagehide', _goOffline);
     window.addEventListener('beforeunload', _goOffline);
 
-    // Flag same-site link clicks so _goOffline knows not to write offline
+    // Flag same-site link clicks so _goOffline knows not to write offline.
+    // Also cancel the RTDB onDisconnect BEFORE navigation so the server
+    // never flips us to offline while the socket closes.
     document.addEventListener('click', e => {
       const a = e.target.closest('a[href]');
-      if (a && a.origin === location.origin) sessionStorage.setItem('_siteNav', '1');
+      if (a && a.origin === location.origin) {
+        sessionStorage.setItem('_siteNav', '1');
+        try { if (presenceRef) presenceRef.onDisconnect().cancel(); } catch (_) {}
+      }
     }, { capture: true });
 
     // Visibility change (tab hidden/shown)

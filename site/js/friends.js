@@ -360,23 +360,31 @@ const Friends = (() => {
         if (!_rtdbFriendListeners.has(uid)) {
           try {
             const presRef = firebase.database().ref('presence/' + uid);
+            // Grace period — RTDB briefly flaps to online:false during
+            // same-site page navigation. Wait before syncing to Firestore.
+            let _offlineTimer = null;
             const rtdbHandler = snap => {
               const val = snap.val();
               if (val && val.online === false) {
-                const fProf = friendProfiles.find(p => p.uid === uid);
-                const friendIsAuto = !fProf || !fProf.status || fProf.status === 'auto';
-                // Only sync effective offline to Firestore for auto-status users;
-                // manual-status users keep their chosen status even when browser is closed.
-                if (friendIsAuto) {
-                  _rtdbOffline.add(uid);
-                  db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
-                  const idx = friendProfiles.findIndex(p => p.uid === uid);
-                  if (idx >= 0) {
-                    friendProfiles[idx] = { ...friendProfiles[idx], effectiveStatus: 'offline' };
-                    _renderFriendsList(friendProfiles.slice());
+                if (_offlineTimer) clearTimeout(_offlineTimer);
+                _offlineTimer = setTimeout(() => {
+                  _offlineTimer = null;
+                  const fProf = friendProfiles.find(p => p.uid === uid);
+                  const friendIsAuto = !fProf || !fProf.status || fProf.status === 'auto';
+                  // Only sync effective offline to Firestore for auto-status users;
+                  // manual-status users keep their chosen status even when browser is closed.
+                  if (friendIsAuto) {
+                    _rtdbOffline.add(uid);
+                    db.collection('users').doc(uid).update({ effectiveStatus: 'offline', online: false }).catch(() => {});
+                    const idx = friendProfiles.findIndex(p => p.uid === uid);
+                    if (idx >= 0) {
+                      friendProfiles[idx] = { ...friendProfiles[idx], effectiveStatus: 'offline' };
+                      _renderFriendsList(friendProfiles.slice());
+                    }
                   }
-                }
+                }, 3500);
               } else if (val && val.online === true) {
+                if (_offlineTimer) { clearTimeout(_offlineTimer); _offlineTimer = null; }
                 _rtdbOffline.delete(uid);
                 // Re-read the stored profile with the override removed and re-render
                 const idx = friendProfiles.findIndex(p => p.uid === uid);
