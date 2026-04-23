@@ -1857,51 +1857,91 @@ const Nav = (() => {
       .collection('channels').doc(ch.channelId)
       .collection('streams');
 
+    // Also watch the RTDB liveness set so ghost streams (crashed tabs)
+    // disappear within ~1-2 s.
+    _ensureHubStreamsLive();
+
+    // Buffer Firestore snapshots so we can re-render whenever the RTDB
+    // set changes too.
+    let _lastSnapDocs = [];
+    const _render = () => _renderHubStreamList(body, _lastSnapDocs);
+
     _hubStreamsUnsub = ref.onSnapshot(snap => {
-      if (snap.empty) {
-        body.innerHTML = '<div class="chat-empty">No one is streaming in this channel right now.</div>';
-        _stopAllPreviewRooms();
-        return;
-      }
-      // Render list
-      body.innerHTML = '';
-      const seenUids = new Set();
-      snap.forEach(doc => {
-        const data = doc.data() || {};
-        const uid = doc.id;
-        seenUids.add(uid);
-        const card = document.createElement('div');
-        card.className = 'stream-list-card';
-        card.setAttribute('data-stream-uid', uid);
-        card.innerHTML =
-          '<div class="stream-list-card-video-wrap">' +
-            '<video autoplay playsinline muted></video>' +
-            '<span class="stream-list-live-dot"></span>' +
-          '</div>' +
-          '<div class="stream-list-card-bar">' +
-            '<span class="stream-list-card-name">' + _esc(data.username || 'Someone') + '</span>' +
-          '</div>';
-        card.addEventListener('click', () => {
-          _closeStreamListModal();
-          _openFloatingStreamViewer({
-            uid,
-            username: data.username || 'Someone',
-            livekitRoom: data.livekitRoom,
-            livekitUrl: data.livekitUrl
-          });
-        });
-        body.appendChild(card);
-        // Kick off a muted preview LiveKit connection
-        _startPreviewRoom(uid, data);
-      });
-      // Disconnect any preview rooms that no longer match live streams
-      for (const [uid, room] of _hubPreviewRooms) {
-        if (!seenUids.has(uid)) {
-          try { room.disconnect(); } catch (_) {}
-          _hubPreviewRooms.delete(uid);
-        }
-      }
+      _lastSnapDocs = snap.docs.map(d => ({ id: d.id, data: d.data() || {} }));
+      _render();
     });
+    _hubRenderStreamsLive = _render;  // called when the RTDB set changes
+  }
+
+  function _renderHubStreamList(body, docs) {
+    if (!body) return;
+    // Filter out ghosts — a stream is shown only if it is in RTDB
+    // streamsLive OR its Firestore heartbeat is still fresh (<15 s).
+    const now = Date.now();
+    const filtered = docs.filter(({ id, data }) => {
+      if (_hubStreamsLiveUids.has(id)) return true;
+      const hbMs = (data.lastHeartbeat && data.lastHeartbeat.toMillis)
+        ? data.lastHeartbeat.toMillis()
+        : ((data.startedAt && data.startedAt.toMillis) ? data.startedAt.toMillis() : 0);
+      return hbMs && (now - hbMs) < 15000;
+    });
+
+    if (!filtered.length) {
+      body.innerHTML = '<div class="chat-empty">No one is streaming in this channel right now.</div>';
+      _stopAllPreviewRooms();
+      return;
+    }
+    body.innerHTML = '';
+    const seenUids = new Set();
+    for (const { id: uid, data } of filtered) {
+      seenUids.add(uid);
+      const card = document.createElement('div');
+      card.className = 'stream-list-card';
+      card.setAttribute('data-stream-uid', uid);
+      card.innerHTML =
+        '<div class="stream-list-card-video-wrap">' +
+          '<video autoplay playsinline muted></video>' +
+          '<span class="stream-list-live-dot"></span>' +
+        '</div>' +
+        '<div class="stream-list-card-bar">' +
+          '<span class="stream-list-card-name">' + _esc(data.username || 'Someone') + '</span>' +
+        '</div>';
+      card.addEventListener('click', () => {
+        _closeStreamListModal();
+        _openFloatingStreamViewer({
+          uid,
+          username: data.username || 'Someone',
+          livekitRoom: data.livekitRoom,
+          livekitUrl: data.livekitUrl
+        });
+      });
+      body.appendChild(card);
+      _startPreviewRoom(uid, data);
+    }
+    for (const [uid, room] of _hubPreviewRooms) {
+      if (!seenUids.has(uid)) {
+        try { room.disconnect(); } catch (_) {}
+        _hubPreviewRooms.delete(uid);
+      }
+    }
+  }
+
+  const _hubStreamsLiveUids = new Set();
+  let _hubStreamsLiveUnsub = null;
+  let _hubRenderStreamsLive = null;
+  function _ensureHubStreamsLive() {
+    if (_hubStreamsLiveUnsub) return;
+    let r;
+    try { r = firebase.database().ref('streamsLive'); }
+    catch (_) { return; }
+    const handler = snap => {
+      const val = snap.val() || {};
+      _hubStreamsLiveUids.clear();
+      for (const uid of Object.keys(val)) _hubStreamsLiveUids.add(uid);
+      if (_hubRenderStreamsLive) _hubRenderStreamsLive();
+    };
+    r.on('value', handler);
+    _hubStreamsLiveUnsub = () => { try { r.off('value', handler); } catch (_) {} };
   }
 
   function _closeStreamListModal() {

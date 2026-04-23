@@ -35,6 +35,14 @@
   const streamUnsubs = [];
   let streamControlChannel = null;
 
+  // RTDB-backed liveness mirror.  When a stream is active we write to
+  // `streamsLive/{uid}` and configure onDisconnect().remove() so the entry
+  // vanishes automatically if the browser crashes or the network drops.
+  // Other clients treat the presence of this RTDB node as the source of
+  // truth for whether the Firestore stream doc should be shown.
+  let _liveRtdbRef = null;
+  let _liveOnDisconnect = null;
+
   let recorder = null;
   let recordChunks = [];
   let recordStartedAt = 0;
@@ -368,6 +376,29 @@
         livekitUrl: LIVEKIT_URL
       });
 
+      // RTDB liveness mirror — auto-removed by the server when this tab
+      // disconnects (crash, close, network loss).  Viewers use this as the
+      // source of truth so ghost stream cards disappear within ~1-2 s
+      // instead of waiting for a 15 s heartbeat timeout.
+      try {
+        _liveRtdbRef = firebase.database().ref('streamsLive/' + currentUser.uid);
+        _liveOnDisconnect = _liveRtdbRef.onDisconnect();
+        _liveOnDisconnect.remove();
+        await _liveRtdbRef.set({
+          serverId: streamContext.serverId,
+          channelId: streamContext.channelId,
+          username: streamContext.username,
+          livekitRoom: roomName,
+          livekitUrl: LIVEKIT_URL,
+          startedAt: firebase.database.ServerValue.TIMESTAMP
+        });
+      } catch (e) {
+        // RTDB write failed — fall back to the Firestore-only path.
+        console.warn('streamsLive RTDB write failed:', e);
+        _liveRtdbRef = null;
+        _liveOnDisconnect = null;
+      }
+
       // Watch our own user doc so we can push username renames onto the stream
       // card in real time. Clean up on stop.
       const userUnsub = db.collection('users').doc(currentUser.uid)
@@ -466,6 +497,17 @@
     try {
       if (streamContext) await _streamRef().delete();
     } catch (_) {}
+
+    // Cancel the onDisconnect first so a race between remove() and the
+    // socket closing can't leave the node resurrected, then clear the node.
+    try {
+      if (_liveOnDisconnect) await _liveOnDisconnect.cancel();
+    } catch (_) {}
+    try {
+      if (_liveRtdbRef) await _liveRtdbRef.remove();
+    } catch (_) {}
+    _liveRtdbRef = null;
+    _liveOnDisconnect = null;
 
     _clearState();
     if (shouldCloseWindow) _tryClose();

@@ -2078,6 +2078,19 @@ const Messenger = (() => {
   let _streamChatVideo = null;
   let _streamChatVideoUrl = null;
   let _streamInlineFiles = [];
+
+  // Set of uids currently present in RTDB `streamsLive` (auto-cleaned via
+  // onDisconnect()).  A Firestore stream doc is only considered live if its
+  // uid is in this set — this purges ghost streams from crashed tabs within
+  // ~1-2 s instead of waiting for the 15 s heartbeat timeout.
+  const _streamsLiveUids = new Set();
+  let _streamsLiveUnsub = null;
+  // Pending Firestore stream data keyed by uid, used while we wait for the
+  // matching RTDB entry to appear or time out.
+  const _pendingStreamCards = new Map();  // uid → { serverId, channelId, data }
+  // Deletion grace timers per uid, so transient RTDB flaps don't delete the
+  // Firestore doc before we're sure.
+  const _streamGhostTimers = new Map();   // uid → timeout id
   let _streamInlineVideo = null;
   let _streamInlineVideoUrl = null;
   const STREAM_STATE_KEY = 'rps_stream_state_v1';
@@ -2508,39 +2521,111 @@ const Messenger = (() => {
       .collection('channels').doc(channelId)
       .collection('streams');
 
+    // Make sure the RTDB liveness feed is running so our filter is accurate.
+    _ensureStreamsLiveWatcher();
+
     const streamsUnsub = streamsRef.onSnapshot(snap => {
       if (!currentChat || currentChat.type !== 'streaming' || currentChat.channelId !== channelId) return;
 
       snap.docChanges().forEach(change => {
         const streamerUid = change.doc.id;
-        const data = change.doc.data();
+        const data = change.doc.data() || {};
 
         if (change.type === 'added') {
-          _addStreamCard(streamerUid, data.username || 'Someone');
-          // Always join the LiveKit room as a subscriber — even for our own
-          // stream — so the streamer can see their own output. We pass a
-          // different identity (":v") so we don't kick the publisher off.
-          _joinStream(serverId, channelId, streamerUid, data.livekitRoom, data.livekitUrl);
+          _pendingStreamCards.set(streamerUid, { serverId, channelId, data });
+          _maybeShowStreamCard(streamerUid);
         } else if (change.type === 'modified') {
-          // Keep the displayed name in sync if the streamer renamed themselves.
+          const pending = _pendingStreamCards.get(streamerUid);
+          if (pending) pending.data = data;
           _updateStreamCardName(streamerUid, data.username || 'Someone');
         } else if (change.type === 'removed') {
+          _pendingStreamCards.delete(streamerUid);
           _removeStreamCard(streamerUid);
-          // Close viewer PC for this streamer
           const room = _viewerRooms.get(streamerUid);
           if (room) { room.disconnect().catch(() => {}); _viewerRooms.delete(streamerUid); }
         }
       });
 
-      // Show empty state or grid
-      const empty = document.getElementById('stream-empty');
-      if (snap.empty) {
-        if (empty) empty.style.display = 'flex';
-      } else {
-        if (empty) empty.style.display = 'none';
-      }
+      _refreshStreamEmptyState();
     });
     _streamUnsubs.push(streamsUnsub);
+  }
+
+  /* ── Decide whether to actually render a stream card.
+       A Firestore stream is shown only if its uid is also in RTDB
+       `streamsLive`, OR the Firestore doc is fresh enough to be trusted
+       (within 15 s) in the rare case RTDB is unreachable for a client.  */
+  function _maybeShowStreamCard(streamerUid) {
+    const p = _pendingStreamCards.get(streamerUid);
+    if (!p) return;
+    const isLiveInRtdb = _streamsLiveUids.has(streamerUid);
+    const hbMs = (p.data.lastHeartbeat && p.data.lastHeartbeat.toMillis)
+      ? p.data.lastHeartbeat.toMillis()
+      : ((p.data.startedAt && p.data.startedAt.toMillis) ? p.data.startedAt.toMillis() : 0);
+    const heartbeatFresh = hbMs && (Date.now() - hbMs) < 15000;
+    if (!isLiveInRtdb && !heartbeatFresh) return;  // ghost — ignore for now
+
+    _addStreamCard(streamerUid, p.data.username || 'Someone');
+    _joinStream(p.serverId, p.channelId, streamerUid, p.data.livekitRoom, p.data.livekitUrl);
+    _refreshStreamEmptyState();
+  }
+
+  function _refreshStreamEmptyState() {
+    const grid = document.getElementById('stream-grid');
+    const empty = document.getElementById('stream-empty');
+    if (!grid || !empty) return;
+    empty.style.display = grid.children.length ? 'none' : 'flex';
+  }
+
+  /* ── Global RTDB streamsLive watcher (single subscription per page). ── */
+  function _ensureStreamsLiveWatcher() {
+    if (_streamsLiveUnsub) return;
+    let rtdbRef;
+    try { rtdbRef = firebase.database().ref('streamsLive'); }
+    catch (_) { return; }
+
+    const handler = snap => {
+      const val = snap.val() || {};
+      const newSet = new Set(Object.keys(val));
+
+      // Newly live: render any pending cards + cancel any ghost timer.
+      for (const uid of newSet) {
+        if (!_streamsLiveUids.has(uid)) {
+          const t = _streamGhostTimers.get(uid);
+          if (t) { clearTimeout(t); _streamGhostTimers.delete(uid); }
+          if (_pendingStreamCards.has(uid)) _maybeShowStreamCard(uid);
+        }
+      }
+      // No longer live: schedule delete after a short grace period so a
+      // quick same-site navigation on the streamer's end doesn't flap.
+      for (const uid of _streamsLiveUids) {
+        if (!newSet.has(uid) && !_streamGhostTimers.has(uid)) {
+          const t = setTimeout(() => {
+            _streamGhostTimers.delete(uid);
+            // Still missing from RTDB?  Purge the Firestore doc and card.
+            if (!_streamsLiveUids.has(uid) && _pendingStreamCards.has(uid)) {
+              const p = _pendingStreamCards.get(uid);
+              _pendingStreamCards.delete(uid);
+              _removeStreamCard(uid);
+              const room = _viewerRooms.get(uid);
+              if (room) { room.disconnect().catch(() => {}); _viewerRooms.delete(uid); }
+              try {
+                db.collection('servers').doc(p.serverId)
+                  .collection('channels').doc(p.channelId)
+                  .collection('streams').doc(uid).delete().catch(() => {});
+              } catch (_) {}
+              _refreshStreamEmptyState();
+            }
+          }, 4000);
+          _streamGhostTimers.set(uid, t);
+        }
+      }
+
+      _streamsLiveUids.clear();
+      for (const uid of newSet) _streamsLiveUids.add(uid);
+    };
+    rtdbRef.on('value', handler);
+    _streamsLiveUnsub = () => { try { rtdbRef.off('value', handler); } catch (_) {} };
   }
 
   function _addStreamCard(streamerUid, username) {
