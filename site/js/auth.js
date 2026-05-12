@@ -145,15 +145,45 @@ const Auth = (() => {
   }
 
   async function handleGoogle() {
+    let result;
     try {
-      const result = await auth.signInWithPopup(googleProvider);
-      if (result.additionalUserInfo && result.additionalUserInfo.isNewUser) {
+      result = await auth.signInWithPopup(googleProvider);
+    } catch (err) {
+      // Only show a toast for actual auth-level failures (popup closed, network, etc.)
+      showToast(friendlyError(err.code), 'error');
+      return;
+    }
+
+    // Profile setup is a separate step — errors here must NOT surface as
+    // "Something went wrong" because the user IS already signed in.
+    try {
+      const isNew = result.additionalUserInfo && result.additionalUserInfo.isNewUser;
+      if (isNew) {
         const baseName = result.user.displayName || 'User';
         const uniqueName = await _findUniqueUsername(baseName);
         await createUserProfile(result.user, uniqueName, result.user.photoURL || '');
+      } else {
+        // Returning Google user — sync their Google photo if no avatar is stored yet
+        await _syncGoogleAvatar(result.user);
       }
-    } catch (err) {
-      showToast(friendlyError(err.code), 'error');
+    } catch (profileErr) {
+      // Profile setup failed but auth succeeded — log it and move on
+      console.warn('Google profile setup error:', profileErr);
+    }
+  }
+
+  // For returning Google users: write their Google photo to Firestore only if
+  // the avatar field is currently empty (never overwrite a custom avatar).
+  async function _syncGoogleAvatar(user) {
+    if (!user.photoURL) return;
+    try {
+      const doc = await db.collection('users').doc(user.uid).get();
+      if (!doc.exists) return;
+      if (!doc.data().avatar) {
+        await db.collection('users').doc(user.uid).update({ avatar: user.photoURL });
+      }
+    } catch (_) {
+      // Non-fatal — avatar just won't be populated this time
     }
   }
 

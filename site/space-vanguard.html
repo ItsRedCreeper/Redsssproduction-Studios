@@ -1,0 +1,2125 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { margin: 0; background: #000; overflow: hidden; color: #0ff; font-family: 'Courier New', monospace; }
+    canvas { display: block; position: fixed; top: 0; left: 0; z-index: 0; outline: none; }
+    
+    #splash-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: flex; align-items: center; justify-content: center; z-index: 9999; transition: opacity 0.8s ease; }
+    #splash-text { font-size: 20px; letter-spacing: 2px; text-align: center; padding: 20px; color: #0ff; }
+
+    .view { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; background: rgba(0,0,0,0.85); box-sizing: border-box; padding: 20px; overflow: hidden; }
+    .active-view { display: flex; }
+    
+    #view-levels.active-view { overflow-y: auto; display: block; padding-top: 110px; text-align: center; }
+    #view-ship-skins.active-view { overflow-y: auto; display: block; padding-top: 110px; padding-bottom: 80px; text-align: center; }
+    #view-shop.active-view { overflow-y: auto; display: block; padding-top: 110px; padding-bottom: 80px; text-align: center; }
+    #view-level-tree.active-view { overflow-x: auto; overflow-y: hidden; align-items: stretch; justify-content: flex-start; padding-top: 110px; }
+    .menu-box { display: flex; flex-direction: column; gap: 15px; width: 100%; max-width: 500px; border: 1px solid rgba(0,255,255,0.4); padding: 30px; background: rgba(0,10,10,0.95); box-sizing: border-box; }
+    
+    .btn { background: #111; border: 2px solid #0ff; color: #0ff; padding: 12px 15px; cursor: pointer; text-align: center; font-size: 14px; font-family: inherit; display: flex; justify-content: space-between; align-items: center; outline: none; min-height: 60px; box-sizing: border-box; }
+    .btn:hover:not(:disabled) { background: #0ff; color: #000; box-shadow: 0 0 15px #0ff; }
+    .btn:disabled { border-color: #333; color: #333; cursor: not-allowed; }
+
+    .back-btn-fixed { position: fixed; bottom: 30px; left: 30px; min-width: 120px; min-height: auto; z-index: 210; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 15px; margin-top: 20px; width: 100%; max-width: 800px; margin-left: auto; margin-right: auto; }
+    .level-card { border: 2px solid #0ff; padding: 15px; text-align: center; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+    .level-card.locked { border-color: #333; opacity: 0.5; }
+    .level-card.boss-card { border-color: #f44; }
+    .stage-tabs { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; justify-content: center; }
+    .stage-tab { padding: 8px 14px; border: 2px solid #555; background: #111; color: #888; cursor: pointer; font-family: inherit; font-size: 12px; letter-spacing: 1px; }
+    .stage-tab.active { border-color: #0ff; color: #0ff; box-shadow: 0 0 8px rgba(0,255,255,0.3); }
+    .stage-tab:disabled { cursor: not-allowed; opacity: 0.3; }
+    #boss-hp-bar { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); width: 60%; max-width: 500px; z-index: 60; display: none; pointer-events: none; }
+    #boss-hp-bar .bar-bg { background: rgba(0,0,0,0.7); border: 1px solid #f00; height: 18px; position: relative; }
+    #boss-hp-bar .bar-fill { position: absolute; left: 0; top: 0; height: 100%; background: #f00; transition: width 0.15s; }
+    #boss-hp-bar .bar-text { position: absolute; width: 100%; text-align: center; font-size: 11px; color: #fff; line-height: 18px; z-index: 1; }
+    
+    #user-bar { position: fixed; top: 0; left: 0; width: 100%; height: 65px; background: rgba(0,0,0,0.95); border-bottom: 2px solid #0ff; display: none; align-items: center; justify-content: space-between; padding: 0 30px; z-index: 150; box-sizing: border-box; }
+    .user-info { display: flex; align-items: center; gap: 15px; cursor: pointer; }
+    .level-indicator { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .level-label { font-size: 12px; letter-spacing: 2px; color: #0ff; text-transform: uppercase; }
+    .avatar-wrapper { width: 40px; height: 40px; border-radius: 50%; border: 1px solid #0ff; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #004444; }
+    .user-pic { width: 100%; height: 100%; object-fit: cover; }
+    .letter-avatar { font-size: 20px; font-weight: bold; color: #0ff; text-transform: uppercase; }
+    .level-circle { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #0ff; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+
+    .level-tree { position: relative; width: max-content; max-width: none; height: 420px; margin: 20px auto 30px; display: grid; grid-template-rows: repeat(3, 1fr); grid-auto-columns: 120px; column-gap: 80px; row-gap: 40px; justify-items: center; align-items: center; padding: 10px 30px 30px; box-sizing: border-box; }
+    #view-level-tree.active-view::-webkit-scrollbar { height: 8px; }
+    #view-level-tree.active-view::-webkit-scrollbar-track { background: #000; }
+    #view-level-tree.active-view::-webkit-scrollbar-thumb { background: #0ff; box-shadow: 0 0 10px #0ff; }
+    .level-step { position: relative; width: 72px; height: 72px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .level-step.available { cursor: pointer; }
+    .level-node-circle { width: 42px; height: 42px; border-radius: 50%; border: 2px solid rgba(0,255,255,0.4); display: flex; align-items: center; justify-content: center; font-weight: bold; color: #0ff; background: rgba(0,10,10,0.8); }
+    .level-node-circle.completed { border-color: #0ff; box-shadow: 0 0 10px rgba(0,255,255,0.6); }
+    .level-node-circle.current { border-color: #ff0; color: #ff0; box-shadow: 0 0 12px rgba(255,255,0,0.6); }
+    .level-node-label { font-size: 12px; color: #0ff; letter-spacing: 1px; }
+    .level-link { position: absolute; background: rgba(0,255,255,0.15); border-radius: 3px; pointer-events: none; }
+    .level-link-fill { position: absolute; background: #0ff; box-shadow: 0 0 12px rgba(0,255,255,0.8); }
+    .level-link-remaining { position: absolute; font-size: 11px; color: #ff0; white-space: nowrap; display: none; }
+    .level-step:hover .level-tooltip { opacity: 1; pointer-events: auto; }
+    .level-tooltip { position: absolute; left: 50%; top: -8px; transform: translate(-50%, -100%); background: rgba(0,10,10,0.95); border: 1px solid rgba(0,255,255,0.5); padding: 8px 10px; font-size: 11px; line-height: 1.4; color: #0ff; width: 190px; text-align: center; box-shadow: 0 0 12px rgba(0,255,255,0.2); opacity: 0; pointer-events: none; transition: opacity 0.2s ease; z-index: 5; }
+    
+    #hud { position: fixed; top: 10px; left: 20px; font-size: 13px; pointer-events: none; z-index: 50; display: none; line-height: 1.4; text-shadow: 1px 1px 2px #000; }
+    #stop-btn { position: fixed; top: 10px; right: 20px; border-color: #f00; color: #f00; z-index: 200; display: none; width: 150px; background: rgba(255,0,0,0.2); min-height: 40px; padding: 5px; }
+    
+    .stats-display { margin-top: 20px; border: 1px solid #0ff; padding: 15px; background: rgba(0, 255, 255, 0.05); width: 100%; max-width: 500px; font-size: 13px; text-align: center; margin-left: auto; margin-right: auto; }
+    .input-field { background: #000; border: 1px solid #0ff; color: #0ff; padding: 10px; font-family: inherit; margin-bottom: 10px; width: 100%; box-sizing: border-box; }
+    .data-warning { border: 1px solid #f00; background: rgba(255,0,0,0.1); padding: 15px; margin: 10px 0; color: #ff6666; font-size: 13px; line-height: 1.5; text-align: center; }
+    /* Leaderboard Specific Styles */
+.leaderboard-columns { display: flex; gap: 20px; width: 100%; max-width: 1100px; }
+.leaderboard-box { padding: 20px; flex: 1 1 0; min-width: 280px; }
+.leaderboard-scroll-area {
+  height: 320px; /* Fixed height for exactly 5 entries roughly */
+  overflow-y: hidden; /* Hide scrollbar by default */
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* Enable scrolling only on hover */
+.leaderboard-scroll-area:hover {
+  overflow-y: auto;
+}
+
+/* Custom Cyan Scrollbar */
+.leaderboard-scroll-area::-webkit-scrollbar { width: 6px; }
+.leaderboard-scroll-area::-webkit-scrollbar-track { background: #000; }
+.leaderboard-scroll-area::-webkit-scrollbar-thumb { background: #0ff; box-shadow: 0 0 10px #0ff; }
+
+@media (max-width: 900px) {
+  .leaderboard-columns { flex-direction: column; }
+}
+
+.leader-entry {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 10px;
+  border-bottom: 1px solid rgba(0, 255, 255, 0.1);
+  height: 60px; /* Standardized height */
+}
+.leader-rank { color: #555; font-weight: bold; width: 20px; }
+.leader-name { flex-grow: 1; color: #0ff; font-size: 14px; }
+.leader-score { color: #ff0; font-family: monospace; }
+
+  /* Crop modal styles */
+  #crop-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 99999; }
+  #crop-modal .backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.8); }
+  #crop-modal .panel { position: relative; width: 348px; background: #000; border: 2px solid #0ff; padding: 12px; box-sizing: border-box; display:flex; flex-direction:column; gap:8px; align-items:center; }
+  #crop-canvas { background: #111; border: 1px solid #0ff; cursor: move; }
+  #crop-controls { display:flex; flex-direction:column; gap:8px; width:100%; align-items:center; }
+  #crop-zoom { width: 65%; }
+
+  /* Back-to-site link (added for port) */
+  #site-back-link { position: fixed; top: 14px; right: 20px; z-index: 300; background: rgba(0,0,0,.6); border: 1px solid #0ff; color: #0ff; padding: 6px 12px; font-size: 12px; letter-spacing: 2px; cursor: pointer; text-decoration: none; font-family: inherit; display: none; }
+  #site-back-link.show { display: inline-block; }
+  #site-back-link:hover { background: #0ff; color: #000; }
+
+  </style>
+  <!-- Firebase (for identity + leaderboard) — added for site integration -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script>
+  /* google.script.run shim — replaces the original Google Apps Script backend
+     with localStorage (for persistence) and Firestore (for the leaderboard). */
+  (function(){
+    const SV_LS_KEY = 'rps_spacevanguard_save_v1';
+    function svLoad(){
+      try { const r = localStorage.getItem(SV_LS_KEY); if(r) return JSON.parse(r); } catch(_){}
+      return null;
+    }
+    function svSave(d){ try { localStorage.setItem(SV_LS_KEY, JSON.stringify(d)); } catch(_){} }
+    function svDefaults(){
+      return { bank:0, speed:7, fireRate:450, multiplier:1, sCost:20, fCost:30, mCost:50, sLvl:1, fLvl:1, mLvl:1,
+               totalHitpointsDealt:0, sCap:5, fCap:5, mCap:5, claimedLevels:[], stagesUnlocked:1, turretDmgLvl:0,
+               hullLvl:0, ownedSkins:[], equippedSkin:-1, ownedBodies:[], equippedBody:0, username:'', profilePic:'' };
+    }
+    function makeChain(api){
+      let succ=null, fail=null;
+      const c = {
+        withSuccessHandler(fn){ succ = fn; return c; },
+        withFailureHandler(fn){ fail = fn; return c; }
+      };
+      Object.keys(api).forEach(k => {
+        c[k] = function(){
+          const args = Array.prototype.slice.call(arguments);
+          const _s = succ, _f = fail; succ = fail = null;
+          try {
+            Promise.resolve(api[k].apply(null, args))
+              .then(function(r){ if(_s) _s(r); })
+              .catch(function(e){ if(_f) _f(e); else console.error(e); });
+          } catch(e){ if(_f) _f(e); else console.error(e); }
+          return c;
+        };
+      });
+      return c;
+    }
+    const SV_API = {
+      getGameData(){
+        let d = svLoad();
+        if(!d){ d = svDefaults(); }
+        if(window._svUser){
+          if(!d.username) d.username = window._svUserName || '';
+          if(!d.profilePic && window._svUserPic) d.profilePic = window._svUserPic;
+        }
+        return d;
+      },
+      saveGameData(save){
+        svSave(save);
+        if(window._svUser && window.db){
+          const u = window._svUser;
+          try {
+            db.collection('spacevanguard_saves').doc(u.uid).set({
+              uid:u.uid, username:save.username||window._svUserName||'Pilot',
+              bank:Math.floor(save.bank||0), hitpoints:Math.floor(save.totalHitpointsDealt||0),
+              profilePic: save.profilePic||window._svUserPic||'',
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge:true });
+          } catch(_){}
+        }
+      },
+      saveUpgradeCaps(save){
+        const d = svLoad() || svDefaults();
+        d.sCap = save.sCap; d.fCap = save.fCap; d.mCap = save.mCap;
+        d.claimedLevels = save.claimedLevels || [];
+        svSave(d);
+      },
+      resetUserData(){ svSave(svDefaults()); },
+      isUsernameTaken(_name, _cur){ return false; },
+      uploadProfilePic(dataUrl){ return { url: dataUrl }; },
+      async getLeaderboardData(){
+        if(!window.db) return [];
+        try {
+          const snap = await db.collection('spacevanguard_saves').orderBy('bank','desc').limit(50).get();
+          return snap.docs.map(function(d){ const r=d.data(); return { username:r.username||'Pilot', bank:r.bank||0, pic:r.profilePic||'' }; });
+        } catch(_){ return []; }
+      },
+      async getHitpointsLeaderboardData(){
+        if(!window.db) return [];
+        try {
+          const snap = await db.collection('spacevanguard_saves').orderBy('hitpoints','desc').limit(50).get();
+          return snap.docs.map(function(d){ const r=d.data(); return { username:r.username||'Pilot', hitpoints:r.hitpoints||0, pic:r.profilePic||'' }; });
+        } catch(_){ return []; }
+      }
+    };
+    window.google = window.google || {};
+    window.google.script = window.google.script || {};
+    window.google.script.run = makeChain(SV_API);
+
+    // Wire up Firebase auth → feed identity into the existing PARENT_AUTH path
+    if(window.auth){
+      window.auth.onAuthStateChanged(async function(u){
+        if(!u) return;
+        window._svUser = u;
+        let name = u.displayName || (u.email && u.email.split('@')[0]) || '';
+        let pic  = u.photoURL || '';
+        try {
+          const doc = await window.db.collection('users').doc(u.uid).get();
+          if(doc.exists){
+            const r = doc.data();
+            if(r.username) name = r.username;
+            if(r.avatar)   pic  = r.avatar;
+          }
+        } catch(_){}
+        window._svUserName = name;
+        window._svUserPic  = pic;
+        // Trigger existing handler so username auto-fills without setup prompt
+        try { window.dispatchEvent(new MessageEvent('message', { data:{ type:'PARENT_AUTH', username:name, profilePic:pic } })); } catch(_){}
+      });
+    }
+  })();
+  </script>
+</head>
+<body oncontextmenu="return false;">
+
+  <a id="site-back-link" href="games.html">← BACK TO SITE</a>
+  <div id="splash-screen"><div id="splash-text">RedsssProduction Studios — Space Vanguard</div></div>
+
+  <canvas id="gameCanvas"></canvas>
+  <div id="user-bar">
+    <div class="level-indicator" onclick="showView('view-level-tree')">
+      <div id="level-display" class="level-circle">1</div>
+      <div class="level-label">LEVEL</div>
+    </div>
+    <div class="user-info" onclick="showSetup()">
+      <span id="display-username">PILOT</span>
+      <div id="avatar-container" class="avatar-wrapper"></div>
+    </div>
+  </div>
+
+  <div id="hud">[ STAR DUST: <span id="score">0</span> ] | [ TOTAL: <span id="bank">0</span> ]<br>[ THROTTLE: <span id="throttle-ui">75</span>% ] <span id="hull-hp-bar" style="display:none;">| [ HULL: <span id="hull-hp-text"></span> ]</span></div>
+  <button id="stop-btn" class="btn" onclick="endGame(true)">STOP ROUND</button>
+  <div id="boss-hp-bar"><div class="bar-bg"><div class="bar-fill" id="boss-bar-fill"></div><div class="bar-text" id="boss-bar-text">BOSS</div></div></div>
+
+  <div id="view-main" class="view">
+    <h1>SPACE VANGUARD</h1>
+    <div class="menu-box">
+      <button class="btn" onclick="showView('view-levels')">PLAY</button>
+      <button id="main-shop-btn" class="btn" onclick="showView('view-shop')">SHOP</button>
+      <button id="main-skins-btn" class="btn" onclick="showShipSkins()" style="display:none;">SHIP SKINS</button>
+      <button class="btn" onclick="showLeaderboard()">LEADERBOARD</button>
+      <button class="btn" style="border-color:#f00; color:#f00;" onclick="showResetPrompt()">RESET PLAYER</button>
+    </div>
+  </div>
+
+  <div id="view-levels" class="view">
+    <h1>LEVEL SELECT</h1>
+    <div class="stage-tabs" id="stage-tabs"></div>
+    <div class="grid" id="level-grid"></div>
+    <div class="stats-display">
+      <h2>CURRENT SHIP STATS</h2>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div>STAR DUST COLLECTOR LVL: <span id="lvl-ui-m-ls">1</span> | ENGINE LVL: <span id="lvl-ui-s-ls">1</span> | TURRET LVL: <span id="lvl-ui-f-ls">1</span></div>
+        <div>HULL STRENGTH: <span id="lvl-ui-hull-ls">0</span> (<span id="hp-ui-ls">1</span> HP)</div>
+      </div>
+    </div>
+    <button class="btn back-btn-fixed" onclick="showView('view-main')">BACK</button>
+  </div>
+
+  <div id="view-shop" class="view">
+    <h1 style="text-align:center;">UPGRADE HANGAR</h1>
+    <div class="menu-box" style="margin:0 auto;">
+      <p style="text-align:center;">TOTAL STAR DUST: <span id="shop-bank">0</span></p>
+      <button id="up-speed" class="btn"><span>Upgrade Engine Speed</span><span id="lvl-s">LVL 1</span></button>
+      <button id="up-fire" class="btn"><span>Upgrade Turret Fire Rate</span><span id="lvl-f">LVL 1</span></button>
+      <button id="up-mult" class="btn"><span>Upgrade Star Dust Collector</span><span id="lvl-m">LVL 1</span></button>
+      <button id="up-tdmg" class="btn" style="display:none;"><span>Upgrade Turret Damage</span><span id="lvl-td">LOCKED</span></button>
+      <button id="up-hull" class="btn" style="display:none;"><span>Upgrade Ship Hull Strength</span><span id="lvl-hull">LOCKED</span></button>
+      <div id="shop-skins-container" style="display:none; border-top: 1px solid rgba(0,255,255,0.2); padding-top: 15px; margin-top: 10px; width:100%;">
+        <h3 style="text-align:center; margin-bottom:10px; color:#0ff; letter-spacing:2px;">SHIP SKINS</h3>
+        <div id="shop-skins-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+      </div>
+      <div id="shop-bodies-container" style="display:none; border-top: 1px solid rgba(0,255,255,0.2); padding-top: 15px; margin-top: 10px; width:100%;">
+        <h3 style="text-align:center; margin-bottom:10px; color:#0ff; letter-spacing:2px;">BODY STYLES</h3>
+        <div id="shop-bodies-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+      </div>
+    </div>
+    <button class="btn back-btn-fixed" onclick="showView('view-main')">BACK</button>
+  </div>
+
+  <div id="view-level-tree" class="view">
+    <h1>LEVEL TREE</h1>
+    <div class="stats-display">
+      TOTAL HITPOINTS DEALT: <span id="total-hp-ui">0</span>
+    </div>
+    <div id="level-tree" class="level-tree"></div>
+    <button class="btn back-btn-fixed" onclick="showView('view-main')">BACK</button>
+  </div>
+
+  <div id="view-ship-skins" class="view">
+    <h1 style="text-align:center;">SHIP CUSTOMIZATION</h1>
+    <div class="menu-box" style="max-width:600px; align-items:center; margin:0 auto;">
+      <canvas id="ship-preview-canvas" width="200" height="250" style="border:1px solid rgba(0,255,255,0.3); background:#000;"></canvas>
+      <div id="skin-section" style="width:100%; display:none;">
+        <h3 style="text-align:center; margin:10px 0 5px; color:#0ff; letter-spacing:2px;">SHIP SKINS</h3>
+        <div id="skin-options" style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center;"></div>
+      </div>
+      <div id="body-section" style="width:100%; display:none;">
+        <h3 style="text-align:center; margin:10px 0 5px; color:#0ff; letter-spacing:2px;">BODY STYLES</h3>
+        <div id="body-options" style="display:flex; flex-wrap:wrap; gap:8px; justify-content:center;"></div>
+      </div>
+    </div>
+    <button class="btn back-btn-fixed" onclick="showView('view-main')">BACK</button>
+  </div>
+
+  <div id="view-level-choice" class="view">
+    <h1>LEVEL UNLOCK</h1>
+    <div class="menu-box">
+      <div id="level-choice-title" style="text-align:center; letter-spacing:2px;">NEW MAX UPGRADE LEVEL</div>
+      <div id="level-choice-list" style="display:flex; flex-direction:column; gap:12px; margin-top:10px;"></div>
+      <div id="level-choice-note" style="text-align:center; font-size:12px; color:#ff0; display:none;">ALL UPGRADES AT THIS MAX</div>
+    </div>
+    <button class="btn back-btn-fixed" onclick="closeLevelChoice()">BACK</button>
+  </div>
+
+  <div id="view-post" class="view">
+    <h1 id="post-title" style="color:#f00;">LEVEL ENDED</h1>
+    <div class="menu-box">
+      <div id="post-info" style="text-align:center; font-size:13px; display:none;"></div>
+      <button class="btn" id="post-play-again" style="border-color:#0f0; color:#0f0; min-height:auto;">PLAY AGAIN</button>
+      <button class="btn" id="post-next-level" style="border-color:#ff0; color:#ff0; min-height:auto; display:none;">NEXT LEVEL</button>
+      <button class="btn" onclick="showView('view-levels')" style="min-height:auto;">LEVEL SELECT</button>
+      <button class="btn" onclick="showView('view-shop')" style="min-height:auto;">SHOP</button>
+    </div>
+  </div>
+
+  <!-- Leaderboard View -->
+<div id="view-leaderboard" class="view">
+  <h1>GLOBAL LEADERBOARD</h1>
+  <div class="leaderboard-columns">
+    <div class="menu-box leaderboard-box">
+      <h2 style="text-align:center; margin-bottom:10px;">Most Star Dust Collected</h2>
+      <div id="leaderboard-scroll-sd" class="leaderboard-scroll-area">
+        <div id="leaderboard-list-sd">
+          <p style="text-align:center; color:#555;">SCANNING DEEP SPACE...</p>
+        </div>
+      </div>
+    </div>
+    <div class="menu-box leaderboard-box">
+      <h2 style="text-align:center; margin-bottom:10px;">Most Hitpoints Done</h2>
+      <div id="leaderboard-scroll-hp" class="leaderboard-scroll-area">
+        <div id="leaderboard-list-hp">
+          <p style="text-align:center; color:#555;">SCANNING DEEP SPACE...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <button class="btn back-btn-fixed" onclick="showView('view-main')">BACK</button>
+</div>
+
+
+  <div id="setup-prompt" class="view">
+    <div class="menu-box">
+      <h2>PILOT IDENTIFICATION</h2>
+      <label>Put Your Username Here</label>
+      <input type="text" id="username-input" class="input-field" maxlength="15">
+      <div id="setup-error" style="color:#f00; font-size:12px; text-align:center; display:none;"></div>
+      <label style="margin-top:10px;">Profile Image (Optional)</label>
+      <div id="pic-status" style="font-size:11px; color:#aaa; margin-bottom:5px;">Status: No Image</div>
+      <input type="file" id="pic-input" accept="image/*" style="font-size:12px; color:#0ff;">
+      <button id="remove-pic-btn" class="btn" style="border-color:#f00; color:#f00; margin-top:5px; font-size:11px; display:none; min-height:auto;" onclick="clearProfilePic()">
+        <span style="width:100%; text-align:center;">REMOVE IMAGE</span>
+      </button>
+      <button class="btn" onclick="saveProfile()" style="margin-top:20px; min-height:auto;"><span style="width:100%; text-align:center;">INITIALIZE</span></button>
+      <button class="btn" onclick="showView('view-main')" id="cancel-setup" style="display:none; border-color:#444; color:#444; margin-top:10px; min-height:auto;"><span style="width:100%; text-align:center;">CANCEL</span></button>
+      
+    </div>
+  </div>
+
+  <!-- Crop Modal -->
+  <div id="crop-modal">
+    <div class="backdrop"></div>
+    <div class="panel">
+      <canvas id="crop-canvas" width="300" height="300"></canvas>
+      <div id="crop-controls">
+        <label style="font-size:12px; color:#0ff;">Zoom</label>
+        <input id="crop-zoom" type="range" min="0.5" max="2" step="0.01" value="1">
+        <div style="display:flex; gap:6px;"><button id="crop-confirm" class="btn">Confirm</button><button id="crop-cancel" class="btn" style="border-color:#f00; color:#f00;">Cancel</button></div>
+      </div>
+      <div style="font-size:12px; color:#aaa; text-align:center; width:100%;">Adjust zoom. Drag to reposition. Cropped square will be saved.</div>
+    </div>
+  </div>
+
+  
+
+  <div id="view-reset-confirm" class="view">
+    <div class="menu-box" style="border-color:#f00;">
+      <h2 style="color:#f00; text-align:center; margin:0;">RESET PLAYER?</h2>
+      <div class="data-warning">Resetting will permanently wipe your star dust, upgrades, and level progress. This cannot be undone.</div>
+      <div style="display:flex; gap:20px; justify-content:center; margin-top:10px;">
+        <button class="btn" style="border-color:#0f0; color:#0f0; min-width:100px; min-height:auto;" onclick="confirmReset()">YES</button>
+        <button class="btn" style="border-color:#f00; color:#f00; min-width:100px; min-height:auto;" onclick="hideResetPrompt()">NO</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-resetting" class="view">
+    <h1 style="color:#f00;">DATA IS BEING RESET</h1>
+    <p style="text-align:center; color:#0ff;">Please wait...</p>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const splash = document.getElementById('splash-screen');
+    const splashTxt = document.getElementById('splash-text');
+
+    let score = 0, bank = 0, gameActive = false, lastShot = 0, lastSpawn = 0;
+    let player = { x: 0, y: 0, w: 30, h: 40 };
+    let enemies = [], bullets = [], stars = [], keys = [];
+    let particles = [];
+    let shipExplosion = null;
+    let deathPending = false;
+    let processedProfilePic = null;
+    let pSpdCap = 7, pFire = 450, pMult = 1, sCost = 20, fCost = 30, mCost = 50, sLvl = 1, fLvl = 1, mLvl = 1;
+    let turretDmgLvl = 0;
+    let hullLvl = 0;
+    const HULL_MAX = 5;
+    let playerHP = 1, playerMaxHP = 1;
+    let invincible = false, invincibleTimer = 0;
+    const INVINCIBLE_DURATION = 1500;
+    let shipFlyingUp = false;
+    const TURRET_DMG_UNLOCK_LEVELS = [5, 13, 21, 30, 39, 47, 56, 64, 73, 82, 90, 99];
+    const TURRET_DMG_MAX = TURRET_DMG_UNLOCK_LEVELS.length;
+    const BULLET_COLORS = [
+      [255,50,50],[255,100,30],[255,165,0],[255,200,0],[255,255,0],[160,255,0],
+      [0,230,0],[0,220,220],[0,140,255],[60,60,255],[130,0,255],[160,32,240]
+    ];
+    function getBulletColor() {
+      const idx = Math.max(0, Math.min(turretDmgLvl, BULLET_COLORS.length) - 1);
+      if (turretDmgLvl <= 0) return 'rgb(255,50,50)';
+      const c = BULLET_COLORS[idx];
+      return `rgb(${c[0]},${c[1]},${c[2]})`;
+    }
+    function getShipColors(skinIdx) {
+      if (skinIdx < 0 || skinIdx >= SHIP_SKINS.length) return { r: 0, g: 255, b: 255 };
+      const c = SHIP_SKINS[skinIdx].color;
+      return { r: c[0], g: c[1], b: c[2] };
+    }
+    function drawShipBody(tctx, scx, sy, sw, sh, bodyIdx, sc) {
+      const bot = sy + sh;
+      const glowGrad = tctx.createRadialGradient(scx, bot + 2, 2, scx, bot + 2, 12 + Math.random() * 4);
+      glowGrad.addColorStop(0, `rgba(${sc.r},${sc.g},${sc.b},0.8)`);
+      glowGrad.addColorStop(0.5, `rgba(${Math.floor(sc.r*0.4)},${Math.floor(sc.g*0.4)},${Math.floor(sc.b*0.4)},0.3)`);
+      glowGrad.addColorStop(1, `rgba(${Math.floor(sc.r*0.2)},${Math.floor(sc.g*0.2)},${Math.floor(sc.b*0.2)},0)`);
+      tctx.fillStyle = glowGrad;
+      tctx.fillRect(scx - 14, bot - 4, 28, 18);
+      tctx.strokeStyle = `rgb(${sc.r},${sc.g},${sc.b})`;
+      tctx.lineWidth = 2;
+      tctx.fillStyle = `rgba(${Math.floor(sc.r*0.15)},${Math.floor(sc.g*0.15)},${Math.floor(sc.b*0.15)},0.8)`;
+      switch (bodyIdx) {
+        case 1:
+          tctx.beginPath(); tctx.moveTo(scx, sy);
+          tctx.lineTo(scx + 4, sy + sh*0.4); tctx.lineTo(scx + sw/2 + 2, bot - 3);
+          tctx.lineTo(scx + sw/2 - 3, bot); tctx.lineTo(scx - sw/2 + 3, bot);
+          tctx.lineTo(scx - sw/2 - 2, bot - 3); tctx.lineTo(scx - 4, sy + sh*0.4);
+          tctx.closePath(); tctx.fill(); tctx.stroke(); break;
+        case 2:
+          tctx.beginPath(); tctx.moveTo(scx, sy + 4);
+          tctx.lineTo(scx + 8, sy + 10); tctx.lineTo(scx + sw/2 + 6, sy + sh*0.3);
+          tctx.lineTo(scx + sw/2 + 4, bot - 4); tctx.lineTo(scx + sw/2 - 2, bot);
+          tctx.lineTo(scx - sw/2 + 2, bot); tctx.lineTo(scx - sw/2 - 4, bot - 4);
+          tctx.lineTo(scx - sw/2 - 6, sy + sh*0.3); tctx.lineTo(scx - 8, sy + 10);
+          tctx.closePath(); tctx.fill(); tctx.stroke(); break;
+        case 3:
+          tctx.beginPath(); tctx.moveTo(scx, sy);
+          tctx.lineTo(scx + 5, sy + sh*0.35); tctx.lineTo(scx + sw/2 + 10, bot - 8);
+          tctx.lineTo(scx + sw/2 + 8, bot - 2); tctx.lineTo(scx + sw/2 - 4, bot - 6);
+          tctx.lineTo(scx + 3, bot); tctx.lineTo(scx - 3, bot);
+          tctx.lineTo(scx - sw/2 + 4, bot - 6); tctx.lineTo(scx - sw/2 - 8, bot - 2);
+          tctx.lineTo(scx - sw/2 - 10, bot - 8); tctx.lineTo(scx - 5, sy + sh*0.35);
+          tctx.closePath(); tctx.fill(); tctx.stroke(); break;
+        case 4:
+          tctx.beginPath(); tctx.moveTo(scx, sy);
+          tctx.lineTo(scx + 3, sy + sh*0.3); tctx.lineTo(scx + sw/2 - 4, sy + 2);
+          tctx.lineTo(scx + sw/2, sy + sh*0.25); tctx.lineTo(scx + sw/2 + 2, bot - 5);
+          tctx.lineTo(scx + sw/2 - 2, bot); tctx.lineTo(scx - sw/2 + 2, bot);
+          tctx.lineTo(scx - sw/2 - 2, bot - 5); tctx.lineTo(scx - sw/2, sy + sh*0.25);
+          tctx.lineTo(scx - sw/2 + 4, sy + 2); tctx.lineTo(scx - 3, sy + sh*0.3);
+          tctx.closePath(); tctx.fill(); tctx.stroke(); break;
+        case 5:
+          tctx.beginPath(); tctx.moveTo(scx, sy);
+          tctx.lineTo(scx + 7, sy + sh*0.25); tctx.lineTo(scx + sw/2 + 6, sy + sh*0.15);
+          tctx.lineTo(scx + sw/2 + 4, bot - 6); tctx.lineTo(scx + sw/2 - 1, bot);
+          tctx.lineTo(scx + 4, bot - sh*0.2); tctx.lineTo(scx, bot - sh*0.15);
+          tctx.lineTo(scx - 4, bot - sh*0.2); tctx.lineTo(scx - sw/2 + 1, bot);
+          tctx.lineTo(scx - sw/2 - 4, bot - 6); tctx.lineTo(scx - sw/2 - 6, sy + sh*0.15);
+          tctx.lineTo(scx - 7, sy + sh*0.25);
+          tctx.closePath(); tctx.fill(); tctx.stroke(); break;
+        default:
+          tctx.beginPath(); tctx.moveTo(scx, sy);
+          tctx.lineTo(scx + 6, sy + 14); tctx.lineTo(scx + sw/2 + 4, bot - 5);
+          tctx.lineTo(scx + sw/2 - 2, bot); tctx.lineTo(scx - sw/2 + 2, bot);
+          tctx.lineTo(scx - sw/2 - 4, bot - 5); tctx.lineTo(scx - 6, sy + 14);
+          tctx.closePath(); tctx.fill(); tctx.stroke(); break;
+      }
+      tctx.fillStyle = `rgba(${sc.r},${sc.g},${sc.b},0.35)`;
+      tctx.beginPath(); tctx.moveTo(scx, sy + 6); tctx.lineTo(scx + 4, sy + 16); tctx.lineTo(scx - 4, sy + 16); tctx.closePath(); tctx.fill();
+      tctx.strokeStyle = `rgba(${sc.r},${sc.g},${sc.b},0.4)`;
+      tctx.lineWidth = 1;
+      tctx.beginPath(); tctx.moveTo(scx - 3, sy + 18); tctx.lineTo(scx - sw/2 - 2, bot - 8); tctx.stroke();
+      tctx.beginPath(); tctx.moveTo(scx + 3, sy + 18); tctx.lineTo(scx + sw/2 + 2, bot - 8); tctx.stroke();
+    }
+    function renderShipPreview() {
+      const pvs = document.getElementById('ship-preview-canvas');
+      if (!pvs) return;
+      const pctx = pvs.getContext('2d');
+      pctx.clearRect(0, 0, pvs.width, pvs.height);
+      pctx.fillStyle = '#000'; pctx.fillRect(0, 0, pvs.width, pvs.height);
+      for (let i = 0; i < 30; i++) { pctx.fillStyle = 'rgba(255,255,255,0.3)'; pctx.fillRect(Math.random()*pvs.width, Math.random()*pvs.height, 1.5, 1.5); }
+      const sc = getShipColors(equippedSkin);
+      drawShipBody(pctx, pvs.width/2, pvs.height/2 - 33, 50, 66, equippedBody, sc);
+    }
+    function showShipSkins() { showView('view-ship-skins'); }
+    function refreshShipSkinsMenu() {
+      renderShipPreview();
+      const skinSection = document.getElementById('skin-section');
+      const bodySection = document.getElementById('body-section');
+      const skinOpts = document.getElementById('skin-options');
+      const bodyOpts = document.getElementById('body-options');
+      if (playerLevel >= 3) {
+        skinSection.style.display = 'block'; skinOpts.innerHTML = '';
+        const defBtn = document.createElement('button'); defBtn.className = 'btn';
+        defBtn.style.cssText = 'min-height:auto; min-width:80px; padding:8px; flex-direction:column; gap:4px; border-color:#0ff; font-size:11px;';
+        if (equippedSkin === -1) { defBtn.style.background = 'rgba(0,255,255,0.2)'; defBtn.style.boxShadow = '0 0 10px #0ff'; }
+        defBtn.innerHTML = '<span style="color:#0ff; font-size:18px;">\u25A0</span><span>DEFAULT</span>';
+        defBtn.onclick = () => { equippedSkin = -1; sync(); refreshShipSkinsMenu(); };
+        skinOpts.appendChild(defBtn);
+        SHIP_SKINS.forEach((skin, i) => {
+          const btn = document.createElement('button'); btn.className = 'btn';
+          btn.style.cssText = 'min-height:auto; min-width:80px; padding:8px; flex-direction:column; gap:4px; font-size:11px;';
+          const c = skin.color; const cs = `rgb(${c[0]},${c[1]},${c[2]})`;
+          btn.style.borderColor = ownedSkins.includes(i) ? cs : '#333';
+          if (ownedSkins.includes(i)) {
+            if (equippedSkin === i) { btn.style.background = `rgba(${c[0]},${c[1]},${c[2]},0.2)`; btn.style.boxShadow = `0 0 10px ${cs}`; btn.innerHTML = `<span style="color:${cs}; font-size:18px;">\u25A0</span><span style="color:${cs};">EQUIPPED</span>`; }
+            else { btn.innerHTML = `<span style="color:${cs}; font-size:18px;">\u25A0</span><span>${skin.name}</span>`; }
+            btn.onclick = () => { equippedSkin = i; sync(); refreshShipSkinsMenu(); };
+          } else { btn.disabled = true; btn.innerHTML = `<span style="color:#555; font-size:18px;">\u25A0</span><span style="color:#555;">LOCKED</span>`; }
+          skinOpts.appendChild(btn);
+        });
+      } else { skinSection.style.display = 'none'; }
+      if (playerLevel >= 13) {
+        bodySection.style.display = 'block'; bodyOpts.innerHTML = '';
+        SHIP_BODIES.forEach((body, i) => {
+          const btn = document.createElement('button'); btn.className = 'btn';
+          btn.style.cssText = 'min-height:auto; min-width:100px; padding:8px 12px; font-size:11px;';
+          if (i === 0 || ownedBodies.includes(i)) {
+            if (equippedBody === i) { btn.style.background = 'rgba(0,255,255,0.2)'; btn.style.boxShadow = '0 0 10px #0ff'; btn.innerHTML = `<span>${body.name}</span><span style="margin-left:8px;">EQUIPPED</span>`; }
+            else { btn.innerHTML = `<span>${body.name}</span>`; }
+            btn.onclick = () => { equippedBody = i; sync(); refreshShipSkinsMenu(); };
+          } else { btn.disabled = true; btn.style.borderColor = '#333'; btn.innerHTML = `<span style="color:#555;">${body.name}</span><span style="margin-left:8px; color:#555;">LOCKED</span>`; }
+          bodyOpts.appendChild(btn);
+        });
+      } else { bodySection.style.display = 'none'; }
+    }
+    function getTurretDmgMaxLvl(mainLvl) {
+      let count = 0;
+      for (let i = 0; i < TURRET_DMG_UNLOCK_LEVELS.length; i++) {
+        if (mainLvl >= TURRET_DMG_UNLOCK_LEVELS[i]) count++;
+        else break;
+      }
+      return count;
+    }
+    function getTurretDmgCost(currentLvl) { return Math.floor(1000 * Math.pow(3, currentLvl)); }
+    function getTurretDmgMultiplier() { return Math.pow(2, turretDmgLvl); }
+    function getHullMaxAvailable() { return Math.min(HULL_MAX, stagesUnlocked - 1); }
+    function getHullCost(lvl) { return Math.floor(5000 * Math.pow(5, lvl)); }
+    function fmtNum(n) { return Math.floor(n).toLocaleString('en-US'); }
+    let throttleValue = 75, timeAlive = 0, username = "", profilePic = "";
+    let parentUsername = "", parentProfilePic = "";
+    let isNewPlayer = false;
+    let shopLock = false, leaderboardInterval;
+    let currentView = 'view-main';
+    let totalHitpointsDealt = 0;
+    let playerLevel = 1;
+    let levelTreeBuilt = false;
+    let currentChoiceLevel = null;
+    let currentMapLevel = 1;
+    const STAGE_COUNT = 6;
+    const LEVELS_PER_STAGE = 10;
+    const STAGE_NAMES = ['RED ZONE', 'ORANGE NEBULA', 'YELLOW EXPANSE', 'GREEN FRONTIER', 'BLUE DEPTHS', 'PURPLE VOID'];
+    const STAGE_COLORS = [
+      { base: [100,100,100], hard: [200,50,50], boss: [200,50,50] },
+      { base: [200,50,50], hard: [230,130,30], boss: [230,130,30] },
+      { base: [230,130,30], hard: [230,220,30], boss: [230,220,30] },
+      { base: [230,220,30], hard: [30,200,50], boss: [30,200,50] },
+      { base: [30,200,50], hard: [30,80,230], boss: [30,80,230] },
+      { base: [30,80,230], hard: [160,30,230], boss: [160,30,230] }
+    ];
+    const BOSS_HP_VALUES = [100, 600, 3000, 15000, 80000, 400000];
+    const BOSS_REWARDS = [500, 2000, 6000, 15000, 40000, 100000];
+    const SHIP_SKINS = [
+      { name: 'RED ZONE', color: [200,50,50], price: 500 },
+      { name: 'ORANGE NEBULA', color: [230,130,30], price: 1500 },
+      { name: 'YELLOW EXPANSE', color: [230,220,30], price: 5000 },
+      { name: 'GREEN FRONTIER', color: [30,200,50], price: 15000 },
+      { name: 'BLUE DEPTHS', color: [30,80,230], price: 50000 },
+      { name: 'PURPLE VOID', color: [160,30,230], price: 200000 }
+    ];
+    const SHIP_BODIES = [
+      { name: 'STANDARD', price: 0 },
+      { name: 'STEALTH DART', price: 2000 },
+      { name: 'HEAVY CRUISER', price: 8000 },
+      { name: 'PHOENIX WING', price: 25000 },
+      { name: 'TRIDENT', price: 75000 },
+      { name: 'VOID REAPER', price: 250000 }
+    ];
+    let stagesUnlocked = 1;
+    let selectedStage = 1;
+    let currentStage = 1;
+    let isBossLevel = false;
+    let boss = null;
+    let bossBullets = [];
+    let bossDefeated = false;
+    let collectParticles = [];
+    const LEVEL_BASE_REQUIREMENT = 300;
+    const LEVEL_GROWTH_MULT = 1.1;
+    const MAX_UPGRADE_LEVEL = 100;
+    const UPGRADE_LIST = ['Engine Speed', 'Turret Fire Rate', 'Star Dust Collector'];
+    const BASE_LEVEL_TREE_COUNT = 100;
+    const MAX_UPGRADE_UNLOCK_LEVEL = 1 + (UPGRADE_LIST.length * Math.floor((MAX_UPGRADE_LEVEL - 5) / 5));
+    const MAX_LEVEL_SOFT_CAP = 10000;
+    let levelTreeCount = BASE_LEVEL_TREE_COUNT;
+    let upgradeCaps = [5, 5, 5];
+    let claimedLevels = [];
+    let ownedSkins = [];
+    let equippedSkin = -1;
+    let ownedBodies = [];
+    let equippedBody = 0;
+
+    function resize() { 
+      canvas.width = window.innerWidth; canvas.height = window.innerHeight; 
+      if(gameActive) player.y = canvas.height - 80; 
+      // regenerate stars to match new canvas size
+      generateStars();
+      if (levelTreeBuilt) positionLevelTree();
+    }
+    window.onresize = resize; resize();
+
+    function updateProfileUI() { 
+      document.getElementById('display-username').innerText = username || "PILOT";
+      const container = document.getElementById('avatar-container'), status = document.getElementById('pic-status'), removeBtn = document.getElementById('remove-pic-btn');
+      // clear children
+      while (container.firstChild) container.removeChild(container.firstChild);
+      if (profilePic) {
+        const img = document.createElement('img');
+        img.className = 'user-pic';
+        img.src = profilePic;
+        img.onload = () => { status.innerText = "Status: Photo Linked"; removeBtn.style.display = "flex"; };
+        img.onerror = () => { 
+          while (container.firstChild) container.removeChild(container.firstChild);
+          const initial = username ? username.charAt(0) : "P";
+          const div = document.createElement('div');
+          div.className = 'letter-avatar';
+          div.textContent = initial;
+          container.appendChild(div);
+          status.innerText = "Status: Image failed to load"; removeBtn.style.display = "none";
+        };
+        container.appendChild(img);
+      } else {
+        const initial = username ? username.charAt(0) : "P";
+        const div = document.createElement('div');
+        div.className = 'letter-avatar';
+        div.textContent = initial;
+        container.appendChild(div);
+        status.innerText = "Status: No Image"; removeBtn.style.display = "none";
+      }
+    }
+
+    function clearProfilePic() { profilePic = ""; document.getElementById('pic-input').value = ""; updateProfileUI(); }
+    // ensure processed pic cleared as well
+    function clearProcessedProfilePic() { processedProfilePic = null; profilePic = ""; document.getElementById('pic-input').value = ""; updateProfileUI(); }
+
+    function showView(id) {
+      if(currentView === 'view-shop' && id !== 'view-shop') sync();
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
+      if(id !== 'NONE') document.getElementById(id).classList.add('active-view');
+      const hideBar = (id === 'NONE' || id === 'setup-prompt' || id === 'reset-confirm' || id === 'view-resetting');
+      document.getElementById('user-bar').style.display = hideBar ? 'none' : 'flex';
+      document.getElementById('hud').style.display = (id === 'NONE') ? 'block' : 'none';
+      document.getElementById('stop-btn').style.display = (id === 'NONE') ? 'block' : 'none';
+      // Show back-to-site link on all menus, hide during gameplay
+      var _back = document.getElementById('site-back-link');
+      if (_back) _back.classList.toggle('show', id !== 'NONE');
+      if(id === 'view-shop') refreshShop();
+      if(id === 'view-ship-skins') refreshShipSkinsMenu();
+      if(id === 'view-levels') { document.getElementById('lvl-ui-m-ls').innerText = mLvl; document.getElementById('lvl-ui-s-ls').innerText = sLvl; document.getElementById('lvl-ui-f-ls').innerText = fLvl; document.getElementById('lvl-ui-hull-ls').innerText = hullLvl; document.getElementById('hp-ui-ls').innerText = 1 + hullLvl; refreshLevelSelect(); }
+      if(id === 'view-level-tree') renderLevelTree();
+      // Clear leaderboard update interval when leaving leaderboard
+      if(id !== 'view-leaderboard' && leaderboardInterval) {
+        clearInterval(leaderboardInterval);
+        leaderboardInterval = null;
+      }
+      currentView = id;
+    }
+
+    function getLevelThreshold(level) {
+      if (level <= 1) return 0;
+      const ratio = LEVEL_GROWTH_MULT;
+      if (ratio === 1) return LEVEL_BASE_REQUIREMENT * (level - 1);
+      return LEVEL_BASE_REQUIREMENT * (Math.pow(ratio, level - 1) - 1) / (ratio - 1);
+    }
+
+    function getTargetCapForLevel(level) {
+      if (level <= 1) return 5;
+      const perCycle = UPGRADE_LIST.length;
+      const cycle = Math.floor((level - 2) / perCycle) + 1;
+      const cap = 5 + cycle * 5;
+      return Math.min(MAX_UPGRADE_LEVEL, cap);
+    }
+
+    function canChooseForLevel(level) {
+      if (level < 2 || level > playerLevel) return false;
+      if (level > MAX_UPGRADE_UNLOCK_LEVEL) return false;
+      if (claimedLevels.includes(level)) return false;
+      const target = getTargetCapForLevel(level);
+      return upgradeCaps.some(cap => cap < target);
+    }
+
+    function getPlayerLevel(totalHp) {
+      let lvl = 1;
+      while (lvl < MAX_LEVEL_SOFT_CAP && totalHp >= getLevelThreshold(lvl + 1)) lvl++;
+      return lvl;
+    }
+
+    function getMainLevelForMapLevel(mapLevel) {
+      // First level of each stage (except stage 1) is unlocked by boss, not main level
+      const stg = getStageForLevel(mapLevel);
+      const lvlInStg = getLevelInStage(mapLevel);
+      if (stg > 1 && lvlInStg === 1) return 0; // boss-unlocked, no main level needed
+      // Build ordered list of map levels that need main-level unlocks
+      const mapLevelsNeedingUnlock = [];
+      for (let m = 1; m <= 60; m++) {
+        const s = getStageForLevel(m);
+        const l = getLevelInStage(m);
+        if (s > 1 && l === 1) continue; // skip boss-unlocked levels
+        mapLevelsNeedingUnlock.push(m);
+      }
+      const idx = mapLevelsNeedingUnlock.indexOf(mapLevel);
+      if (idx < 0) return 0;
+      if (idx < 5) return idx + 1; // first 5 map levels = main levels 1-5
+      return 5 + Math.round((idx - 4) * (95 / (mapLevelsNeedingUnlock.length - 5)));
+    }
+    function getMaxMapLevelUnlocked(mainLvl) {
+      let maxMap = 0;
+      for (let m = 1; m <= 60; m++) {
+        const s = getStageForLevel(m);
+        if (s > stagesUnlocked) break; // can't access stages not yet unlocked
+        const mlNeeded = getMainLevelForMapLevel(m);
+        if (mlNeeded === 0) {
+          // boss-unlocked first level — allowed if stage is unlocked (checked above)
+          maxMap = m;
+        } else if (mlNeeded <= mainLvl) {
+          maxMap = m;
+        }
+        // if mlNeeded > mainLvl, skip this level but keep checking
+        // (boss-unlocked levels later could still be 0)
+      }
+      return maxMap;
+    }
+    function getMapUnlockAtLevel(level) {
+      if (level < 1) return 0;
+      for (let m = 1; m <= 60; m++) {
+        if (getMainLevelForMapLevel(m) === level) return m;
+      }
+      return 0;
+    }
+    function getLevelUnlockText(level) {
+      if (level <= 1) return 'Max all upgrades to 5.';
+      let lines = [];
+      if (level <= MAX_UPGRADE_UNLOCK_LEVEL) {
+        const cap = getTargetCapForLevel(level);
+        lines.push(`New Max Upgrade Level of ${cap}.`);
+      }
+      const mapLvl = getMapUnlockAtLevel(level);
+      if (mapLvl > 0) {
+        const ms = getStageForLevel(mapLvl);
+        const ml = getLevelInStage(mapLvl);
+        const isBoss = ml === LEVELS_PER_STAGE;
+        if (isBoss) {
+          lines.push(`Unlocks ${STAGE_NAMES[ms-1]} Boss (Level ${mapLvl})`);
+          if (ms >= 1 && ms <= HULL_MAX) lines.push(`Hull Upgrade LVL ${ms} (after Boss defeat)`);
+        } else if (ms === 1) {
+          lines.push(`Unlocks Stage ${ms} Level ${ml}`);
+        } else {
+          lines.push(`Unlocks Stage ${ms} Level ${ml} (Level ${mapLvl})`);
+        }
+      }
+      const tdIdx = TURRET_DMG_UNLOCK_LEVELS.indexOf(level);
+      if (tdIdx >= 0) {
+        lines.push(`Turret Damage LVL ${tdIdx + 1} Available (x${Math.pow(2, tdIdx + 1)} DMG)`);
+      }
+      if (level === 3) lines.push('\u2728 Unlocks Ship Skins in Shop');
+      if (level === 13) lines.push('\u2728 Unlocks Ship Body Styles in Shop');
+      return lines.join('\n') || '';
+    }
+
+    function ensureLevelTreeSize() {
+      const desired = Math.max(BASE_LEVEL_TREE_COUNT, playerLevel + 1);
+      if (desired !== levelTreeCount) {
+        levelTreeCount = desired;
+        levelTreeBuilt = false;
+      }
+    }
+
+    function updateLevelUI() {
+      playerLevel = getPlayerLevel(totalHitpointsDealt);
+      ensureLevelTreeSize();
+      const levelDisplay = document.getElementById('level-display');
+      if (levelDisplay) levelDisplay.innerText = String(playerLevel);
+      const skinsBtn = document.getElementById('main-skins-btn');
+      if (skinsBtn) skinsBtn.style.display = playerLevel >= 3 ? 'flex' : 'none';
+      if (currentView === 'view-level-tree') renderLevelTree();
+      if (currentView === 'view-shop') refreshShop();
+    }
+
+    function getSnakePosition(level) {
+      const index = level - 1;
+      const column = Math.floor(index / 3);
+      const pos = index % 3;
+      const down = column % 2 === 0;
+      const row = down ? pos : (2 - pos);
+      return { row: row + 1, column: column + 1 };
+    }
+
+    function buildLevelTree() {
+      if (levelTreeBuilt) return;
+      const container = document.getElementById('level-tree');
+      if (!container) return;
+      const columns = Math.ceil(levelTreeCount / 3);
+      const columnWidth = 120;
+      const columnGap = 80;
+      const paddingX = 60;
+      const totalWidth = columns * columnWidth + (columns - 1) * columnGap + paddingX;
+      container.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+      container.style.width = `${totalWidth}px`;
+      container.innerHTML = '';
+      for (let i = 1; i <= levelTreeCount; i++) {
+        const step = document.createElement('div');
+        step.className = 'level-step';
+        step.dataset.level = String(i);
+        const pos = getSnakePosition(i);
+        step.style.gridRow = String(pos.row);
+        step.style.gridColumn = String(pos.column);
+        const circle = document.createElement('div');
+        circle.className = 'level-node-circle';
+        circle.textContent = String(i);
+        const label = document.createElement('div');
+        label.className = 'level-node-label';
+        label.textContent = `LEVEL ${i}`;
+        const tooltip = document.createElement('div');
+        tooltip.className = 'level-tooltip';
+        const tooltipText = getLevelUnlockText(i);
+        tooltip.textContent = tooltipText;
+        tooltip.style.whiteSpace = 'pre-line';
+        tooltip.style.display = tooltipText ? 'block' : 'none';
+        step.appendChild(circle);
+        step.appendChild(label);
+        step.appendChild(tooltip);
+        step.addEventListener('click', () => openLevelChoice(i));
+        container.appendChild(step);
+      }
+      for (let i = 1; i < levelTreeCount; i++) {
+        const link = document.createElement('div');
+        link.className = 'level-link';
+        link.dataset.from = String(i);
+        link.dataset.to = String(i + 1);
+        const fill = document.createElement('div');
+        fill.className = 'level-link-fill';
+        const remaining = document.createElement('div');
+        remaining.className = 'level-link-remaining';
+        link.appendChild(fill);
+        link.appendChild(remaining);
+        container.appendChild(link);
+      }
+      levelTreeBuilt = true;
+      requestAnimationFrame(positionLevelTree);
+    }
+
+    function positionLevelTree() {
+      const container = document.getElementById('level-tree');
+      if (!container) return;
+      const containerRect = container.getBoundingClientRect();
+      const nodes = new Map();
+      document.querySelectorAll('.level-step').forEach(step => {
+        const level = Number(step.dataset.level || 0);
+        const circle = step.querySelector('.level-node-circle');
+        if (!circle) return;
+        const rect = circle.getBoundingClientRect();
+        const x = rect.left + rect.width / 2 - containerRect.left;
+        const y = rect.top + rect.height / 2 - containerRect.top;
+        const r = rect.width / 2;
+        nodes.set(level, { x, y, r });
+      });
+
+      document.querySelectorAll('.level-link').forEach(link => {
+        const fromLevel = Number(link.dataset.from || 0);
+        const toLevel = Number(link.dataset.to || 0);
+        const from = nodes.get(fromLevel);
+        const to = nodes.get(toLevel);
+        if (!from || !to) return;
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const radius = Math.min(from.r || 0, to.r || 0);
+        const fill = link.querySelector('.level-link-fill');
+        const remaining = link.querySelector('.level-link-remaining');
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+          const startX = from.x + (dx >= 0 ? radius : -radius);
+          const endX = to.x + (dx >= 0 ? -radius : radius);
+          const x = Math.min(startX, endX);
+          const y = from.y - 3;
+          const width = Math.max(0, Math.abs(endX - startX));
+          link.style.left = `${x}px`;
+          link.style.top = `${y}px`;
+          link.style.width = `${width}px`;
+          link.style.height = '6px';
+          link.dataset.dir = dx >= 0 ? 'right' : 'left';
+          if (fill) {
+            fill.style.height = '100%';
+          }
+          if (remaining) {
+            remaining.style.top = '-18px';
+            remaining.style.left = '0';
+            remaining.style.transform = 'none';
+          }
+        } else {
+          const startY = from.y + (dy >= 0 ? radius : -radius);
+          const endY = to.y + (dy >= 0 ? -radius : radius);
+          const x = from.x - 3;
+          const y = Math.min(startY, endY);
+          const height = Math.max(0, Math.abs(endY - startY));
+          link.style.left = `${x}px`;
+          link.style.top = `${y}px`;
+          link.style.width = '6px';
+          link.style.height = `${height}px`;
+          link.dataset.dir = dy >= 0 ? 'down' : 'up';
+          if (fill) {
+            fill.style.width = '100%';
+          }
+          if (remaining) {
+            remaining.style.left = '12px';
+            remaining.style.top = '50%';
+            remaining.style.transform = 'translateY(-50%)';
+          }
+        }
+      });
+    }
+
+    function renderLevelTree() {
+      ensureLevelTreeSize();
+      buildLevelTree();
+      document.getElementById('total-hp-ui').innerText = fmtNum(totalHitpointsDealt);
+      const steps = document.querySelectorAll('.level-step');
+      steps.forEach(step => {
+        const level = Number(step.dataset.level || 0);
+        const circle = step.querySelector('.level-node-circle');
+        const tooltip = step.querySelector('.level-tooltip');
+        circle.classList.toggle('completed', level < playerLevel);
+        circle.classList.toggle('current', level === playerLevel);
+        step.classList.toggle('available', canChooseForLevel(level));
+        if (tooltip) {
+          const tooltipText = getLevelUnlockText(level);
+          tooltip.textContent = tooltipText;
+          tooltip.style.whiteSpace = 'pre-line';
+          tooltip.style.display = tooltipText ? 'block' : 'none';
+        }
+      });
+      positionLevelTree();
+
+      const connectors = document.querySelectorAll('.level-link');
+      connectors.forEach(connector => {
+        const fromLevel = Number(connector.dataset.from || 0);
+        const fill = connector.querySelector('.level-link-fill');
+        const remaining = connector.querySelector('.level-link-remaining');
+        const nextLevel = fromLevel + 1;
+        const fromThreshold = getLevelThreshold(fromLevel);
+        const toThreshold = getLevelThreshold(nextLevel);
+        let pct = 0;
+        if (playerLevel > fromLevel) pct = 100;
+        else if (playerLevel === fromLevel) {
+          const span = Math.max(1, toThreshold - fromThreshold);
+          const progress = Math.max(0, Math.min(span, totalHitpointsDealt - fromThreshold));
+          pct = (progress / span) * 100;
+        }
+        const dir = connector.dataset.dir || 'down';
+        if (dir === 'up' || dir === 'down') {
+          fill.style.width = '100%';
+          fill.style.height = `${pct}%`;
+          if (dir === 'down') {
+            fill.style.top = '0';
+            fill.style.bottom = 'auto';
+          } else {
+            fill.style.bottom = '0';
+            fill.style.top = 'auto';
+          }
+        } else {
+          fill.style.height = '100%';
+          fill.style.width = `${pct}%`;
+          if (dir === 'right') {
+            fill.style.left = '0';
+            fill.style.right = 'auto';
+          } else {
+            fill.style.right = '0';
+            fill.style.left = 'auto';
+          }
+        }
+        if (playerLevel === fromLevel) {
+          const remainingHp = Math.max(0, toThreshold - totalHitpointsDealt);
+          remaining.textContent = `${fmtNum(remainingHp)} HP TO NEXT`;
+          remaining.style.display = 'block';
+        } else {
+          remaining.style.display = 'none';
+        }
+      });
+    }
+
+    function openLevelChoice(level) {
+      if (!canChooseForLevel(level)) return;
+      currentChoiceLevel = level;
+      const target = getTargetCapForLevel(level);
+      const title = document.getElementById('level-choice-title');
+      const list = document.getElementById('level-choice-list');
+      const note = document.getElementById('level-choice-note');
+      title.textContent = `NEW MAX UPGRADE LEVEL ${target}`;
+      list.innerHTML = '';
+      let anyAvailable = false;
+      UPGRADE_LIST.forEach((name, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.style.minHeight = 'auto';
+        const isAvailable = upgradeCaps[i] < target;
+        if (isAvailable) anyAvailable = true;
+        btn.disabled = !isAvailable;
+        btn.innerHTML = `<span>${name}</span><span>MAX ${target}</span>`;
+        btn.onclick = () => { 
+          if (!isAvailable) return; 
+          upgradeCaps[i] = target; 
+          if (!claimedLevels.includes(level)) claimedLevels.push(level);
+          refreshShop(); 
+          updateLevelUI(); 
+          google.script.run
+            .withFailureHandler(() => { /* optional: fallback only */ })
+            .saveUpgradeCaps({ sCap: upgradeCaps[0], fCap: upgradeCaps[1], mCap: upgradeCaps[2], claimedLevels });
+          sync(); 
+          closeLevelChoice(); 
+        };
+        list.appendChild(btn);
+      });
+      note.style.display = anyAvailable ? 'none' : 'block';
+      showView('view-level-choice');
+    }
+
+    function closeLevelChoice() {
+      currentChoiceLevel = null;
+      showView('view-level-tree');
+    }
+
+    function startInit() {
+      setTimeout(() => {
+        splashTxt.style.opacity = 0;
+        setTimeout(() => {
+          splashTxt.innerText = "Made By RedsssProduction Studios";
+          splashTxt.style.opacity = 1;
+          google.script.run
+            .withSuccessHandler(d => {
+              bank = d.bank; pSpdCap = d.speed; pFire = d.fireRate; pMult = d.multiplier;
+              sCost = d.sCost; fCost = d.fCost; mCost = d.mCost; sLvl = d.sLvl; fLvl = d.fLvl; mLvl = d.mLvl;
+              totalHitpointsDealt = Number(d.totalHitpointsDealt) || 0;
+              upgradeCaps = [Number(d.sCap) || 5, Number(d.fCap) || 5, Number(d.mCap) || 5];
+              stagesUnlocked = Number(d.stagesUnlocked) || 1;
+              turretDmgLvl = Number(d.turretDmgLvl) || 0;
+              hullLvl = Number(d.hullLvl) || 0;
+              ownedSkins = Array.isArray(d.ownedSkins) ? d.ownedSkins.map(n => Number(n)) : [];
+              equippedSkin = (d.equippedSkin != null && d.equippedSkin !== '') ? Number(d.equippedSkin) : -1;
+              ownedBodies = Array.isArray(d.ownedBodies) ? d.ownedBodies.map(n => Number(n)) : [];
+              equippedBody = Number(d.equippedBody) || 0;
+              claimedLevels = Array.isArray(d.claimedLevels)
+                ? d.claimedLevels.map(n => Number(n)).filter(n => Number.isFinite(n))
+                : [];
+              username = d.username; profilePic = d.profilePic || '';
+              processedProfilePic = null; // clear any transient processed image
+              updateProfileUI();
+              updateLevelUI();
+              buildLevelTree();
+              splash.style.opacity = 0;
+              setTimeout(() => {
+                splash.style.display = 'none';
+                if(!username && parentUsername) {
+                  // Auto-populate from main site's account — skip setup prompt
+                  isNewPlayer = false;
+                  username = parentUsername;
+                  if (!profilePic) profilePic = parentProfilePic;
+                  sync(function(){});
+                  showView('view-main');
+                  document.getElementById('cancel-setup').style.display = 'block';
+                } else if(!username) { isNewPlayer = true; showView('setup-prompt'); }
+                else { showView('view-main'); document.getElementById('cancel-setup').style.display = 'block'; }
+              }, 800);
+              // initialize timing baseline and start loop
+              lastTime = performance.now();
+              requestAnimationFrame(gameLoop);
+            })
+            .withFailureHandler(err => {
+              splashTxt.innerText = "CONNECTION FAILED: Check Multiple Accounts or Permissions.";
+              splashTxt.style.color = "#f00";
+            })
+            .getGameData();
+        }, 800);
+      }, 2000);
+    }
+    // Listen for auth data from parent site (sent when embedded as iframe)
+    window.addEventListener('message', function(event) {
+      if (!event.data || event.data.type !== 'PARENT_AUTH') return;
+      parentUsername = event.data.username || '';
+      parentProfilePic = event.data.profilePic || '';
+    });
+    startInit();
+
+    function showSetup() { 
+      showView('setup-prompt'); 
+      document.getElementById('username-input').value = username; 
+      updateProfileUI(); 
+      document.getElementById('setup-error').style.display = 'none';
+      // Customize for new vs existing players
+      const title = document.querySelector('#setup-prompt h2');
+      if (isNewPlayer) {
+        title.textContent = 'WELCOME NEW PILOT';
+        document.getElementById('cancel-setup').style.display = 'none';
+      } else {
+        title.textContent = 'PILOT IDENTIFICATION';
+        document.getElementById('cancel-setup').style.display = 'flex';
+      }
+      // Clear error on input
+      document.getElementById('username-input').addEventListener('input', () => {
+        document.getElementById('setup-error').style.display = 'none';
+      });
+    }
+    function saveProfile() {
+      const newName = document.getElementById('username-input').value.trim();
+      if(!newName) {
+        document.getElementById('setup-error').innerText = "Username required!";
+        document.getElementById('setup-error').style.display = 'block';
+        return;
+      }
+      if(newName.length < 3) {
+        document.getElementById('setup-error').innerText = "Username must be at least 3 characters.";
+        document.getElementById('setup-error').style.display = 'block';
+        return;
+      }
+      document.getElementById('setup-error').style.display = 'none';
+      // Check username uniqueness
+      google.script.run
+        .withSuccessHandler(taken => {
+          if (taken) {
+            document.getElementById('setup-error').innerText = "Username already taken! Choose a different one.";
+            document.getElementById('setup-error').style.display = 'block';
+            return;
+          }
+          username = newName;
+          const fileInput = document.getElementById('pic-input');
+          const statusEl = document.getElementById('pic-status');
+
+          if (processedProfilePic) {
+            // upload processed image (stored in the Images sheet server-side)
+            statusEl.innerText = 'Status: Uploading image...';
+            google.script.run
+              .withSuccessHandler(res => {
+                console.log('uploadProfilePic response:', res);
+                // res expected { url: '<dataUrl>' }
+                if (res && res.url) {
+                  // data URL will load locally
+                  const tester = new Image();
+                  tester.onload = () => { profilePic = res.url; statusEl.innerText = 'Status: Uploaded'; finishSave(); };
+                  tester.onerror = () => { profilePic = processedProfilePic; statusEl.innerText = 'Status: Uploaded (local)'; finishSave(); };
+                  tester.src = res.url;
+                } else {
+                  profilePic = processedProfilePic; statusEl.innerText = 'Status: Uploaded (local)'; finishSave();
+                }
+              })
+              .withFailureHandler(err => {
+                console.error('uploadProfilePic error:', err);
+                statusEl.innerText = 'Status: Upload failed — saving local copy';
+                profilePic = processedProfilePic; finishSave();
+              })
+              .uploadProfilePic(processedProfilePic);
+            return;
+          }
+
+          if(fileInput.files && fileInput.files[0]) {
+            // fallback: read as-is (should be rare because we process on change)
+            const reader = new FileReader();
+            reader.onload = (e) => { profilePic = e.target.result; finishSave(); };
+            reader.readAsDataURL(fileInput.files[0]);
+          } else finishSave();
+        })
+        .withFailureHandler(err => {
+          document.getElementById('setup-error').innerText = "Failed to check username availability. Please try again.";
+          document.getElementById('setup-error').style.display = 'block';
+        })
+        .isUsernameTaken(newName, username);
+    }
+    function finishSave() { updateProfileUI(); sync(); showView('view-main'); document.getElementById('cancel-setup').style.display = 'block'; isNewPlayer = false; }
+    function buildStageTabs() {
+      const tabs = document.getElementById('stage-tabs');
+      tabs.innerHTML = '';
+      for (let s = 1; s <= STAGE_COUNT; s++) {
+        const btn = document.createElement('button');
+        btn.className = 'stage-tab' + (s === selectedStage ? ' active' : '');
+        btn.disabled = s > stagesUnlocked;
+        const sc = STAGE_COLORS[s - 1];
+        if (s <= stagesUnlocked) btn.style.borderColor = `rgb(${sc.hard[0]},${sc.hard[1]},${sc.hard[2]})`;
+        btn.textContent = 'STAGE ' + s;
+        btn.onclick = () => { selectedStage = s; refreshLevelSelect(); };
+        tabs.appendChild(btn);
+      }
+    }
+    function refreshLevelSelect() {
+      buildStageTabs();
+      const grid = document.getElementById('level-grid');
+      grid.innerHTML = '';
+      const stage = selectedStage;
+      for (let lvl = 1; lvl <= LEVELS_PER_STAGE; lvl++) {
+        const globalLvl = (stage - 1) * LEVELS_PER_STAGE + lvl;
+        const isBoss = lvl === LEVELS_PER_STAGE;
+        const card = document.createElement('div');
+        card.className = 'level-card' + (isBoss ? ' boss-card' : '');
+        const title = document.createElement('div');
+        title.textContent = isBoss ? 'BOSS' : 'LEVEL ' + lvl;
+        title.style.fontWeight = 'bold';
+        if (isBoss) { const sc = STAGE_COLORS[stage - 1]; title.style.color = `rgb(${sc.boss[0]},${sc.boss[1]},${sc.boss[2]})`; }
+        const sub = document.createElement('div');
+        sub.style.fontSize = '10px'; sub.style.color = '#888'; sub.style.marginTop = '2px';
+        if (isBoss) { sub.textContent = STAGE_NAMES[stage - 1]; }
+        else if (stage === 1) { sub.textContent = ''; }
+        else { sub.textContent = '(Level ' + globalLvl + ')'; }
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.style.minHeight = 'auto';
+        btn.style.minWidth = '80px';
+        btn.style.justifyContent = 'center';
+        const maxMap = getMaxMapLevelUnlocked(playerLevel);
+        const isFirstLevelOfStage = (lvl === 1);
+        const unlocked = (stage <= stagesUnlocked) && (isFirstLevelOfStage || globalLvl <= maxMap);
+        btn.textContent = unlocked ? 'PLAY' : 'LOCKED';
+        btn.disabled = !unlocked;
+        btn.onclick = () => startLevel(globalLvl);
+        card.appendChild(title);
+        card.appendChild(sub);
+        card.appendChild(btn);
+        grid.appendChild(card);
+      }
+    }
+    function getStageForLevel(globalLvl) { return Math.ceil(globalLvl / LEVELS_PER_STAGE); }
+    function getLevelInStage(globalLvl) { return ((globalLvl - 1) % LEVELS_PER_STAGE) + 1; }
+    function getTypeHP(stage, type) {
+      // HP scales exponentially per stage to match turret damage doubling
+      // Stage 1: type 1=1, type 9=5
+      // Each subsequent stage multiplies base HP by ~4x
+      // so players need turret damage upgrades to keep pace
+      const baseHP = [1, 1, 2, 2, 3, 3, 4, 4, 5]; // type 1-9 base HP for stage 1
+      const stageMultiplier = Math.pow(4, stage - 1);
+      const typeBase = (type <= 9) ? baseHP[type - 1] : 5;
+      return Math.round(typeBase * stageMultiplier);
+    }
+    function getLevelAsteroidTypes(globalLvl) {
+      const stage = getStageForLevel(globalLvl);
+      const lvl = getLevelInStage(globalLvl);
+      if (lvl === LEVELS_PER_STAGE) {
+        return [{ stage: stage, type: 9, hp: getTypeHP(stage, 9) }];
+      }
+      if (stage === 1) {
+        if (lvl === 1) return [{ stage: 1, type: 1, hp: 1 }];
+        if (lvl === 2) return [{ stage: 1, type: 1, hp: 1 }, { stage: 1, type: 2, hp: 2 }];
+        if (lvl === 3) return [{ stage: 1, type: 1, hp: 1 }, { stage: 1, type: 2, hp: 2 }, { stage: 1, type: 3, hp: 3 }];
+        return [
+          { stage: 1, type: lvl - 2, hp: getTypeHP(1, lvl - 2) },
+          { stage: 1, type: lvl - 1, hp: getTypeHP(1, lvl - 1) },
+          { stage: 1, type: lvl, hp: getTypeHP(1, lvl) }
+        ];
+      }
+      if (lvl === 1) return [
+        { stage: stage - 1, type: 9, hp: getTypeHP(stage - 1, 9) },
+        { stage: stage, type: 1, hp: getTypeHP(stage, 1) }
+      ];
+      if (lvl === 2) return [
+        { stage: stage - 1, type: 9, hp: getTypeHP(stage - 1, 9) },
+        { stage: stage, type: 1, hp: getTypeHP(stage, 1) },
+        { stage: stage, type: 2, hp: getTypeHP(stage, 2) }
+      ];
+      return [
+        { stage: stage, type: lvl - 2, hp: getTypeHP(stage, lvl - 2) },
+        { stage: stage, type: lvl - 1, hp: getTypeHP(stage, lvl - 1) },
+        { stage: stage, type: lvl, hp: getTypeHP(stage, lvl) }
+      ];
+    }
+    function getAsteroidTypeColor(astStage, astType) {
+      const sc = STAGE_COLORS[astStage - 1];
+      const t = (astType - 1) / 8;
+      return {
+        r: Math.round(sc.base[0] + t * (sc.hard[0] - sc.base[0])),
+        g: Math.round(sc.base[1] + t * (sc.hard[1] - sc.base[1])),
+        b: Math.round(sc.base[2] + t * (sc.hard[2] - sc.base[2]))
+      };
+    }
+    function getSpeedRampFactor(globalLvl) {
+      return 1 + (globalLvl - 1) * 0.08;
+    }
+    function getBossHP(stage) {
+      return BOSS_HP_VALUES[stage - 1];
+    }
+    function getBossReward(stage) {
+      return BOSS_REWARDS[stage - 1];
+    }
+    function spawnCollectParticles(x, y, amount, targetPlayer) {
+      const count = Math.min(8, Math.max(3, Math.ceil(amount / 2)));
+      for (let i = 0; i < count; i++) {
+        collectParticles.push({
+          x: x + (Math.random() - 0.5) * 20,
+          y: y + (Math.random() - 0.5) * 20,
+          life: 1.0, collected: false, delay: i * 40,
+          amount: amount / count
+        });
+      }
+    }
+    function startLevel(globalLvl) {
+      currentMapLevel = globalLvl;
+      currentStage = getStageForLevel(globalLvl);
+      const lvlInStage = getLevelInStage(globalLvl);
+      isBossLevel = lvlInStage === LEVELS_PER_STAGE;
+      boss = null; bossBullets = []; bossDefeated = false; collectParticles = [];
+      playerHP = 1 + hullLvl; playerMaxHP = 1 + hullLvl; invincible = false; invincibleTimer = 0; shipFlyingUp = false;
+      showView('NONE');
+      score = 0; timeAlive = 0; enemies = []; bullets = []; particles = []; shipExplosion = null; deathPending = false;
+      player.x = canvas.width / 2 - 15; player.y = canvas.height - 80;
+      gameActive = true;
+      document.getElementById('stop-btn').style.display = isBossLevel ? 'none' : 'block';
+      if (isBossLevel) {
+        const bossHp = getBossHP(currentStage);
+        const sc = STAGE_COLORS[currentStage - 1];
+        const bossSize = 40 + currentStage * 8;
+        boss = {
+          x: canvas.width / 2 - bossSize / 2, y: 40, w: bossSize, h: Math.floor(bossSize * 1.25),
+          hp: bossHp, maxHp: bossHp,
+          color: sc.boss,
+          lastShot: 0,
+          fireRate: Math.max(250, 1200 - currentStage * 150),
+          vertPhase: 0,
+          bulletSpeed: 3.5 + currentStage * 0.5
+        };
+        document.getElementById('boss-hp-bar').style.display = 'block';
+        updateBossBar();
+      } else {
+        document.getElementById('boss-hp-bar').style.display = 'none';
+      }
+    }
+    function updateBossBar() {
+      if (!boss) return;
+      const pct = Math.max(0, boss.hp / boss.maxHp * 100);
+      const fill = document.getElementById('boss-bar-fill');
+      const text = document.getElementById('boss-bar-text');
+      const sc = STAGE_COLORS[currentStage - 1];
+      fill.style.width = pct + '%';
+      fill.style.background = `rgb(${sc.boss[0]},${sc.boss[1]},${sc.boss[2]})`;
+      text.textContent = `BOSS — ${fmtNum(Math.ceil(boss.hp))} / ${fmtNum(boss.maxHp)}`;
+    }
+    function takeHit() {
+      if (invincible) return;
+      playerHP--;
+      if (playerHP <= 0) {
+        endGame(false);
+      } else {
+        invincible = true;
+        invincibleTimer = INVINCIBLE_DURATION;
+      }
+    }
+    function endGame(isVoluntary) {
+      if (!gameActive && !shipFlyingUp) return;
+      if (isVoluntary && !bossDefeated) {
+        shipFlyingUp = true;
+        gameActive = false;
+        document.getElementById('boss-hp-bar').style.display = 'none';
+        document.getElementById('hud').style.display = 'none';
+        document.getElementById('stop-btn').style.display = 'none';
+        return;
+      }
+      gameActive = false;
+      document.getElementById('boss-hp-bar').style.display = 'none';
+      document.getElementById('hud').style.display = 'none';
+      document.getElementById('stop-btn').style.display = 'none';
+      if (bossDefeated && boss) {
+        if (currentStage < STAGE_COUNT) stagesUnlocked = Math.max(stagesUnlocked, currentStage + 1);
+        spawnShipExplosion(boss.x + boss.w / 2, boss.y + boss.h / 2);
+      } else {
+        spawnShipExplosion(player.x + player.w / 2, player.y + player.h / 2);
+      }
+      deathPending = true;
+    }
+    function sync(callback) { 
+      google.script.run
+        .withSuccessHandler(() => { if(callback) callback(); })
+        .withFailureHandler(() => { if(callback) callback(); })
+        .saveGameData({ bank: Math.floor(bank), speed: pSpdCap, fireRate: pFire, multiplier: pMult, sCost, fCost, mCost, sLvl, fLvl, mLvl, totalHitpointsDealt: Math.floor(totalHitpointsDealt), sCap: upgradeCaps[0], fCap: upgradeCaps[1], mCap: upgradeCaps[2], claimedLevels, username, profilePic, stagesUnlocked, turretDmgLvl, hullLvl, ownedSkins, equippedSkin, ownedBodies, equippedBody }); 
+    }
+
+    
+
+    function showLeaderboard() {
+      showView('view-leaderboard');
+      const listSd = document.getElementById('leaderboard-list-sd');
+      const listHp = document.getElementById('leaderboard-list-hp');
+      listSd.innerHTML = '';
+      listHp.innerHTML = '';
+      const loaderSd = document.createElement('p'); loaderSd.style.textAlign = 'center'; loaderSd.style.color = '#0ff'; loaderSd.textContent = 'FETCHING DATA...'; listSd.appendChild(loaderSd);
+      const loaderHp = document.createElement('p'); loaderHp.style.textAlign = 'center'; loaderHp.style.color = '#0ff'; loaderHp.textContent = 'FETCHING DATA...'; listHp.appendChild(loaderHp);
+
+      function renderLeaderboardList(listEl, data, scoreText) {
+        listEl.innerHTML = '';
+        if (!data || data.length === 0) {
+          const p = document.createElement('p'); p.style.textAlign = 'center'; p.textContent = 'NO PILOTS FOUND'; listEl.appendChild(p); return;
+        }
+        data.forEach((pData, i) => {
+          const div = document.createElement('div'); div.className = 'leader-entry';
+          const rank = document.createElement('span'); rank.className = 'leader-rank'; rank.textContent = String(i + 1);
+          const avatarWrap = document.createElement('div'); avatarWrap.className = 'avatar-wrapper'; avatarWrap.style.width = '30px'; avatarWrap.style.height = '30px'; avatarWrap.style.borderColor = 'rgba(0,255,255,0.3)';
+          if (pData.pic) {
+            const img = document.createElement('img'); img.className = 'user-pic'; img.src = pData.pic; avatarWrap.appendChild(img);
+          } else {
+            const letter = document.createElement('div'); letter.className = 'letter-avatar'; letter.style.fontSize = '14px'; letter.textContent = (pData.username && pData.username.charAt(0)) || '?'; avatarWrap.appendChild(letter);
+          }
+          const name = document.createElement('span'); name.className = 'leader-name'; name.textContent = pData.username || 'Unknown Pilot';
+          const scoreEl = document.createElement('span'); scoreEl.className = 'leader-score'; scoreEl.textContent = scoreText(pData);
+          div.appendChild(rank); div.appendChild(avatarWrap); div.appendChild(name); div.appendChild(scoreEl);
+          listEl.appendChild(div);
+        });
+      }
+
+      function refreshLeaderboards() {
+        google.script.run
+          .withSuccessHandler(data => {
+            renderLeaderboardList(listSd, data, pData => (typeof pData.bank === 'number' ? fmtNum(pData.bank) : String(pData.bank)) + ' SD');
+          })
+          .withFailureHandler(() => { listSd.innerHTML = ''; const p = document.createElement('p'); p.style.textAlign = 'center'; p.textContent = 'FAILED TO FETCH LEADERBOARD'; listSd.appendChild(p); })
+          .getLeaderboardData();
+
+        google.script.run
+          .withSuccessHandler(data => {
+            renderLeaderboardList(listHp, data, pData => (typeof pData.hitpoints === 'number' ? fmtNum(pData.hitpoints) : String(pData.hitpoints)) + ' HP');
+          })
+          .withFailureHandler(() => { listHp.innerHTML = ''; const p = document.createElement('p'); p.style.textAlign = 'center'; p.textContent = 'FAILED TO FETCH LEADERBOARD'; listHp.appendChild(p); })
+          .getHitpointsLeaderboardData();
+      }
+
+      refreshLeaderboards();
+
+      // Start live updates every 5 seconds
+      if (!leaderboardInterval) {
+        leaderboardInterval = setInterval(() => {
+          refreshLeaderboards();
+        }, 5000);
+      }
+    }
+    const picInputEl = document.getElementById('pic-input');
+    const cropModal = document.getElementById('crop-modal');
+    const cropCanvas = document.getElementById('crop-canvas');
+    const cropCtx = cropCanvas.getContext('2d');
+    const cropZoom = document.getElementById('crop-zoom');
+    const cropConfirm = document.getElementById('crop-confirm');
+    const cropCancel = document.getElementById('crop-cancel');
+
+    let cropState = { img: null, scale: 1, x: 0, y: 0, dragging: false, lastX: 0, lastY: 0, canvasSize: 300, cropSize: 300 };
+
+    function openCropModal(file) {
+      const reader = new FileReader();
+      const statusEl = document.getElementById('pic-status');
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          // Set fixed crop size to 300x300
+          const initialCropSize = 300;
+          cropState.cropSize = initialCropSize;
+          cropState.canvasSize = initialCropSize;
+          cropCanvas.width = initialCropSize;
+          cropCanvas.height = initialCropSize;
+          // Panel width is fixed in CSS
+
+          cropState.img = img;
+          cropState.outputSize = initialCropSize;
+          // initial scale: ensure image covers the crop area
+          const minScale = Math.max(cropState.canvasSize / img.width, cropState.canvasSize / img.height);
+          cropState.scale = minScale;
+          cropZoom.min = minScale;
+          cropZoom.max = Math.max(2, minScale * 2);
+          cropZoom.value = cropState.scale;
+          // center image
+          const drawW = img.width * cropState.scale;
+          const drawH = img.height * cropState.scale;
+          cropState.x = (cropState.canvasSize - drawW) / 2;
+          cropState.y = (cropState.canvasSize - drawH) / 2;
+          clampCropPosition();
+          drawCrop();
+          cropModal.style.display = 'flex';
+          statusEl.innerText = `Status: Crop your image (300x300)`;
+        };
+        img.onerror = () => { statusEl.innerText = 'Status: Invalid image'; };
+        img.src = e.target.result;
+      };
+      reader.onerror = () => { document.getElementById('pic-status').innerText = 'Status: File read failed'; };
+      reader.readAsDataURL(file);
+    }
+
+    function drawCrop() {
+      const s = cropState;
+      cropCtx.clearRect(0, 0, s.canvasSize, s.canvasSize);
+      if (!s.img) return;
+      cropCtx.drawImage(s.img, s.x, s.y, s.img.width * s.scale, s.img.height * s.scale);
+      // overlay border
+      cropCtx.strokeStyle = '#0ff'; cropCtx.lineWidth = 2; cropCtx.strokeRect(0,0,s.canvasSize,s.canvasSize);
+    }
+
+    // mouse / touch handlers for dragging
+    cropCanvas.addEventListener('mousedown', (e) => { cropState.dragging = true; cropState.lastX = e.clientX; cropState.lastY = e.clientY; });
+    window.addEventListener('mousemove', (e) => { if (!cropState.dragging) return; const dx = e.clientX - cropState.lastX; const dy = e.clientY - cropState.lastY; cropState.lastX = e.clientX; cropState.lastY = e.clientY; cropState.x += dx; cropState.y += dy; clampCropPosition(); drawCrop(); });
+    window.addEventListener('mouseup', () => { cropState.dragging = false; });
+    cropCanvas.addEventListener('touchstart', (e) => { const t = e.touches[0]; cropState.dragging = true; cropState.lastX = t.clientX; cropState.lastY = t.clientY; });
+    cropCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); const t = e.touches[0]; if (!cropState.dragging) return; const dx = t.clientX - cropState.lastX; const dy = t.clientY - cropState.lastY; cropState.lastX = t.clientX; cropState.lastY = t.clientY; cropState.x += dx; cropState.y += dy; clampCropPosition(); drawCrop(); });
+    cropCanvas.addEventListener('touchend', () => { cropState.dragging = false; });
+
+    function clampCropPosition() {
+      const s = cropState;
+      const drawW = s.img.width * s.scale;
+      const drawH = s.img.height * s.scale;
+      // ensure image covers the canvas (no blank areas)
+      if (drawW <= s.canvasSize) s.x = (s.canvasSize - drawW) / 2;
+      else s.x = Math.min(0, Math.max(s.canvasSize - drawW, s.x));
+      if (drawH <= s.canvasSize) s.y = (s.canvasSize - drawH) / 2;
+      else s.y = Math.min(0, Math.max(s.canvasSize - drawH, s.y));
+    }
+
+    cropZoom.addEventListener('input', () => {
+      const minScale = Number(cropZoom.min) || 0.5;
+      cropState.scale = Math.max(minScale, Number(cropZoom.value));
+      cropZoom.value = cropState.scale;
+      // Recenter image
+      const drawW = cropState.img.width * cropState.scale;
+      const drawH = cropState.img.height * cropState.scale;
+      cropState.x = (cropState.canvasSize - drawW) / 2;
+      cropState.y = (cropState.canvasSize - drawH) / 2;
+      clampCropPosition(); drawCrop();
+    });
+
+    cropConfirm.addEventListener('click', () => {
+      const s = cropState;
+      if (!s.img) return;
+      // map visible canvas area back to source image coordinates
+      const srcX = Math.max(0, Math.round(-s.x / s.scale));
+      const srcY = Math.max(0, Math.round(-s.y / s.scale));
+      const srcSize = Math.round(s.canvasSize / s.scale);
+      const outputSize = 300; // fixed crop size
+      const tmp = document.createElement('canvas');
+      tmp.width = outputSize;
+      tmp.height = outputSize;
+      const tctx = tmp.getContext('2d');
+      tctx.drawImage(s.img, srcX, srcY, srcSize, srcSize, 0, 0, outputSize, outputSize);
+      const out = tmp.toDataURL('image/png', 0.92);
+      processedProfilePic = out;
+      profilePic = out;
+      updateProfileUI();
+      document.getElementById('pic-status').innerText = `Status: Photo Ready (cropped 300x300)`;
+      cropModal.style.display = 'none';
+      // reset crop state img to keep memory low
+      s.img = null;
+    });
+
+    cropCancel.addEventListener('click', () => { cropModal.style.display = 'none'; cropState.img = null; document.getElementById('pic-input').value = ''; document.getElementById('pic-status').innerText = 'Status: No Image'; });
+
+    // when user selects a file, open the crop modal
+    if (picInputEl) {
+      picInputEl.addEventListener('change', (ev) => {
+        const f = ev.target.files && ev.target.files[0];
+        if (!f) return;
+        openCropModal(f);
+      });
+    }
+
+    function refreshShop() {
+      const bS = document.getElementById('up-speed'), bF = document.getElementById('up-fire'), bM = document.getElementById('up-mult');
+      const bTD = document.getElementById('up-tdmg');
+      document.getElementById('shop-bank').innerText = fmtNum(bank);
+      const sCap = upgradeCaps[0];
+      const fCap = upgradeCaps[1];
+      const mCap = upgradeCaps[2];
+      const sText = sLvl >= sCap ? `LVL ${sCap} (Maxed)` : `LVL ${sLvl} (${fmtNum(sCost)} SD)`;
+      bS.innerHTML = `<span>Upgrade Engine Speed</span><span id="lvl-s" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${sText}</span>`;
+      bS.disabled = shopLock || bank < sCost || sLvl >= sCap;
+      const fText = fLvl >= fCap ? `LVL ${fCap} (Maxed)` : `LVL ${fLvl} (${fmtNum(fCost)} SD)`;
+      bF.innerHTML = `<span>Upgrade Turret Fire Rate</span><span id="lvl-f" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${fText}</span>`;
+      bF.disabled = shopLock || bank < fCost || fLvl >= fCap;
+      const mText = mLvl >= mCap ? `LVL ${mCap} (Maxed)` : `LVL ${mLvl} (${fmtNum(mCost)} SD)`;
+      bM.innerHTML = `<span>Upgrade Star Dust Collector</span><span id="lvl-m" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${mText}</span>`;
+      bM.disabled = shopLock || bank < mCost || mLvl >= mCap;
+      bS.onclick = () => { if(shopLock || bank < sCost || sLvl >= sCap) return; shopLock = true; bank -= sCost; pSpdCap += 0.43; sLvl++; sCost = Math.floor(sCost*1.15); refreshShop(); setTimeout(() => { shopLock = false; refreshShop(); }, 200); };
+      bF.onclick = () => { if(shopLock || bank < fCost || fLvl >= fCap) return; shopLock = true; bank -= fCost; pFire -= 4.54; fLvl++; fCost = Math.floor(fCost*1.15); refreshShop(); setTimeout(() => { shopLock = false; refreshShop(); }, 200); };
+      bM.onclick = () => { if(shopLock || bank < mCost || mLvl >= mCap) return; shopLock = true; bank -= mCost; pMult *= 2; mLvl++; mCost = Math.floor(mCost*2.1); refreshShop(); setTimeout(() => { shopLock = false; refreshShop(); }, 200); };
+      // Turret Damage upgrade
+      const tdMax = getTurretDmgMaxLvl(playerLevel);
+      if (tdMax > 0) {
+        bTD.style.display = 'flex';
+        if (turretDmgLvl >= tdMax) {
+          const tdText = turretDmgLvl >= TURRET_DMG_MAX ? `LVL ${TURRET_DMG_MAX} (Maxed)` : `LVL ${turretDmgLvl} (Maxed)`;
+          bTD.innerHTML = `<span>Upgrade Turret Damage (x${getTurretDmgMultiplier()} DMG)</span><span id="lvl-td" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${tdText}</span>`;
+          bTD.disabled = true;
+        } else {
+          const tdCost = getTurretDmgCost(turretDmgLvl);
+          const tdText = `LVL ${turretDmgLvl} (${fmtNum(tdCost)} SD)`;
+          bTD.innerHTML = `<span>Upgrade Turret Damage (x${getTurretDmgMultiplier()} DMG)</span><span id="lvl-td" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${tdText}</span>`;
+          bTD.disabled = shopLock || bank < tdCost;
+        }
+        bTD.onclick = () => {
+          const curTdMax = getTurretDmgMaxLvl(playerLevel);
+          if (shopLock || turretDmgLvl >= curTdMax || turretDmgLvl >= TURRET_DMG_MAX) return;
+          const tdCost = getTurretDmgCost(turretDmgLvl);
+          if (bank < tdCost) return;
+          shopLock = true; bank -= tdCost; turretDmgLvl++; refreshShop(); sync(); setTimeout(() => { shopLock = false; refreshShop(); }, 200);
+        };
+      } else {
+        bTD.style.display = 'none';
+      }
+      // Hull Strength upgrade
+      const bHull = document.getElementById('up-hull');
+      const hullMax = getHullMaxAvailable();
+      if (hullMax > 0) {
+        bHull.style.display = 'flex';
+        if (hullLvl >= hullMax) {
+          const hullText = hullLvl >= HULL_MAX ? `LVL ${HULL_MAX} (Maxed)` : `LVL ${hullLvl} (Maxed)`;
+          bHull.innerHTML = `<span>Upgrade Ship Hull (${1 + hullLvl} HP)</span><span id="lvl-hull" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${hullText}</span>`;
+          bHull.disabled = true;
+        } else {
+          const hCost = getHullCost(hullLvl);
+          const hullText = `LVL ${hullLvl} \u2192 ${hullLvl + 1} (${fmtNum(hCost)} SD)`;
+          bHull.innerHTML = `<span>Upgrade Ship Hull (${1 + hullLvl} HP)</span><span id="lvl-hull" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${hullText}</span>`;
+          bHull.disabled = shopLock || bank < hCost;
+        }
+        bHull.onclick = () => {
+          const curHullMax = getHullMaxAvailable();
+          if (shopLock || hullLvl >= curHullMax || hullLvl >= HULL_MAX) return;
+          const hCost = getHullCost(hullLvl);
+          if (bank < hCost) return;
+          shopLock = true; bank -= hCost; hullLvl++; refreshShop(); sync(); setTimeout(() => { shopLock = false; refreshShop(); }, 200);
+        };
+      } else {
+        bHull.style.display = 'none';
+      }
+      // Ship Skins shop
+      const skinsContainer = document.getElementById('shop-skins-container');
+      const skinsList = document.getElementById('shop-skins-list');
+      if (playerLevel >= 3) {
+        skinsContainer.style.display = 'block'; skinsList.innerHTML = '';
+        let anySkinAvailable = false;
+        SHIP_SKINS.forEach((skin, i) => {
+          if (ownedSkins.includes(i)) return;
+          anySkinAvailable = true;
+          const btn = document.createElement('button'); btn.className = 'btn';
+          const c = skin.color; const cs = `rgb(${c[0]},${c[1]},${c[2]})`;
+          const canAfford = !shopLock && bank >= skin.price;
+          btn.style.borderColor = canAfford ? cs : '#333'; btn.style.color = canAfford ? cs : '#333';
+          btn.innerHTML = `<span>${skin.name} Skin</span><span>${fmtNum(skin.price)} SD</span>`;
+          btn.disabled = !canAfford;
+          btn.onclick = () => { if (shopLock || bank < skin.price) return; shopLock = true; bank -= skin.price; ownedSkins.push(i); refreshShop(); sync(); setTimeout(() => { shopLock = false; refreshShop(); }, 200); };
+          skinsList.appendChild(btn);
+        });
+        if (!anySkinAvailable) { skinsContainer.style.display = 'none'; }
+      } else { skinsContainer.style.display = 'none'; }
+      // Ship Bodies shop
+      const bodiesContainer = document.getElementById('shop-bodies-container');
+      const bodiesList = document.getElementById('shop-bodies-list');
+      if (playerLevel >= 13) {
+        bodiesContainer.style.display = 'block'; bodiesList.innerHTML = '';
+        let anyBodyAvailable = false;
+        SHIP_BODIES.forEach((body, i) => {
+          if (i === 0 || ownedBodies.includes(i)) return;
+          anyBodyAvailable = true;
+          const btn = document.createElement('button'); btn.className = 'btn';
+          const canAffordBody = !shopLock && bank >= body.price;
+          if (!canAffordBody) { btn.style.borderColor = '#333'; btn.style.color = '#333'; }
+          btn.innerHTML = `<span>${body.name}</span><span>${fmtNum(body.price)} SD</span>`;
+          btn.disabled = !canAffordBody;
+          btn.onclick = () => { if (shopLock || bank < body.price) return; shopLock = true; bank -= body.price; ownedBodies.push(i); refreshShop(); sync(); setTimeout(() => { shopLock = false; refreshShop(); }, 200); };
+          bodiesList.appendChild(btn);
+        });
+        if (!anyBodyAvailable) { bodiesContainer.style.display = 'none'; }
+      } else { bodiesContainer.style.display = 'none'; }
+    }
+
+    window.addEventListener('keydown', e => { keys[e.code] = true; });
+    window.addEventListener('keyup', e => { keys[e.code] = false; });
+    // Reset keys when window loses focus to prevent stuck keys
+    window.addEventListener('blur', () => { keys = {}; });
+    window.addEventListener('focus', () => { /* keys already reset on blur */ });
+    function generateStars(count = 100) {
+      stars = [];
+      for (let i = 0; i < count; i++) stars.push({ x: Math.random()*canvas.width, y: Math.random()*canvas.height, z: Math.random()*2+1, s: Math.random()*2+1 });
+    }
+    generateStars();
+
+    function spawnAsteroidExplosion(cx, cy, radius, astStage, astType) {
+      const _ac = getAsteroidTypeColor(astStage || currentStage, astType || 1);
+      const colR = _ac.r, colG = _ac.g, colB = _ac.b;
+      const count = Math.max(6, Math.min(18, Math.round(radius * 0.8)));
+      for (let p = 0; p < count; p++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1 + Math.random() * 3;
+        const size = Math.max(1.5, radius * (0.06 + Math.random() * 0.12));
+        particles.push({
+          x: cx, y: cy,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          size: size,
+          life: 1.0,
+          decay: 0.015 + Math.random() * 0.015,
+          r: colR, g: colG, b: colB
+        });
+      }
+    }
+    function spawnShipExplosion(cx, cy) {
+      shipExplosion = { x: cx, y: cy, time: 0, duration: 1200, particles: [] };
+      for (let p = 0; p < 30; p++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 0.5 + Math.random() * 3.5;
+        const size = 2 + Math.random() * 4;
+        const isCyan = Math.random() < 0.5;
+        shipExplosion.particles.push({
+          x: cx, y: cy,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          size: size,
+          life: 1.0,
+          decay: 0.008 + Math.random() * 0.012,
+          r: isCyan ? 0 : 255, g: isCyan ? 255 : 200, b: 255
+        });
+      }
+    }
+    function update(dt) {
+      stars.forEach(s => { s.y += s.z; if(s.y > canvas.height) s.y = 0; });
+      // Update explosion particles regardless of gameActive
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx; p.y += p.vy;
+        p.vx *= 0.98; p.vy *= 0.98;
+        p.life -= p.decay;
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+      // Update ship explosion
+      if (shipExplosion) {
+        shipExplosion.time += (dt || 16);
+        for (let i = shipExplosion.particles.length - 1; i >= 0; i--) {
+          const p = shipExplosion.particles[i];
+          p.x += p.vx; p.y += p.vy;
+          p.vx *= 0.97; p.vy *= 0.97;
+          p.life -= p.decay;
+          if (p.life <= 0) shipExplosion.particles.splice(i, 1);
+        }
+        if (shipExplosion.time >= shipExplosion.duration || shipExplosion.particles.length === 0) {
+          shipExplosion = null;
+          if (deathPending) {
+            deathPending = false;
+            const ptitle = document.getElementById('post-title');
+            const pinfo = document.getElementById('post-info');
+            const pnext = document.getElementById('post-next-level');
+            if (bossDefeated && boss) {
+              const reward = getBossReward(currentStage);
+              bank += reward; score += reward;
+              ptitle.style.color = '#0f0'; ptitle.textContent = 'BOSS DEFEATED!';
+              pinfo.style.display = 'block';
+              pinfo.textContent = 'Earned ' + fmtNum(reward) + ' Star Dust!' + (currentStage < STAGE_COUNT ? ' Stage ' + (currentStage + 1) + ' Unlocked!' : ' ALL STAGES COMPLETE!');
+              if (currentStage < STAGE_COUNT) { pnext.style.display = 'flex'; pnext.onclick = () => startLevel(currentStage * LEVELS_PER_STAGE + 1); }
+              else { pnext.style.display = 'none'; }
+            } else {
+              ptitle.style.color = '#f00'; ptitle.textContent = 'LEVEL ENDED';
+              pinfo.style.display = 'none'; pnext.style.display = 'none';
+            }
+            document.getElementById('post-play-again').onclick = () => startLevel(currentMapLevel);
+            showView('view-post'); sync();
+          }
+        }
+      }
+      // Update collect particles (always)
+      for (let ci = collectParticles.length - 1; ci >= 0; ci--) {
+        const cp = collectParticles[ci];
+        if (cp.delay > 0) { cp.delay -= (dt || 16); continue; }
+        cp.life -= 0.02;
+        const tx = player.x + player.w / 2, ty = player.y + player.h / 2;
+        cp.x += (tx - cp.x) * 0.12; cp.y += (ty - cp.y) * 0.12;
+        if (cp.life <= 0 || Math.sqrt((cp.x - tx)**2 + (cp.y - ty)**2) < 15) collectParticles.splice(ci, 1);
+      }
+      // Ship fly-up animation (stop round)
+      if (shipFlyingUp) {
+        player.y -= 6;
+        enemies.forEach(e => { e.y += (e.baseV || 1); e.angle = (e.angle || 0) + (e.spin || 0); });
+        enemies = enemies.filter(e => e.y <= canvas.height + 100);
+        if (player.y + player.h < -30) {
+          shipFlyingUp = false;
+          const ptitle = document.getElementById('post-title');
+          const pinfo = document.getElementById('post-info');
+          const pnext = document.getElementById('post-next-level');
+          ptitle.style.color = '#f00'; ptitle.textContent = 'LEVEL ENDED';
+          pinfo.style.display = 'none'; pnext.style.display = 'none';
+          document.getElementById('post-play-again').onclick = () => startLevel(currentMapLevel);
+          showView('view-post'); sync();
+        }
+        return;
+      }
+      if(!gameActive) return;
+      timeAlive += dt || 16; 
+      if (keys['ArrowUp'] || keys['KeyW']) throttleValue = Math.min(100, throttleValue + 1);
+      if (keys['ArrowDown'] || keys['KeyS']) throttleValue = Math.max(10, throttleValue - 1);
+      document.getElementById('throttle-ui').innerText = Math.floor(throttleValue);
+      // Invincibility timer
+      if (invincible) { invincibleTimer -= (dt || 16); if (invincibleTimer <= 0) { invincible = false; invincibleTimer = 0; } }
+      // Hull HP bar
+      const hullBarEl = document.getElementById('hull-hp-bar');
+      if (playerMaxHP >= 2) {
+        hullBarEl.style.display = 'inline';
+        let hpStr = '';
+        for (let h = 0; h < playerMaxHP; h++) hpStr += h < playerHP ? '\u2665' : '\u2661';
+        document.getElementById('hull-hp-text').innerText = hpStr;
+      } else { hullBarEl.style.display = 'none'; }
+      // Boss AI
+      if (boss && isBossLevel) {
+        const targetX = player.x + player.w / 2 - boss.w / 2;
+        const trackSpeed = 1.0 + currentStage * 0.5;
+        if (boss.x < targetX - 5) boss.x += trackSpeed;
+        else if (boss.x > targetX + 5) boss.x -= trackSpeed;
+        boss.x = Math.max(10, Math.min(canvas.width - boss.w - 10, boss.x));
+        boss.vertPhase = (boss.vertPhase || 0) + 0.01 + currentStage * 0.005;
+        boss.y = 40 + Math.sin(boss.vertPhase) * (30 + currentStage * 10);
+        boss.y = Math.max(20, Math.min(canvas.height / 3, boss.y));
+        if (Date.now() - boss.lastShot > boss.fireRate) {
+          const bx = boss.x + boss.w / 2, by = boss.y + boss.h;
+          const pdx = (player.x + player.w / 2) - bx, pdy = (player.y + player.h / 2) - by;
+          const len = Math.sqrt(pdx * pdx + pdy * pdy) || 1;
+          const spd = boss.bulletSpeed || (3.5 + currentStage * 0.5);
+          bossBullets.push({ x: bx, y: by, vx: (pdx / len) * spd, vy: (pdy / len) * spd });
+          if (currentStage >= 3) {
+            const spread = 0.2 + (currentStage - 3) * 0.08;
+            const angle = Math.atan2(pdy, pdx);
+            bossBullets.push({ x: bx, y: by, vx: Math.cos(angle + spread) * spd, vy: Math.sin(angle + spread) * spd });
+            bossBullets.push({ x: bx, y: by, vx: Math.cos(angle - spread) * spd, vy: Math.sin(angle - spread) * spd });
+          }
+          boss.lastShot = Date.now();
+        }
+      }
+      for (let bi = bossBullets.length - 1; bi >= 0; bi--) {
+        const bb = bossBullets[bi];
+        bb.x += bb.vx; bb.y += bb.vy;
+        if (bb.y > canvas.height || bb.y < 0 || bb.x < 0 || bb.x > canvas.width) { bossBullets.splice(bi, 1); continue; }
+        const bdx = bb.x - (player.x + player.w / 2), bdy = bb.y - (player.y + player.h / 2);
+        if (Math.sqrt(bdx * bdx + bdy * bdy) < 18) { bossBullets.splice(bi, 1); if (!invincible) { takeHit(); if (!gameActive) return; } continue; }
+      }
+      const rampFactor = getSpeedRampFactor(currentMapLevel);
+      let speedMultiplier = 2.5 + (timeAlive / (50000 / rampFactor)); 
+
+      // --- ENHANCED ASTEROID SPAWNING ---
+      if (Date.now() - lastSpawn > 850) {
+        let size = Math.random() * 15 + 15;
+        let vertices = [];
+        for (let v = 0; v < 8; v++) {
+          vertices.push(size + (Math.random() * 8 - 4));
+        }
+        let craters = [];
+        let attempts = 0;
+        while (craters.length < 3 && attempts < 10) {
+          let cr = Math.random() * (size / 5) + 2;
+          let cx = (Math.random() - 0.5) * size * 0.7;
+          let cy = (Math.random() - 0.5) * size * 0.7;
+          let overlapping = craters.some(c => Math.sqrt((cx - c.x)**2 + (cy - c.y)**2) < (cr + c.r));
+          if (!overlapping) craters.push({ x: cx, y: cy, r: cr });
+          attempts++;
+        }
+        // Size-based base speed (smaller asteroids move faster).
+        const sizeFactor = 30 / size;
+        const baseV = isBossLevel
+          ? (2.0 + currentStage * 0.3) * (0.7 + sizeFactor * (0.4 + Math.random() * 0.8))
+          : (1.5 + (timeAlive / (100000 / rampFactor))) * (0.7 + sizeFactor * (0.4 + Math.random() * 0.8));
+        const angle = Math.random() * Math.PI * 2;
+        const spin = (Math.random() * 2 - 1) * 0.06;
+        // Assign asteroid type based on current map level
+        const astTypes = getLevelAsteroidTypes(currentMapLevel);
+        const chosen = astTypes[Math.floor(Math.random() * astTypes.length)];
+        enemies.push({ 
+          x: Math.random() * (canvas.width - 40), y: -50, 
+          r: size, baseV: baseV, angle: angle, spin: spin, vertices: vertices, craters: craters,
+          hp: chosen.hp, maxHp: chosen.hp, damaged: false,
+          astStage: chosen.stage, astType: chosen.type
+        });
+        lastSpawn = Date.now();
+      }
+
+      const curSpd = pSpdCap * (throttleValue / 100);
+      if((keys['ArrowLeft'] || keys['KeyA']) && player.x > 0) player.x -= curSpd;
+      if((keys['ArrowRight'] || keys['KeyD']) && player.x < canvas.width - player.w) player.x += curSpd;
+      if(keys['Space'] && Date.now() - lastShot > pFire) { bullets.push({ x: player.x+15, y: player.y, v: 13 }); lastShot = Date.now(); }
+      for (let i = bullets.length - 1; i >= 0; i--) { bullets[i].y -= bullets[i].v; if (bullets[i].y < 0) bullets.splice(i, 1); }
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        let e = enemies[i];
+        // difficulty slowly increases over time so both new and existing asteroids speed up
+        // slow the global ramp a bit so the increase feels gentler
+        const difficulty = isBossLevel ? 1 : (1 + (timeAlive / (90000 / rampFactor)));
+        const curV = (e.baseV || e.v || 1) * difficulty;
+        e.y += curV;
+        // advance rotation
+        e.angle = (e.angle || 0) + (e.spin || 0);
+        let dx = (player.x+15)-(e.x+e.r), dy = (player.y+20)-(e.y+e.r);
+        if (Math.sqrt(dx*dx+dy*dy) < e.r + 15) {
+          if (!invincible) { spawnAsteroidExplosion(e.x + e.r, e.y + e.r, e.r, e.astStage, e.astType); enemies.splice(i, 1); takeHit(); if (!gameActive) break; }
+          continue;
+        }
+        for (let j = bullets.length - 1; j >= 0; j--) {
+          if (Math.sqrt((bullets[j].x-(e.x+e.r))**2 + (bullets[j].y-(e.y+e.r))**2) < e.r + 5) {
+            bullets.splice(j, 1);
+            const dmg = getTurretDmgMultiplier();
+            totalHitpointsDealt += dmg;
+            e.hp = (e.hp || 1) - dmg;
+            e.damaged = true;
+            if (e.hp <= 0) {
+              spawnAsteroidExplosion(e.x + e.r, e.y + e.r, e.r, e.astStage, e.astType);
+              const sdGain = pMult * (e.maxHp || 1);
+              spawnCollectParticles(e.x + e.r, e.y + e.r, sdGain, true);
+              enemies.splice(i, 1);
+              bank += sdGain; score += sdGain;
+            }
+            updateLevelUI();
+            break;
+          }
+        }
+        if (e && e.y > canvas.height) enemies.splice(i, 1);
+      }
+      // Player bullets vs Boss
+      if (boss && isBossLevel) {
+        for (let bj = bullets.length - 1; bj >= 0; bj--) {
+          const bul = bullets[bj];
+          const bdx = bul.x - (boss.x + boss.w / 2), bdy = bul.y - (boss.y + boss.h / 2);
+          if (Math.sqrt(bdx * bdx + bdy * bdy) < (boss.w / 2 + 8)) {
+            bullets.splice(bj, 1);
+            const bDmg = getTurretDmgMultiplier();
+            boss.hp -= bDmg; totalHitpointsDealt += bDmg;
+            updateBossBar();
+            if (boss.hp <= 0) {
+              bossDefeated = true;
+              spawnCollectParticles(boss.x + boss.w / 2, boss.y + boss.h / 2, getBossReward(currentStage), true);
+              spawnAsteroidExplosion(boss.x + boss.w / 2, boss.y + boss.h / 2, 30, currentStage, 9);
+              endGame(); return;
+            }
+            break;
+          }
+        }
+      }
+      document.getElementById('score').innerText = fmtNum(score);
+      document.getElementById('bank').innerText = fmtNum(bank);
+    }
+
+    function draw() {
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      stars.forEach(s => { ctx.globalAlpha = 0.4; ctx.fillStyle = '#fff'; ctx.fillRect(s.x, s.y, s.s, s.s); });
+      ctx.globalAlpha = 1;
+      if(gameActive || shipFlyingUp) {
+        // Draw Ship (enhanced)
+        const sx = player.x, sy = player.y, sw = player.w, sh = player.h, scx = sx + sw / 2;
+        ctx.save();
+        if (invincible && Math.floor(Date.now() / 80) % 2 === 0) ctx.globalAlpha = 0.3;
+        const shipCol = getShipColors(equippedSkin);
+        drawShipBody(ctx, scx, sy, sw, sh, equippedBody, shipCol);
+        ctx.restore();
+        
+        // Draw Bullets
+        ctx.fillStyle = getBulletColor(); bullets.forEach(b => ctx.fillRect(b.x-1, b.y, 3, 10));
+        
+        // --- ENHANCED ASTEROID DRAWING ---
+        enemies.forEach(e => {
+          const maxHp = e.maxHp || 1;
+          const hp = e.hp != null ? e.hp : maxHp;
+          // Stage-based color using asteroid type
+          const ac = getAsteroidTypeColor(e.astStage || currentStage, e.astType || 1);
+          const fillColor = `rgb(${ac.r},${ac.g},${ac.b})`;
+          const strokeColor = `rgb(${Math.min(255,ac.r+60)},${Math.min(255,ac.g+60)},${Math.min(255,ac.b+60)})`;
+
+          ctx.save();
+          ctx.translate(e.x + e.r, e.y + e.r);
+          ctx.rotate(e.angle || 0);
+          ctx.beginPath();
+          let angleStep = (Math.PI * 2) / e.vertices.length;
+          e.vertices.forEach((vRadius, i) => {
+            let angle = i * angleStep;
+            let lx = Math.cos(angle) * vRadius;
+            let ly = Math.sin(angle) * vRadius;
+            if (i === 0) ctx.moveTo(lx, ly); else ctx.lineTo(lx, ly);
+          });
+          ctx.closePath();
+          ctx.fillStyle = fillColor; ctx.fill();
+          ctx.strokeStyle = strokeColor; ctx.lineWidth = 2; ctx.stroke();
+          ctx.strokeStyle = '#222';
+          e.craters.forEach(c => { ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2); ctx.stroke(); });
+          ctx.restore();
+
+          // Health bar: show only if damaged and maxHp > 1
+          if (e.damaged && maxHp > 1) {
+            const barW = e.r * 1.6;
+            const barH = 4;
+            const barX = e.x + e.r - barW / 2;
+            const barY = e.y + e.r * 2 + 6;
+            // background
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+            // red background (total)
+            ctx.fillStyle = '#600';
+            ctx.fillRect(barX, barY, barW, barH);
+            // green fill (remaining)
+            const pct = hp / maxHp;
+            const gR = Math.round(255 * (1 - pct));
+            const gG = Math.round(255 * pct);
+            ctx.fillStyle = `rgb(${gR},${gG},0)`;
+            ctx.fillRect(barX, barY, barW * pct, barH);
+          }
+        });
+        // Draw Boss
+        if (boss && isBossLevel) {
+          const bx = boss.x, by = boss.y, bw = boss.w, bh = boss.h, bcx = bx + bw / 2;
+          const bc = boss.color;
+          ctx.save();
+          const bg = ctx.createRadialGradient(bcx, by - 2, 2, bcx, by - 2, 10);
+          bg.addColorStop(0, `rgba(${bc[0]},${bc[1]},${bc[2]},0.6)`); bg.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = bg; ctx.fillRect(bcx - 12, by - 12, 24, 14);
+          ctx.strokeStyle = `rgb(${bc[0]},${bc[1]},${bc[2]})`; ctx.lineWidth = 2;
+          ctx.fillStyle = `rgba(${bc[0]},${bc[1]},${bc[2]},0.3)`;
+          ctx.beginPath(); ctx.moveTo(bcx, by + bh);
+          ctx.lineTo(bcx + 6, by + bh - 14); ctx.lineTo(bcx + bw / 2 + 4, by + 5);
+          ctx.lineTo(bcx + bw / 2 - 2, by); ctx.lineTo(bcx - bw / 2 + 2, by);
+          ctx.lineTo(bcx - bw / 2 - 4, by + 5); ctx.lineTo(bcx - 6, by + bh - 14);
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = `rgba(${bc[0]},${bc[1]},${bc[2]},0.5)`;
+          ctx.beginPath(); ctx.moveTo(bcx, by + bh - 6);
+          ctx.lineTo(bcx + 4, by + bh - 16); ctx.lineTo(bcx - 4, by + bh - 16);
+          ctx.closePath(); ctx.fill();
+          ctx.restore();
+        }
+        // Draw Boss Bullets
+        bossBullets.forEach(bb => {
+          const bsc = STAGE_COLORS[currentStage - 1];
+          ctx.fillStyle = `rgb(${bsc.boss[0]},${bsc.boss[1]},${bsc.boss[2]})`;
+          ctx.beginPath(); ctx.arc(bb.x, bb.y, 4, 0, Math.PI * 2); ctx.fill();
+        });
+      }
+      // Draw collect particles (always)
+      collectParticles.forEach(cp => {
+        if (cp.delay > 0) return;
+        ctx.globalAlpha = Math.max(0, cp.life);
+        ctx.fillStyle = '#ff0';
+        ctx.beginPath(); ctx.arc(cp.x, cp.y, 3, 0, Math.PI * 2); ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+      // Draw explosion particles (always, even after death)
+      particles.forEach(p => {
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.fillStyle = `rgb(${p.r},${p.g},${p.b})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+      // Draw ship explosion
+      if (shipExplosion) {
+        shipExplosion.particles.forEach(p => {
+          ctx.globalAlpha = Math.max(0, p.life);
+          ctx.fillStyle = `rgb(${p.r},${p.g},${p.b})`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+      }
+    }
+    
+    let lastTime = 0;
+    function gameLoop(ts) { 
+      if (!lastTime) lastTime = ts;
+      let dt = ts - lastTime;
+      // clamp dt to avoid huge jumps after tab switch or resume
+      dt = Math.min(Math.max(0, dt), 50);
+      update(dt);
+      draw();
+      lastTime = ts;
+      requestAnimationFrame(gameLoop);
+    }
+    function showResetPrompt() { showView('view-reset-confirm'); }
+    function hideResetPrompt() { showView('view-main'); }
+    function confirmReset() { 
+      showView('view-resetting');
+      google.script.run.withSuccessHandler(() => { 
+        bank = 0; pSpdCap = 7; pFire = 450; pMult = 1; sLvl = 1; fLvl = 1; mLvl = 1; sCost = 20; fCost = 30; mCost = 50; totalHitpointsDealt = 0; upgradeCaps = [5, 5, 5]; claimedLevels = []; stagesUnlocked = 1; turretDmgLvl = 0; hullLvl = 0; ownedSkins = []; equippedSkin = -1; ownedBodies = []; equippedBody = 0; isNewPlayer = false; updateProfileUI(); updateLevelUI(); showView('view-main'); 
+      }).resetUserData(); 
+    }
+  </script>
+</body>
+</html>
