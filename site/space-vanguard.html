@@ -1135,57 +1135,50 @@
     }
 
     function startInit() {
-      setTimeout(() => {
-        splashTxt.style.opacity = 0;
-        setTimeout(() => {
-          splashTxt.innerText = "Made By RedsssProduction Studios";
-          splashTxt.style.opacity = 1;
-          google.script.run
-            .withSuccessHandler(d => {
-              bank = d.bank; pSpdCap = d.speed; pFire = d.fireRate; pMult = d.multiplier;
-              sCost = d.sCost; fCost = d.fCost; mCost = d.mCost; sLvl = d.sLvl; fLvl = d.fLvl; mLvl = d.mLvl;
-              totalHitpointsDealt = Number(d.totalHitpointsDealt) || 0;
-              upgradeCaps = [Number(d.sCap) || 5, Number(d.fCap) || 5, Number(d.mCap) || 5];
-              stagesUnlocked = Number(d.stagesUnlocked) || 1;
-              turretDmgLvl = Number(d.turretDmgLvl) || 0;
-              hullLvl = Number(d.hullLvl) || 0;
-              ownedSkins = Array.isArray(d.ownedSkins) ? d.ownedSkins.map(n => Number(n)) : [];
-              equippedSkin = (d.equippedSkin != null && d.equippedSkin !== '') ? Number(d.equippedSkin) : -1;
-              ownedBodies = Array.isArray(d.ownedBodies) ? d.ownedBodies.map(n => Number(n)) : [];
-              equippedBody = Number(d.equippedBody) || 0;
-              claimedLevels = Array.isArray(d.claimedLevels)
-                ? d.claimedLevels.map(n => Number(n)).filter(n => Number.isFinite(n))
-                : [];
-              username = d.username; profilePic = d.profilePic || '';
-              processedProfilePic = null; // clear any transient processed image
-              updateProfileUI();
-              updateLevelUI();
-              buildLevelTree();
-              splash.style.opacity = 0;
-              setTimeout(() => {
-                splash.style.display = 'none';
-                if(!username && parentUsername) {
-                  // Auto-populate from main site's account — skip setup prompt
-                  isNewPlayer = false;
-                  username = parentUsername;
-                  if (!profilePic) profilePic = parentProfilePic;
-                  sync(function(){});
-                  showView('view-main');
-                  document.getElementById('cancel-setup').style.display = 'block';
-                } else if(!username) { isNewPlayer = true; showView('setup-prompt'); }
-                else { showView('view-main'); document.getElementById('cancel-setup').style.display = 'block'; }
-              }, 800);
-              // initialize timing baseline and start loop
-              lastTime = performance.now();
-              requestAnimationFrame(gameLoop);
-            })
-            .withFailureHandler(err => {
-              splashTxt.innerText = "CONNECTION FAILED: Check Multiple Accounts or Permissions.";
-              splashTxt.style.color = "#f00";
-            })
-            .getGameData();
-        }, 800);
-      }, 2000);
+      google.script.run
+        .withSuccessHandler(d => {
+          bank = d.bank; pSpdCap = d.speed; pFire = d.fireRate; pMult = d.multiplier;
+          sCost = d.sCost; fCost = d.fCost; mCost = d.mCost; sLvl = d.sLvl; fLvl = d.fLvl; mLvl = d.mLvl;
+          totalHitpointsDealt = Number(d.totalHitpointsDealt) || 0;
+          upgradeCaps = [Number(d.sCap) || 5, Number(d.fCap) || 5, Number(d.mCap) || 5];
+          stagesUnlocked = Number(d.stagesUnlocked) || 1;
+          turretDmgLvl = Number(d.turretDmgLvl) || 0;
+          hullLvl = Number(d.hullLvl) || 0;
+          ownedSkins = Array.isArray(d.ownedSkins) ? d.ownedSkins.map(n => Number(n)) : [];
+          equippedSkin = (d.equippedSkin != null && d.equippedSkin !== '') ? Number(d.equippedSkin) : -1;
+          ownedBodies = Array.isArray(d.ownedBodies) ? d.ownedBodies.map(n => Number(n)) : [];
+          equippedBody = Number(d.equippedBody) || 0;
+          claimedLevels = Array.isArray(d.claimedLevels)
+            ? d.claimedLevels.map(n => Number(n)).filter(n => Number.isFinite(n))
+            : [];
+          username = d.username; profilePic = d.profilePic || '';
+          processedProfilePic = null;
+          updateProfileUI();
+          updateLevelUI();
+          buildLevelTree();
+          if (!username && parentUsername) {
+            isNewPlayer = false;
+            username = parentUsername;
+            if (!profilePic) profilePic = parentProfilePic;
+            sync(function(){});
+            showView('view-main');
+            document.getElementById('cancel-setup').style.display = 'block';
+          } else if (!username) {
+            isNewPlayer = true; showView('setup-prompt');
+          } else {
+            showView('view-main');
+            document.getElementById('cancel-setup').style.display = 'block';
+          }
+          lastTime = performance.now();
+          requestAnimationFrame(gameLoop);
+        })
+        .withFailureHandler(err => {
+          console.error('Failed to load game data:', err);
+          showView('view-main');
+          lastTime = performance.now();
+          requestAnimationFrame(gameLoop);
+        })
+        .getGameData();
     }
     // Listen for auth data from parent site (sent when embedded as iframe)
     window.addEventListener('message', function(event) {
@@ -1193,8 +1186,6 @@
       parentUsername = event.data.username || '';
       parentProfilePic = event.data.profilePic || '';
     });
-    startInit();
-
     function showSetup() { 
       showView('setup-prompt'); 
       document.getElementById('username-input').value = username; 
@@ -2182,6 +2173,6 @@
   <script src="js/cropper-util.js"></script>
   <script src="js/livekit-client.umd.min.js"></script>
   <script src="js/nav.js"></script>
-  <script>document.addEventListener('DOMContentLoaded', () => { Nav.init('game'); });</script>
+  <script>document.addEventListener('DOMContentLoaded', () => { Nav.init('game').then(() => { startInit(); }); });</script>
 </body>
 </html>
