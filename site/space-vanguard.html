@@ -12,26 +12,26 @@
     .navbar { position: fixed !important; top: 0; left: 0; right: 0; z-index: 500 !important; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif !important; }
     .navbar * { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif !important; }
     .profile-dropdown, .profile-dropdown * { z-index: 501 !important; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif !important; }
-    body { margin: 0; background: #000; overflow: hidden; color: #0ff; font-family: 'Courier New', monospace; }
-    canvas { display: block; position: fixed; top: 0; left: 0; z-index: 0; outline: none; }
+    body { margin: 0; background: #0d0d0d; overflow: auto; color: #0ff; font-family: 'Courier New', monospace; }
+    canvas { display: block; position: absolute; top: 0; left: 0; z-index: 0; outline: none; width: 100%; height: 100%; }
     
-    #splash-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: flex; align-items: center; justify-content: center; z-index: 9999; transition: opacity 0.8s ease; }
+    #splash-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: flex; align-items: center; justify-content: center; z-index: 9999; transition: opacity 0.8s ease; }
     #splash-text { font-size: 20px; letter-spacing: 2px; text-align: center; padding: 20px; color: #0ff; }
 
-    .view { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; background: rgba(0,0,0,0.85); box-sizing: border-box; padding: 20px; overflow: hidden; }
+    .view { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; background: rgba(0,0,0,0.85); box-sizing: border-box; padding: 20px; overflow: hidden; }
     .active-view { display: flex; }
     
-    #view-levels.active-view { overflow-y: auto; display: block; padding-top: 110px; text-align: center; }
-    #view-ship-skins.active-view { overflow-y: auto; display: block; padding-top: 110px; padding-bottom: 80px; text-align: center; }
-    #view-shop.active-view { overflow-y: auto; display: block; padding-top: 110px; padding-bottom: 80px; text-align: center; }
-    #view-level-tree.active-view { overflow-x: auto; overflow-y: hidden; align-items: stretch; justify-content: flex-start; padding-top: 110px; }
+    #view-levels.active-view { overflow-y: auto; display: block; padding-top: 20px; text-align: center; }
+    #view-ship-skins.active-view { overflow-y: auto; display: block; padding-top: 20px; padding-bottom: 80px; text-align: center; }
+    #view-shop.active-view { overflow-y: auto; display: block; padding-top: 20px; padding-bottom: 80px; text-align: center; }
+    #view-level-tree.active-view { overflow-x: auto; overflow-y: hidden; align-items: stretch; justify-content: flex-start; padding-top: 20px; }
     .menu-box { display: flex; flex-direction: column; gap: 15px; width: 100%; max-width: 500px; border: 1px solid rgba(0,255,255,0.4); padding: 30px; background: rgba(0,10,10,0.95); box-sizing: border-box; }
     
     .btn { background: #111; border: 2px solid #0ff; color: #0ff; padding: 12px 15px; cursor: pointer; text-align: center; font-size: 14px; font-family: inherit; display: flex; justify-content: space-between; align-items: center; outline: none; min-height: 60px; box-sizing: border-box; }
     .btn:hover:not(:disabled) { background: #0ff; color: #000; box-shadow: 0 0 15px #0ff; }
     .btn:disabled { border-color: #333; color: #333; cursor: not-allowed; }
 
-    .back-btn-fixed { position: fixed; bottom: 30px; left: 30px; min-width: 120px; min-height: auto; z-index: 210; }
+    .back-btn-fixed { position: absolute; bottom: 30px; left: 30px; min-width: 120px; min-height: auto; z-index: 210; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 15px; margin-top: 20px; width: 100%; max-width: 800px; margin-left: auto; margin-right: auto; }
     .level-card { border: 2px solid #0ff; padding: 15px; text-align: center; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
     .level-card.locked { border-color: #333; opacity: 0.5; }
@@ -40,7 +40,7 @@
     .stage-tab { padding: 8px 14px; border: 2px solid #555; background: #111; color: #888; cursor: pointer; font-family: inherit; font-size: 12px; letter-spacing: 1px; }
     .stage-tab.active { border-color: #0ff; color: #0ff; box-shadow: 0 0 8px rgba(0,255,255,0.3); }
     .stage-tab:disabled { cursor: not-allowed; opacity: 0.3; }
-    #boss-hp-bar { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); width: 60%; max-width: 500px; z-index: 60; display: none; pointer-events: none; }
+    #boss-hp-bar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 60%; max-width: 500px; z-index: 60; display: none; pointer-events: none; }
     #boss-hp-bar .bar-bg { background: rgba(0,0,0,0.7); border: 1px solid #f00; height: 18px; position: relative; }
     #boss-hp-bar .bar-fill { position: absolute; left: 0; top: 0; height: 100%; background: #f00; transition: width 0.15s; }
     #boss-hp-bar .bar-text { position: absolute; width: 100%; text-align: center; font-size: 11px; color: #fff; line-height: 18px; z-index: 1; }
@@ -68,8 +68,8 @@
     .level-step:hover .level-tooltip { opacity: 1; pointer-events: auto; }
     .level-tooltip { position: absolute; left: 50%; top: -8px; transform: translate(-50%, -100%); background: rgba(0,10,10,0.95); border: 1px solid rgba(0,255,255,0.5); padding: 8px 10px; font-size: 11px; line-height: 1.4; color: #0ff; width: 190px; text-align: center; box-shadow: 0 0 12px rgba(0,255,255,0.2); opacity: 0; pointer-events: none; transition: opacity 0.2s ease; z-index: 5; }
     
-    #hud { position: fixed; top: 10px; left: 20px; font-size: 13px; pointer-events: none; z-index: 50; display: none; line-height: 1.4; text-shadow: 1px 1px 2px #000; }
-    #stop-btn { position: fixed; top: 10px; right: 20px; border-color: #f00; color: #f00; z-index: 200; display: none; width: 150px; background: rgba(255,0,0,0.2); min-height: 40px; padding: 5px; }
+    #hud { position: absolute; top: 10px; left: 20px; font-size: 13px; pointer-events: none; z-index: 50; display: none; line-height: 1.4; text-shadow: 1px 1px 2px #000; }
+    #stop-btn { position: absolute; top: 10px; right: 20px; border-color: #f00; color: #f00; z-index: 200; display: none; width: 150px; background: rgba(255,0,0,0.2); min-height: 40px; padding: 5px; }
     
     .stats-display { margin-top: 20px; border: 1px solid #0ff; padding: 15px; background: rgba(0, 255, 255, 0.05); width: 100%; max-width: 500px; font-size: 13px; text-align: center; margin-left: auto; margin-right: auto; }
     .input-field { background: #000; border: 1px solid #0ff; color: #0ff; padding: 10px; font-family: inherit; margin-bottom: 10px; width: 100%; box-sizing: border-box; }
@@ -117,6 +117,25 @@
   #crop-canvas { background: #111; border: 1px solid #0ff; cursor: move; }
   #crop-controls { display:flex; flex-direction:column; gap:8px; width:100%; align-items:center; }
   #crop-zoom { width: 65%; }
+
+  /* ── Game page layout ─────────────────────────────────────────── */
+  #game-page { padding-top: 56px; background: #0d0d0d; min-height: 100vh; }
+  #game-shell { width: calc(100% - 80px); max-width: 1280px; margin: 0 auto; padding: 20px 0 40px; box-sizing: border-box; }
+  #game-area { position: relative; overflow: hidden; width: 100%; aspect-ratio: 16/9; background: #000; border: 1px solid rgba(0,255,255,0.15); box-shadow: 0 0 40px rgba(0,255,255,0.04); }
+  #game-area:fullscreen { width: 100vw !important; height: 100vh !important; aspect-ratio: unset !important; border: none !important; }
+  #game-area:-webkit-full-screen { width: 100vw !important; height: 100vh !important; aspect-ratio: unset !important; }
+  #game-controls-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; margin-bottom: 24px; border-bottom: 1px solid rgba(0,255,255,0.1); }
+  .game-name-bar { color: rgba(0,255,255,0.45); font-size: 12px; letter-spacing: 3px; text-transform: uppercase; }
+  #fullscreen-btn { background: transparent; border: 1px solid rgba(0,255,255,0.35); color: #0ff; padding: 7px 14px; cursor: pointer; font-family: 'Courier New', monospace; font-size: 12px; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; transition: background 0.15s, box-shadow 0.15s; }
+  #fullscreen-btn:hover { background: rgba(0,255,255,0.1); box-shadow: 0 0 8px rgba(0,255,255,0.2); }
+  #suggested-section { margin-bottom: 20px; }
+  #suggested-section h2 { color: #0ff; font-size: 13px; letter-spacing: 3px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,255,255,0.15); text-transform: uppercase; font-weight: normal; }
+  #suggested-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+  .suggested-card { display: flex; flex-direction: column; text-decoration: none; }
+  .suggested-card:hover .suggested-thumb { border-color: #0ff; box-shadow: 0 0 12px rgba(0,255,255,0.25); }
+  .suggested-thumb { width: 100%; aspect-ratio: 16/9; border: 1px solid rgba(0,255,255,0.2); overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; transition: border-color 0.15s, box-shadow 0.15s; }
+  .suggested-title { color: #aaa; font-size: 11px; letter-spacing: 1px; margin-top: 6px; text-align: center; }
+  .suggested-card:hover .suggested-title { color: #0ff; }
 
   </style>
   <!-- Firebase (for identity + leaderboard) — added for site integration -->
@@ -305,6 +324,7 @@
   </div>
   <div class="toast-container" id="toast-container"></div>
 
+  <div id="game-page"><div id="game-shell"><div id="game-area">
   <!-- Splash elements kept for game JS compatibility (visually hidden behind site loading screen) -->
   <div id="splash-screen" style="display:none"><div id="splash-text"></div></div>
 
@@ -480,6 +500,16 @@
     <h1 style="color:#f00;">DATA IS BEING RESET</h1>
     <p style="text-align:center; color:#0ff;">Please wait...</p>
   </div>
+  </div><!-- /#game-area -->
+  <div id="game-controls-bar">
+    <span class="game-name-bar">Space Vanguard Classic</span>
+    <button id="fullscreen-btn">&#x26F6; FULLSCREEN</button>
+  </div>
+  <div id="suggested-section">
+    <h2>Suggested Games</h2>
+    <div id="suggested-grid"></div>
+  </div>
+  </div><!-- /#game-shell --></div><!-- /#game-page -->
 
   <script>
     const canvas = document.getElementById('gameCanvas');
@@ -711,13 +741,16 @@
     let equippedBody = 0;
 
     function resize() { 
-      canvas.width = window.innerWidth; canvas.height = window.innerHeight; 
+      const _area = document.getElementById('game-area');
+      canvas.width = _area.clientWidth; canvas.height = _area.clientHeight; 
       if(gameActive) player.y = canvas.height - 80; 
       // regenerate stars to match new canvas size
       generateStars();
       if (levelTreeBuilt) positionLevelTree();
     }
-    window.onresize = resize; resize();
+    window.onresize = resize;
+    document.addEventListener('fullscreenchange', resize);
+    resize();
 
     function updateProfileUI() { 
       document.getElementById('display-username').innerText = username || "PILOT";
@@ -2173,6 +2206,37 @@
   <script src="js/cropper-util.js"></script>
   <script src="js/livekit-client.umd.min.js"></script>
   <script src="js/nav.js"></script>
-  <script>document.addEventListener('DOMContentLoaded', () => { Nav.init('game').then(() => { startInit(); }); });</script>
+  <script>
+    // Fullscreen toggle
+    document.getElementById('fullscreen-btn').addEventListener('click', () => {
+      const area = document.getElementById('game-area');
+      if (!document.fullscreenElement) { area.requestFullscreen().catch(() => {}); }
+      else { document.exitFullscreen(); }
+    });
+    document.addEventListener('fullscreenchange', () => {
+      const isFs = !!document.fullscreenElement;
+      document.getElementById('fullscreen-btn').innerHTML = isFs ? '&#x2716; EXIT FULLSCREEN' : '&#x26F6; FULLSCREEN';
+      const nav = document.querySelector('.navbar');
+      if (nav) nav.style.display = isFs ? 'none' : '';
+    });
+    // Suggested games
+    (function() {
+      const ALL_GAMES = [
+        { title: 'Space Vanguard 3D', url: 'space-vanguard-3d.html', bg: 'radial-gradient(ellipse at 35% 55%, #001a50 0%, #000820 55%, #000 100%)', icon: '#5cf' },
+        { title: 'Space Vanguard (Classic)', url: 'space-vanguard.html', bg: 'radial-gradient(ellipse at 35% 55%, #003030 0%, #001010 55%, #000 100%)', icon: '#0ff' },
+      ];
+      const CURRENT_URL = 'space-vanguard.html';
+      const grid = document.getElementById('suggested-grid');
+      if (!grid) return;
+      ALL_GAMES.filter(g => g.url !== CURRENT_URL).forEach(g => {
+        const a = document.createElement('a');
+        a.href = g.url;
+        a.className = 'suggested-card';
+        a.innerHTML = '<div class="suggested-thumb" style="background:' + g.bg + '"><svg width="36" height="44" viewBox="0 0 36 44" xmlns="http://www.w3.org/2000/svg"><polygon points="18,2 24,32 18,24 12,32" fill="' + g.icon + '" opacity="0.7"/></svg></div><div class="suggested-title">' + g.title + '</div>';
+        grid.appendChild(a);
+      });
+    })();
+    document.addEventListener('DOMContentLoaded', () => { Nav.init('game').then(() => { startInit(); }); });
+  </script>
 </body>
 </html>
