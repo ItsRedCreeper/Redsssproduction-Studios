@@ -9,8 +9,9 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
   <style>
     /* Override site navbar for game pages */
-    .navbar { position: fixed !important; top: 0; left: 0; right: 0; z-index: 500 !important; }
-    .profile-dropdown { z-index: 501 !important; }
+    .navbar { position: fixed !important; top: 0; left: 0; right: 0; z-index: 500 !important; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif !important; }
+    .navbar * { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif !important; }
+    .profile-dropdown, .profile-dropdown * { z-index: 501 !important; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif !important; }
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;width:100%;overflow:hidden;background:#000;color:#0ff;font-family:'Courier New',monospace;user-select:none}
     canvas{display:block;position:fixed;top:0;left:0;outline:none}
@@ -1110,6 +1111,6 @@
   <script src="js/cropper-util.js"></script>
   <script src="js/livekit-client.umd.min.js"></script>
   <script src="js/nav.js"></script>
-  <script>document.addEventListener('DOMContentLoaded', () => { Nav.init('games'); });</script>
+  <script>document.addEventListener('DOMContentLoaded', () => { Nav.init('game'); });</script>
 </body>
 </html>

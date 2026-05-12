@@ -9,8 +9,9 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
   <style>
     /* Override site navbar for game pages */
-    .navbar { position: fixed !important; top: 0; left: 0; right: 0; z-index: 500 !important; }
-    .profile-dropdown { z-index: 501 !important; }
+    .navbar { position: fixed !important; top: 0; left: 0; right: 0; z-index: 500 !important; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif !important; }
+    .navbar * { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif !important; }
+    .profile-dropdown, .profile-dropdown * { z-index: 501 !important; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif !important; }
     body { margin: 0; background: #000; overflow: hidden; color: #0ff; font-family: 'Courier New', monospace; }
     canvas { display: block; position: fixed; top: 0; left: 0; z-index: 0; outline: none; }
     
@@ -303,6 +304,9 @@
     </div>
   </div>
   <div class="toast-container" id="toast-container"></div>
+
+  <!-- Splash elements kept for game JS compatibility (visually hidden behind site loading screen) -->
+  <div id="splash-screen" style="display:none"><div id="splash-text"></div></div>
 
   <canvas id="gameCanvas"></canvas>
 
@@ -2178,6 +2182,6 @@
   <script src="js/cropper-util.js"></script>
   <script src="js/livekit-client.umd.min.js"></script>
   <script src="js/nav.js"></script>
-  <script>document.addEventListener('DOMContentLoaded', () => { Nav.init('games'); });</script>
+  <script>document.addEventListener('DOMContentLoaded', () => { Nav.init('game'); });</script>
 </body>
 </html>
