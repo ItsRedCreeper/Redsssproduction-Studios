@@ -1,7 +1,16 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Space Vanguard — RedsssProduction Studios</title>
+  <link rel="icon" href="images/logo.jpg">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
   <style>
+    /* Override site navbar for game pages */
+    .navbar { position: fixed !important; top: 0; left: 0; right: 0; z-index: 500 !important; }
+    .profile-dropdown { z-index: 501 !important; }
     body { margin: 0; background: #000; overflow: hidden; color: #0ff; font-family: 'Courier New', monospace; }
     canvas { display: block; position: fixed; top: 0; left: 0; z-index: 0; outline: none; }
     
@@ -34,8 +43,6 @@
     #boss-hp-bar .bar-bg { background: rgba(0,0,0,0.7); border: 1px solid #f00; height: 18px; position: relative; }
     #boss-hp-bar .bar-fill { position: absolute; left: 0; top: 0; height: 100%; background: #f00; transition: width 0.15s; }
     #boss-hp-bar .bar-text { position: absolute; width: 100%; text-align: center; font-size: 11px; color: #fff; line-height: 18px; z-index: 1; }
-    
-    #user-bar { position: fixed; top: 0; left: 0; width: 100%; height: 65px; background: rgba(0,0,0,0.95); border-bottom: 2px solid #0ff; display: none; align-items: center; justify-content: space-between; padding: 0 30px; z-index: 150; box-sizing: border-box; }
     .user-info { display: flex; align-items: center; gap: 15px; cursor: pointer; }
     .level-indicator { display: flex; align-items: center; gap: 8px; cursor: pointer; }
     .level-label { font-size: 12px; letter-spacing: 2px; color: #0ff; text-transform: uppercase; }
@@ -109,11 +116,6 @@
   #crop-canvas { background: #111; border: 1px solid #0ff; cursor: move; }
   #crop-controls { display:flex; flex-direction:column; gap:8px; width:100%; align-items:center; }
   #crop-zoom { width: 65%; }
-
-  /* Back-to-site link (added for port) */
-  #site-back-link { position: fixed; top: 14px; right: 20px; z-index: 300; background: rgba(0,0,0,.6); border: 1px solid #0ff; color: #0ff; padding: 6px 12px; font-size: 12px; letter-spacing: 2px; cursor: pointer; text-decoration: none; font-family: inherit; display: none; }
-  #site-back-link.show { display: inline-block; }
-  #site-back-link:hover { background: #0ff; color: #000; }
 
   </style>
   <!-- Firebase (for identity + leaderboard) — added for site integration -->
@@ -234,20 +236,75 @@
 </head>
 <body oncontextmenu="return false;">
 
-  <a id="site-back-link" href="games.html">← BACK TO SITE</a>
-  <div id="splash-screen"><div id="splash-text">RedsssProduction Studios — Space Vanguard</div></div>
-
-  <canvas id="gameCanvas"></canvas>
-  <div id="user-bar">
-    <div class="level-indicator" onclick="showView('view-level-tree')">
-      <div id="level-display" class="level-circle">1</div>
-      <div class="level-label">LEVEL</div>
-    </div>
-    <div class="user-info" onclick="showSetup()">
-      <span id="display-username">PILOT</span>
-      <div id="avatar-container" class="avatar-wrapper"></div>
+  <div id="loading-screen">
+    <div class="loader-logo">RedsssProduction Studios</div>
+    <div class="loader-spinner"></div>
+  </div>
+  <div id="app" style="display:none">
+    <nav class="navbar">
+      <div class="nav-brand">
+        <img src="images/logo.jpg" alt="RedsssProduction Studios">
+        <span class="brand-text">RedsssProduction Studios</span>
+      </div>
+      <div class="nav-links">
+        <a class="nav-link" data-page="home" href="index.html">Home</a>
+        <a class="nav-link" data-page="games" href="games.html">Games</a>
+        <a class="nav-link" data-page="messenger" href="messenger.html">RedsssMessenger</a>
+        <a class="nav-link" data-page="support" href="support.html">Support</a>
+      </div>
+      <div class="nav-right">
+        <div class="notif-wrapper">
+          <button class="notif-bell" id="notif-bell" title="Notifications">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </button>
+          <span class="notif-badge" id="notif-badge">0</span>
+          <div class="notif-dropdown" id="notif-dropdown">
+            <div class="notif-dropdown-header">Notifications</div>
+            <div id="notif-list"><div class="notif-empty">No notifications</div></div>
+          </div>
+        </div>
+        <a href="friends.html" class="nav-friends-btn" title="Friends">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span class="friend-req-badge" id="friend-req-badge" style="display:none">0</span>
+        </a>
+        <div class="nav-avatar-wrapper">
+          <div class="nav-avatar" id="nav-avatar" title="Profile"></div>
+          <span class="status-dot" id="nav-status-dot"></span>
+        </div>
+        <span class="nav-username" id="nav-username"></span>
+      </div>
+    </nav>
+    <div class="profile-dropdown" id="profile-dropdown">
+      <div class="profile-dd-header">
+        <div class="profile-dd-avatar" id="profile-dd-avatar"></div>
+        <div>
+          <div class="profile-dd-name" id="profile-dd-name"></div>
+          <input class="profile-dd-username-input" id="profile-dd-name-input" minlength="3" maxlength="20" placeholder="Username" style="display:none">
+          <div class="profile-dd-email" id="profile-dd-email"></div>
+        </div>
+      </div>
+      <div class="profile-dd-section">
+        <label>Status</label>
+        <select class="profile-dd-select" id="profile-status">
+          <option value="auto">Auto</option>
+          <option value="online">Online</option>
+          <option value="away">Away</option>
+          <option value="dnd">Do Not Disturb</option>
+          <option value="offline">Offline</option>
+        </select>
+      </div>
+      <div class="profile-dd-section">
+        <label>Bio</label>
+        <textarea class="profile-dd-bio" id="profile-dd-bio" maxlength="150" placeholder="About yourself…" rows="3"></textarea>
+      </div>
+      <input type="file" id="avatar-upload" accept="image/*" style="display:none">
+      <button class="btn btn-primary btn-sm btn-full" id="save-profile-btn">Save Changes</button>
+      <button class="btn-logout" id="btn-logout">Log Out</button>
     </div>
   </div>
+  <div class="toast-container" id="toast-container"></div>
+
+  <canvas id="gameCanvas"></canvas>
 
   <div id="hud">[ STAR DUST: <span id="score">0</span> ] | [ TOTAL: <span id="bank">0</span> ]<br>[ THROTTLE: <span id="throttle-ui">75</span>% ] <span id="hull-hp-bar" style="display:none;">| [ HULL: <span id="hull-hp-text"></span> ]</span></div>
   <button id="stop-btn" class="btn" onclick="endGame(true)">STOP ROUND</button>
@@ -697,12 +754,8 @@
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
       if(id !== 'NONE') document.getElementById(id).classList.add('active-view');
       const hideBar = (id === 'NONE' || id === 'setup-prompt' || id === 'reset-confirm' || id === 'view-resetting');
-      document.getElementById('user-bar').style.display = hideBar ? 'none' : 'flex';
       document.getElementById('hud').style.display = (id === 'NONE') ? 'block' : 'none';
       document.getElementById('stop-btn').style.display = (id === 'NONE') ? 'block' : 'none';
-      // Show back-to-site link on all menus, hide during gameplay
-      var _back = document.getElementById('site-back-link');
-      if (_back) _back.classList.toggle('show', id !== 'NONE');
       if(id === 'view-shop') refreshShop();
       if(id === 'view-ship-skins') refreshShipSkinsMenu();
       if(id === 'view-levels') { document.getElementById('lvl-ui-m-ls').innerText = mLvl; document.getElementById('lvl-ui-s-ls').innerText = sLvl; document.getElementById('lvl-ui-f-ls').innerText = fLvl; document.getElementById('lvl-ui-hull-ls').innerText = hullLvl; document.getElementById('hp-ui-ls').innerText = 1 + hullLvl; refreshLevelSelect(); }
@@ -2121,5 +2174,10 @@
       }).resetUserData(); 
     }
   </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+  <script src="js/cropper-util.js"></script>
+  <script src="js/livekit-client.umd.min.js"></script>
+  <script src="js/nav.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => { Nav.init('games'); });</script>
 </body>
 </html>

@@ -5,7 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Space Vanguard 3D — RedsssProduction Studios</title>
   <link rel="icon" href="images/logo.jpg">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.css">
   <style>
+    /* Override site navbar for game pages */
+    .navbar { position: fixed !important; top: 0; left: 0; right: 0; z-index: 500 !important; }
+    .profile-dropdown { z-index: 501 !important; }
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%;width:100%;overflow:hidden;background:#000;color:#0ff;font-family:'Courier New',monospace;user-select:none}
     canvas{display:block;position:fixed;top:0;left:0;outline:none}
@@ -15,7 +20,7 @@
     #crosshair::before{left:50%;top:0;width:2px;height:34px;margin-left:-1px}
     #crosshair::after{top:50%;left:0;height:2px;width:34px;margin-top:-1px}
 
-    #hud{position:fixed;top:14px;left:18px;font-size:13px;line-height:1.5;z-index:50;text-shadow:0 0 6px #0ff;display:none}
+    #hud{position:fixed;top:72px;left:18px;font-size:13px;line-height:1.5;z-index:50;text-shadow:0 0 6px #0ff;display:none}
     #hud .row{display:flex;gap:18px;flex-wrap:wrap}
     #hud .key{color:#7ff}
     #hud .val{color:#fff}
@@ -23,7 +28,7 @@
     .bar-fill{height:100%;background:#0ff;box-shadow:0 0 6px #0ff;transition:width .15s}
     .bar-fill.shield{background:#5cf}
     .bar-fill.boss{background:#f44;box-shadow:0 0 6px #f44}
-    #boss-hud{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:50;display:none;text-align:center;text-shadow:0 0 6px #f44}
+    #boss-hud{position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:50;display:none;text-align:center;text-shadow:0 0 6px #f44}
     #boss-hud .label{color:#f88;font-size:12px;letter-spacing:2px}
     #boss-hud .bar-wrap{width:480px;max-width:80vw;border-color:#600}
 
@@ -31,7 +36,7 @@
     #wave-banner.show{opacity:1}
     #wave-banner .sub{font-size:14px;color:#7ff;letter-spacing:3px;margin-top:6px}
 
-    #toast{position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:60;color:#ff0;font-size:14px;letter-spacing:2px;text-shadow:0 0 8px #ff0;opacity:0;transition:opacity .3s;pointer-events:none}
+    #toast{position:fixed;top:130px;left:50%;transform:translateX(-50%);z-index:60;color:#ff0;font-size:14px;letter-spacing:2px;text-shadow:0 0 8px #ff0;opacity:0;transition:opacity .3s;pointer-events:none}
     #toast.show{opacity:1}
 
     .view{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(0,40,60,.55) 0%,rgba(0,0,0,.92) 80%);z-index:100;padding:24px}
@@ -52,9 +57,6 @@
 
     .stat-row{display:flex;justify-content:space-between;font-size:12px;color:#7ff;border-bottom:1px dashed rgba(0,255,255,.2);padding:4px 0}
     .stat-row b{color:#fff}
-
-    #back-link{position:fixed;top:14px;right:18px;z-index:50;background:rgba(0,0,0,.6);border:1px solid #0ff;color:#0ff;padding:6px 12px;font-size:12px;letter-spacing:2px;cursor:pointer;text-decoration:none;font-family:inherit}
-    #back-link:hover{background:#0ff;color:#000}
 
     #pause-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:90;flex-direction:column;gap:18px}
     #pause-overlay.active{display:flex}
@@ -83,6 +85,73 @@
   </style>
 </head>
 <body>
+  <div id="loading-screen">
+    <div class="loader-logo">RedsssProduction Studios</div>
+    <div class="loader-spinner"></div>
+  </div>
+  <div id="app" style="display:none">
+    <nav class="navbar">
+      <div class="nav-brand">
+        <img src="images/logo.jpg" alt="RedsssProduction Studios">
+        <span class="brand-text">RedsssProduction Studios</span>
+      </div>
+      <div class="nav-links">
+        <a class="nav-link" data-page="home" href="index.html">Home</a>
+        <a class="nav-link" data-page="games" href="games.html">Games</a>
+        <a class="nav-link" data-page="messenger" href="messenger.html">RedsssMessenger</a>
+        <a class="nav-link" data-page="support" href="support.html">Support</a>
+      </div>
+      <div class="nav-right">
+        <div class="notif-wrapper">
+          <button class="notif-bell" id="notif-bell" title="Notifications">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </button>
+          <span class="notif-badge" id="notif-badge">0</span>
+          <div class="notif-dropdown" id="notif-dropdown">
+            <div class="notif-dropdown-header">Notifications</div>
+            <div id="notif-list"><div class="notif-empty">No notifications</div></div>
+          </div>
+        </div>
+        <a href="friends.html" class="nav-friends-btn" title="Friends">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span class="friend-req-badge" id="friend-req-badge" style="display:none">0</span>
+        </a>
+        <div class="nav-avatar-wrapper">
+          <div class="nav-avatar" id="nav-avatar" title="Profile"></div>
+          <span class="status-dot" id="nav-status-dot"></span>
+        </div>
+        <span class="nav-username" id="nav-username"></span>
+      </div>
+    </nav>
+    <div class="profile-dropdown" id="profile-dropdown">
+      <div class="profile-dd-header">
+        <div class="profile-dd-avatar" id="profile-dd-avatar"></div>
+        <div>
+          <div class="profile-dd-name" id="profile-dd-name"></div>
+          <input class="profile-dd-username-input" id="profile-dd-name-input" minlength="3" maxlength="20" placeholder="Username" style="display:none">
+          <div class="profile-dd-email" id="profile-dd-email"></div>
+        </div>
+      </div>
+      <div class="profile-dd-section">
+        <label>Status</label>
+        <select class="profile-dd-select" id="profile-status">
+          <option value="auto">Auto</option>
+          <option value="online">Online</option>
+          <option value="away">Away</option>
+          <option value="dnd">Do Not Disturb</option>
+          <option value="offline">Offline</option>
+        </select>
+      </div>
+      <div class="profile-dd-section">
+        <label>Bio</label>
+        <textarea class="profile-dd-bio" id="profile-dd-bio" maxlength="150" placeholder="About yourself…" rows="3"></textarea>
+      </div>
+      <input type="file" id="avatar-upload" accept="image/*" style="display:none">
+      <button class="btn btn-primary btn-sm btn-full" id="save-profile-btn">Save Changes</button>
+      <button class="btn-logout" id="btn-logout">Log Out</button>
+    </div>
+  </div>
+  <div class="toast-container" id="toast-container"></div>
   <canvas id="game"></canvas>
   <div id="crosshair"></div>
 
@@ -103,8 +172,6 @@
   <div id="wave-banner"><div id="wave-banner-title">WAVE 1</div><div class="sub" id="wave-banner-sub"></div></div>
   <div id="toast"></div>
 
-  <a id="back-link" href="games.html">← BACK TO SITE</a>
-
   <!-- Main menu -->
   <div id="view-main" class="view active">
     <div class="panel">
@@ -117,7 +184,6 @@
       <button class="btn" id="btn-hangar"><span>HANGAR / UPGRADES</span><span>H</span></button>
       <button class="btn" id="btn-leader"><span>LEADERBOARD</span><span>L</span></button>
       <button class="btn ghost" id="btn-controls"><span>CONTROLS</span><span>?</span></button>
-      <button class="btn ghost" onclick="location.href='games.html'"><span>EXIT</span><span></span></button>
     </div>
   </div>
 
@@ -1040,5 +1106,10 @@
   UI.refreshMain();
 
   </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+  <script src="js/cropper-util.js"></script>
+  <script src="js/livekit-client.umd.min.js"></script>
+  <script src="js/nav.js"></script>
+  <script>document.addEventListener('DOMContentLoaded', () => { Nav.init('games'); });</script>
 </body>
 </html>
