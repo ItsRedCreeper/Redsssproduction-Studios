@@ -1,0 +1,166 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ──────────────────────────────────────────────────────
+
+    // True when the request comes from a signed-in user
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    // True when the signed-in user's uid matches the given uid
+    function isUser(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    // True when the signed-in user is a member of the given server doc
+    function isServerMember(serverId) {
+      return isAuth() &&
+        request.auth.uid in get(/databases/$(database)/documents/servers/$(serverId)).data.members;
+    }
+
+    // ── Users collection ──────────────────────────────────────────────────────
+
+    match /users/{uid} {
+      // Any signed-in user can read any profile (needed for friend search, presence, leaderboard)
+      allow read: if isAuth();
+
+      // Only the account owner can write their own profile
+      allow write: if isUser(uid);
+
+      // ── Notifications sub-collection ─────────────────────────────────────
+      match /notifications/{notifId} {
+        // Only the owner can read or delete their own notifications
+        allow read, delete: if isUser(uid);
+
+        // Any signed-in user can create a notification for someone else
+        // (used when a friend sends a message or a friend request is accepted)
+        allow create: if isAuth();
+
+        // Only the owner can update (mark as read)
+        allow update: if isUser(uid);
+      }
+    }
+
+    // ── Games collection ──────────────────────────────────────────────────────
+
+    match /games/{gameId} {
+      // Any signed-in user can read the game catalogue
+      allow read: if isAuth();
+
+      // No client-side writes — managed in the Firebase console only
+      allow write: if false;
+    }
+
+    // ── Friend requests collection ────────────────────────────────────────────
+
+    match /friend_requests/{reqId} {
+      // Only the sender (from) or recipient (to) can read a request
+      allow read: if isAuth() &&
+        (resource.data.from == request.auth.uid ||
+         resource.data.to   == request.auth.uid);
+
+      // Any signed-in user can send a friend request, but must list themselves as sender
+      allow create: if isAuth() &&
+        request.resource.data.from == request.auth.uid;
+
+      // Sender can cancel; recipient can accept or deny
+      allow update: if isAuth() &&
+        (resource.data.from == request.auth.uid ||
+         resource.data.to   == request.auth.uid);
+
+      // No hard deletes from the client
+      allow delete: if false;
+    }
+
+    // ── Servers collection ────────────────────────────────────────────────────
+
+    match /servers/{serverId} {
+      // Public servers are visible to everyone (discover tab)
+      // Private servers are only visible to members
+      allow read: if isAuth() &&
+        (resource.data.visibility == 'public' ||
+         request.auth.uid in resource.data.members);
+
+      // Any signed-in user can create a server (must include themselves as a member)
+      allow create: if isAuth() &&
+        request.auth.uid in request.resource.data.members;
+
+      // Only existing members can update server metadata
+      allow update: if isAuth() &&
+        request.auth.uid in resource.data.members;
+
+      allow delete: if false;
+
+      // ── Channels sub-collection ───────────────────────────────────────────
+      match /channels/{channelId} {
+        allow read:   if isServerMember(serverId);
+        allow create: if isServerMember(serverId);
+        allow update: if isServerMember(serverId);
+        allow delete: if false;
+
+        // ── Messages inside a channel ─────────────────────────────────────
+        match /messages/{msgId} {
+          allow read:   if isServerMember(serverId);
+
+          // Sender must be the authenticated user
+          allow create: if isServerMember(serverId) &&
+            request.resource.data.senderId == request.auth.uid;
+
+          // Only the original sender can edit or delete their message
+          allow update, delete: if isServerMember(serverId) &&
+            resource.data.senderId == request.auth.uid;
+        }
+      }
+    }
+
+    // ── DMs collection ────────────────────────────────────────────────────────
+    // Document ID is [uid1, uid2].sort().join('_')
+    // The document has a `participants` array field with both UIDs
+
+    match /dms/{convoId} {
+      // Only a participant can read the conversation doc
+      allow read: if isAuth() &&
+        request.auth.uid in resource.data.participants;
+
+      // A participant can create or update (merge) the conversation doc
+      // They must include themselves in the participants list
+      allow create, update: if isAuth() &&
+        request.auth.uid in request.resource.data.participants;
+
+      // Only a participant can delete the conversation
+      allow delete: if isAuth() &&
+        request.auth.uid in resource.data.participants;
+
+      // ── DM messages ───────────────────────────────────────────────────────
+      match /messages/{msgId} {
+        allow read: if isAuth() &&
+          request.auth.uid in get(/databases/$(database)/documents/dms/$(convoId)).data.participants;
+
+        allow create: if isAuth() &&
+          request.auth.uid in get(/databases/$(database)/documents/dms/$(convoId)).data.participants &&
+          request.resource.data.senderId == request.auth.uid;
+
+        allow update, delete: if isAuth() &&
+          resource.data.senderId == request.auth.uid;
+      }
+
+      // ── DM media (images, gifs, videos) ───────────────────────────────────
+      match /images/{imgId} {
+        allow read, write: if isAuth() &&
+          request.auth.uid in get(/databases/$(database)/documents/dms/$(convoId)).data.participants;
+      }
+
+      match /gifs/{gifId} {
+        allow read, write: if isAuth() &&
+          request.auth.uid in get(/databases/$(database)/documents/dms/$(convoId)).data.participants;
+      }
+
+      match /videos/{videoId} {
+        allow read, write: if isAuth() &&
+          request.auth.uid in get(/databases/$(database)/documents/dms/$(convoId)).data.participants;
+      }
+    }
+  }
+}
