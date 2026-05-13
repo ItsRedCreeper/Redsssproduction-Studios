@@ -72,6 +72,7 @@
 
     .view { position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center; background:radial-gradient(ellipse at center,rgba(0,40,60,.55) 0%,rgba(0,0,0,.94) 80%); z-index:100; padding:24px; overflow-y:auto }
     .view.active { display:flex }
+    #view-hangar { justify-content:flex-start; padding-top:24px }
     .panel { background:rgba(0,12,16,.94); border:1px solid rgba(0,255,255,.4); box-shadow:0 0 32px rgba(0,255,255,.18); padding:30px 34px; max-width:720px; width:100%; display:flex; flex-direction:column; gap:14px }
     h1 { font-size:34px; letter-spacing:6px; text-align:center; color:#0ff; text-shadow:0 0 14px #0ff; margin-bottom:6px }
     h2 { font-size:16px; letter-spacing:3px; text-align:center; color:#7ff; margin-bottom:6px }
@@ -909,7 +910,7 @@
     sh: 50,  shMax: 50,
     enemies: [], bullets: [], enemyBullets: [], pickups: [], debris: [],
     boss: null,
-    enemiesToSpawn: 0, enemiesRemaining: 0,
+    enemiesToSpawn: 0, waveTotal: 0, waveKilled: 0, nowSec: 0, playerVel: new THREE.Vector3(),
     enemiesSpawnTimer: 0,
     bossSpawned: false,
     lastFire: 0,
@@ -1021,6 +1022,8 @@
     const mesh = T.build();
     if (spawnPos) mesh.position.copy(spawnPos);
     scene.add(mesh);
+    const idealDist = 14 + cls * 2.5;
+    const predictAccuracy = Math.max(0, (cls - 1.5) / 6.5); // ~0 for cls1 → ~1 for cls8
     const e = {
       mesh, cls, name: T.name,
       hp: T.hp, hpMax: T.hp, sh: T.sh, shMax: T.sh,
@@ -1030,7 +1033,12 @@
       fireT: rand(0.5, T.fireRate*1.2),
       stateT: rand(0, 4),
       strafeDir: Math.random()<0.5 ? 1 : -1,
-      cloakT: 0
+      cloakT: 0,
+      idealDist, predictAccuracy,
+      phase: cls >= 3 ? 'orbit' : 'approach',
+      phaseT: rand(1, 3),
+      evadeT: 0,
+      evadeVec: new THREE.Vector3()
     };
     return e;
   }
@@ -1225,7 +1233,8 @@
     if (Game.boss) { scene.remove(Game.boss.mesh); Game.boss = null; }
     clearTarget();
     Game.enemiesToSpawn = stage.enemyCount;
-    Game.enemiesRemaining = stage.enemyCount;
+    Game.waveTotal = stage.enemyCount;
+    Game.waveKilled = 0;
     Game.enemiesSpawnTimer = 0.3;
     Game.bossSpawned = false;
     Game.state = 'playing';
@@ -1464,7 +1473,13 @@
     if (keys['KeyA']||keys['ArrowLeft'])  move.sub(right);
     if (keys['Space'])                    move.add(up);
     if (keys['KeyC'])                     move.sub(up);
-    if (move.lengthSq() > 0) { move.normalize().multiplyScalar(speed*dt); shipRoot.position.add(move); }
+    if (move.lengthSq() > 0) {
+      move.normalize().multiplyScalar(speed*dt);
+      shipRoot.position.add(move);
+      Game.playerVel.copy(move).divideScalar(dt); // velocity = displacement/dt
+    } else {
+      Game.playerVel.multiplyScalar(0.88); // drag when not thrusting
+    }
 
     if (shipRoot.userData.engineGlows) {
       const pulse = 0.7 + 0.3*Math.sin(performance.now()*0.012);
@@ -1488,6 +1503,19 @@
     } else {
       e.hp -= dmg;
     }
+    // Higher-class enemies react to being hit with an evasion burst
+    if (e.cls >= 3 && e.evadeT != null && e.evadeT <= 0) {
+      const chance = (e.cls - 2) * 0.11; // 11% cls3 → 66% cls8
+      if (Math.random() < chance) {
+        e.evadeT = rand(0.3, 0.65 + e.cls * 0.07);
+        const toP = shipRoot.position.clone().sub(e.mesh.position).normalize();
+        const arb = Math.abs(toP.y) < 0.9 ? new THREE.Vector3(0,1,0) : new THREE.Vector3(1,0,0);
+        const side = new THREE.Vector3().crossVectors(toP, arb).normalize();
+        const up3 = new THREE.Vector3().crossVectors(toP, side);
+        e.evadeVec.copy(side).multiplyScalar(e.strafeDir)
+          .addScaledVector(up3, rand(-0.55, 0.55)).normalize();
+      }
+    }
   }
   function updateBullets(dt) {
     for (let i=Game.bullets.length-1; i>=0; i--) {
@@ -1507,7 +1535,7 @@
             Game.score += reward * 4;
             Game.kills += 1;
             Game.credits += reward;
-            Game.enemiesRemaining -= 1;
+            Game.waveKilled += 1;
             spawnPickup(e.mesh.position, reward, Math.min(5, (e.cls||1)-1));
             if (Game.target === e) clearTarget();
             Game.enemies.splice(j, 1);
@@ -1562,116 +1590,242 @@
   }
 
   // ── Enemy AI ───────────────────────────────────────────────────
-  function fireEnemyVolley(e, predict) {
-    const target = shipRoot.position.clone();
-    if (predict && Game.target===null) {
-      // Predict player position based on recent motion: just aim slightly ahead
-      const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(shipRoot.quaternion);
-      target.addScaledVector(fwd, 6);
-    }
-    if (e.bullets === 1) { spawnEnemyBullet(e, target); }
-    else if (e.bullets === 2) {
-      const aim = target.clone().sub(e.mesh.position).normalize();
-      const side = new THREE.Vector3().crossVectors(aim, new THREE.Vector3(0,1,0)).normalize();
-      spawnEnemyBullet(e, null, aim.clone().addScaledVector(side, 0.06));
-      spawnEnemyBullet(e, null, aim.clone().addScaledVector(side, -0.06));
+  // Compute where the player will be when the bullet arrives (lead-shot prediction)
+  function predictedAimPos(e) {
+    const acc = e.predictAccuracy || 0;
+    if (acc <= 0) return shipRoot.position.clone();
+    const dist = e.mesh.position.distanceTo(shipRoot.position);
+    const tof = dist / (e.bulletSpeed || 36);
+    return shipRoot.position.clone().addScaledVector(Game.playerVel, tof * acc);
+  }
+  function fireEnemyVolley(e) {
+    const aimPt = predictedAimPos(e);
+    const aim = aimPt.clone().sub(e.mesh.position).normalize();
+    const arb = Math.abs(aim.y) < 0.85 ? new THREE.Vector3(0,1,0) : new THREE.Vector3(1,0,0);
+    const side = new THREE.Vector3().crossVectors(aim, arb).normalize();
+    // Higher class = tighter spread
+    const spread = Math.max(0.025, 0.18 - (e.cls||1) * 0.018);
+    if (e.bullets === 1) {
+      spawnEnemyBullet(e, null, aim);
     } else {
-      const aim = target.clone().sub(e.mesh.position).normalize();
-      const side = new THREE.Vector3().crossVectors(aim, new THREE.Vector3(0,1,0)).normalize();
-      spawnEnemyBullet(e, null, aim.clone());
-      spawnEnemyBullet(e, null, aim.clone().addScaledVector(side, 0.12));
-      spawnEnemyBullet(e, null, aim.clone().addScaledVector(side, -0.12));
+      for (let k = 0; k < e.bullets; k++) {
+        const t = e.bullets > 1 ? (k / (e.bullets - 1) - 0.5) * 2 : 0;
+        spawnEnemyBullet(e, null, aim.clone().addScaledVector(side, t * spread));
+      }
     }
   }
 
   function updateEnemies(dt) {
-    for (let i=Game.enemies.length-1; i>=0; i--) {
+    // 3D perpendicular: avoids world-Y lock when desiredDir is nearly vertical
+    function perp3(v) {
+      const arb = Math.abs(v.x) < 0.9 ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0);
+      return new THREE.Vector3().crossVectors(v, arb).normalize();
+    }
+
+    for (let i = Game.enemies.length - 1; i >= 0; i--) {
       const e = Game.enemies[i];
-      const toPlayer = _tmpV.copy(shipRoot.position).sub(e.mesh.position);
+      const toPlayer = new THREE.Vector3().copy(shipRoot.position).sub(e.mesh.position);
       const dist = toPlayer.length();
-      // Face player
-      e.mesh.lookAt(shipRoot.position);
+      if (dist < 0.1) continue;
       e.stateT -= dt;
+      e.mesh.lookAt(shipRoot.position);
 
-      let desiredDir = toPlayer.clone().normalize();
+      const desiredDir = toPlayer.clone().normalize();
       const accel = e.speed;
-      const idealDist = (e.cls >= 6) ? 28 : (e.cls >= 3 ? 22 : 18);
+      const ideal = e.idealDist || 22;
+      const cls = e.cls;
 
-      // AI behaviour
-      switch (e.ai) {
-        case 'simple':
-          if (dist > idealDist) e.mesh.position.addScaledVector(desiredDir, accel*dt);
-          else if (dist < idealDist*0.6) e.mesh.position.addScaledVector(desiredDir, -accel*dt*0.5);
-          break;
-        case 'strafe': {
-          if (dist > idealDist) e.mesh.position.addScaledVector(desiredDir, accel*dt);
-          const side = new THREE.Vector3().crossVectors(desiredDir, new THREE.Vector3(0,1,0)).normalize();
-          e.mesh.position.addScaledVector(side, e.strafeDir * accel * dt * 0.7);
-          if (e.stateT < 0) { e.strafeDir *= -1; e.stateT = rand(1.5, 3.5); }
-          break;
-        }
-        case 'circle': {
-          if (dist > idealDist*1.1) e.mesh.position.addScaledVector(desiredDir, accel*dt);
-          else if (dist < idealDist*0.8) e.mesh.position.addScaledVector(desiredDir, -accel*dt*0.4);
-          const side = new THREE.Vector3().crossVectors(desiredDir, new THREE.Vector3(0,1,0)).normalize();
-          e.mesh.position.addScaledVector(side, accel * dt * 0.9 * e.strafeDir);
-          if (e.stateT < 0) { e.strafeDir *= -1; e.stateT = rand(3, 6); }
-          break;
-        }
-        case 'burst': {
-          if (dist > idealDist) e.mesh.position.addScaledVector(desiredDir, accel*dt);
-          // Bobs vertically
-          e.mesh.position.y += Math.sin(performance.now()*0.002 + i)*dt*4;
-          break;
-        }
-        case 'flank': {
-          // Try to get to player's side rather than front
-          const side = new THREE.Vector3().crossVectors(desiredDir, new THREE.Vector3(0,1,0)).normalize();
-          const flankPoint = shipRoot.position.clone().addScaledVector(side, idealDist * e.strafeDir);
-          const toFlank = flankPoint.sub(e.mesh.position).normalize();
-          e.mesh.position.addScaledVector(toFlank, accel*dt);
-          if (e.stateT < 0) { e.strafeDir *= -1; e.stateT = rand(2, 4); }
-          break;
-        }
-        case 'twin': {
-          // Heavy: slow approach + lateral bob
-          if (dist > idealDist*1.2) e.mesh.position.addScaledVector(desiredDir, accel*dt*0.8);
-          else if (dist < idealDist*0.7) e.mesh.position.addScaledVector(desiredDir, -accel*dt*0.5);
-          const side = new THREE.Vector3().crossVectors(desiredDir, new THREE.Vector3(0,1,0)).normalize();
-          e.mesh.position.addScaledVector(side, Math.sin(performance.now()*0.001+i)*accel*dt*0.6);
-          break;
-        }
-        case 'predict': {
-          // Stays at long range, predicts
-          if (dist > idealDist*1.4) e.mesh.position.addScaledVector(desiredDir, accel*dt);
-          else if (dist < idealDist*0.9) e.mesh.position.addScaledVector(desiredDir, -accel*dt*0.7);
-          const side = new THREE.Vector3().crossVectors(desiredDir, new THREE.Vector3(0,1,0)).normalize();
-          e.mesh.position.addScaledVector(side, e.strafeDir*accel*dt*0.6);
-          if (e.stateT < 0) { e.strafeDir *= -1; e.stateT = rand(2.5, 4); }
-          break;
-        }
-        case 'cloak': {
-          e.cloakT += dt;
-          // Cycle visibility every few seconds
-          const t = e.cloakT % 6;
-          const visible = t < 3;
-          e.mesh.traverse(o => { if (o.material && o.material.transparent !== undefined) {
-            o.material.transparent = true;
-            o.material.opacity = visible ? 0.65 : 0.18;
-          }});
-          // Dart in and out
-          if (dist > idealDist*1.2) e.mesh.position.addScaledVector(desiredDir, accel*dt*1.2);
-          else if (dist < idealDist*0.7) e.mesh.position.addScaledVector(desiredDir, -accel*dt);
-          const side = new THREE.Vector3().crossVectors(desiredDir, new THREE.Vector3(0,1,0)).normalize();
-          e.mesh.position.addScaledVector(side, Math.sin(performance.now()*0.003 + i)*accel*dt);
-          break;
-        }
-      }
+      // ── Evasion: overrides movement when active (triggered by damageEnemy) ──
+      if (e.evadeT > 0) {
+        e.evadeT -= dt;
+        e.mesh.position.addScaledVector(e.evadeVec, accel * dt * (1 + cls * 0.09));
+      } else {
+        // ── Per-class tactical AI ──────────────────────────────────────────────
+        switch (cls) {
+
+          case 1: {
+            // SCAVENGER — brainless rush. No phases, just charge and jitter.
+            if (dist > ideal) e.mesh.position.addScaledVector(desiredDir, accel * dt);
+            else if (dist < ideal * 0.5) e.mesh.position.addScaledVector(desiredDir, -accel * dt * 0.5);
+            if (e.stateT < 0) {
+              e.stateT = rand(2.5, 5.5);
+              e.evadeVec.set(rand(-1,1), rand(-0.25,0.25), rand(-1,1)).normalize();
+            }
+            e.mesh.position.addScaledVector(e.evadeVec, accel * dt * 0.18);
+            break;
+          }
+
+          case 2: {
+            // CORSAIR — simple 3D strafe around the player's local plane.
+            if (dist > ideal * 1.2) e.mesh.position.addScaledVector(desiredDir, accel * dt);
+            else if (dist < ideal * 0.7) e.mesh.position.addScaledVector(desiredDir, -accel * dt * 0.5);
+            const s2 = perp3(desiredDir);
+            e.mesh.position.addScaledVector(s2, e.strafeDir * accel * dt * 0.7);
+            if (e.stateT < 0) { e.strafeDir *= -1; e.stateT = rand(1.4, 3.5); }
+            break;
+          }
+
+          case 3: {
+            // RAIDER — timed attack-run cycle: orbit → run → retreat.
+            if (e.phase === 'run') {
+              e.phaseT -= dt;
+              e.mesh.position.addScaledVector(desiredDir, accel * 1.75 * dt);
+              if (e.phaseT <= 0 || dist < ideal * 0.35) { e.phase = 'retreat'; e.phaseT = rand(1.1, 2.2); }
+            } else if (e.phase === 'retreat') {
+              e.phaseT -= dt;
+              e.mesh.position.addScaledVector(desiredDir, -accel * dt);
+              if (e.phaseT <= 0) { e.phase = 'orbit'; e.phaseT = rand(3, 6.5); }
+            } else { // orbit
+              e.phaseT -= dt;
+              if (dist > ideal * 1.1) e.mesh.position.addScaledVector(desiredDir, accel * dt * 0.8);
+              else if (dist < ideal * 0.8) e.mesh.position.addScaledVector(desiredDir, -accel * dt * 0.4);
+              const s3 = perp3(desiredDir);
+              e.mesh.position.addScaledVector(s3, e.strafeDir * accel * dt * 1.05);
+              if (e.phaseT <= 0) { e.phase = 'run'; e.phaseT = rand(0.65, 1.3); }
+            }
+            if (e.stateT < 0) { e.strafeDir *= -1; e.stateT = rand(2.5, 5); }
+            break;
+          }
+
+          case 4: {
+            // BRIGAND — charge-burst-retreat with 3D weave while charging.
+            if (e.phase === 'charge') {
+              e.phaseT -= dt;
+              e.mesh.position.addScaledVector(desiredDir, accel * 1.4 * dt);
+              const s4 = perp3(desiredDir);
+              const up4 = new THREE.Vector3().crossVectors(desiredDir, s4);
+              e.mesh.position.addScaledVector(s4, Math.sin(Game.nowSec * 4.8 + i) * accel * dt * 0.5);
+              e.mesh.position.addScaledVector(up4, Math.cos(Game.nowSec * 3.1 + i) * accel * dt * 0.3);
+              if (e.phaseT <= 0 || dist < 11) { e.phase = 'retreat'; e.phaseT = rand(1.3, 2.5); }
+            } else if (e.phase === 'retreat') {
+              e.phaseT -= dt;
+              e.mesh.position.addScaledVector(desiredDir, -accel * dt * 1.35);
+              if (e.phaseT <= 0) { e.phase = 'wait'; e.phaseT = rand(0.6, 1.5); }
+            } else if (e.phase === 'wait') {
+              e.phaseT -= dt;
+              const s4w = perp3(desiredDir);
+              e.mesh.position.addScaledVector(s4w, e.strafeDir * accel * dt * 0.8);
+              if (e.stateT < 0) { e.strafeDir *= -1; e.stateT = rand(0.7, 2); }
+              if (e.phaseT <= 0) { e.phase = 'charge'; e.phaseT = rand(0.8, 1.7); }
+            } else { // initial approach
+              if (dist > ideal) e.mesh.position.addScaledVector(desiredDir, accel * dt);
+              else { e.phase = 'charge'; e.phaseT = rand(0.8, 1.7); }
+            }
+            break;
+          }
+
+          case 5: {
+            // REAVER — flanker: manoeuvres to the player's rear/side blind spot.
+            const pFwd5 = new THREE.Vector3(0,0,-1).applyQuaternion(shipRoot.quaternion);
+            const pPerp5 = perp3(pFwd5);
+            const flankOff5 = pFwd5.clone().multiplyScalar(-ideal * 1.1)
+              .add(pPerp5.multiplyScalar(e.strafeDir * ideal * 0.9));
+            const flankTgt5 = shipRoot.position.clone().add(flankOff5);
+            const toFT5 = flankTgt5.sub(e.mesh.position);
+            const fd5 = toFT5.length();
+            e.mesh.position.addScaledVector(toFT5.normalize(), accel * dt * (fd5 > 20 ? 1.45 : 0.9));
+            if (e.stateT < 0) { e.strafeDir *= -1; e.stateT = rand(1.8, 4.5); }
+            break;
+          }
+
+          case 6: {
+            // MARAUDER — aggressive press when healthy; retreats and kites when below 40% HP.
+            const s6 = perp3(desiredDir);
+            if (e.hp < e.hpMax * 0.4) {
+              // Kite: back away and strafe hard
+              if (dist < ideal * 1.35) e.mesh.position.addScaledVector(desiredDir, -accel * dt);
+              else if (dist > ideal * 2.4) e.mesh.position.addScaledVector(desiredDir, accel * dt * 0.65);
+              e.mesh.position.addScaledVector(s6, e.strafeDir * accel * dt * 1.25);
+              if (e.stateT < 0) { e.strafeDir *= -1; e.stateT = rand(0.6, 1.6); }
+            } else {
+              // Aggressive: push in and circle tight
+              if (dist > ideal * 0.9) e.mesh.position.addScaledVector(desiredDir, accel * dt * 1.15);
+              else e.mesh.position.addScaledVector(desiredDir, -accel * dt * 0.22);
+              e.mesh.position.addScaledVector(s6, e.strafeDir * accel * dt * 1.05);
+              if (e.stateT < 0) { e.strafeDir *= -1; e.stateT = rand(1.1, 2.8); }
+            }
+            break;
+          }
+
+          case 7: {
+            // DREADWING — long-range sniper with true lead-shot + periodic flanking runs.
+            // Excellent evasion already handled above by damageEnemy trigger.
+            if (e.phase === 'snipe') {
+              e.phaseT -= dt;
+              // Maintain long range; slide sideways to avoid return fire
+              if (dist < ideal * 1.6) e.mesh.position.addScaledVector(desiredDir, -accel * dt * 0.85);
+              else if (dist > ideal * 2.9) e.mesh.position.addScaledVector(desiredDir, accel * dt);
+              const s7 = perp3(desiredDir);
+              e.mesh.position.addScaledVector(s7, e.strafeDir * accel * dt * 0.95);
+              if (e.phaseT <= 0) { e.phase = 'flank'; e.phaseT = rand(1.8, 3.5); e.strafeDir *= -1; }
+            } else if (e.phase === 'flank') {
+              e.phaseT -= dt;
+              const pFwd7 = new THREE.Vector3(0,0,-1).applyQuaternion(shipRoot.quaternion);
+              const pPerp7 = perp3(pFwd7);
+              const fp7 = shipRoot.position.clone()
+                .add(pFwd7.clone().multiplyScalar(-ideal * 1.1))
+                .add(pPerp7.multiplyScalar(e.strafeDir * ideal));
+              const toFP7 = fp7.sub(e.mesh.position).normalize();
+              e.mesh.position.addScaledVector(toFP7, accel * dt * 1.3);
+              if (e.phaseT <= 0) { e.phase = 'snipe'; e.phaseT = rand(2.5, 5.5); }
+            } else { e.phase = 'snipe'; e.phaseT = rand(3, 6); }
+            if (e.stateT < 0) { e.strafeDir *= -1; e.stateT = rand(1.8, 4); }
+            break;
+          }
+
+          case 8: {
+            // PHANTOM — full tactical AI: cloaking, 3D manoeuvring, state machine.
+            // Phases: approach → orbit → (dash | cloak-strike | orbit) → retreat
+            e.cloakT += dt;
+            const cVis = (e.cloakT % 8) < 4.5;
+            e.mesh.traverse(o => {
+              if (o.material) { o.material.transparent = true; o.material.opacity = cVis ? 0.62 : 0.08; }
+            });
+            if (e.phase === 'approach') {
+              e.phaseT -= dt;
+              e.mesh.position.addScaledVector(desiredDir, accel * dt * 1.05);
+              const s8a = perp3(desiredDir);
+              e.mesh.position.addScaledVector(s8a, Math.sin(Game.nowSec * 3.3 + i) * accel * dt * 0.5);
+              if (e.phaseT <= 0 || dist < ideal * 1.2) { e.phase = 'orbit'; e.phaseT = rand(1.8, 3.8); }
+            } else if (e.phase === 'orbit') {
+              e.phaseT -= dt;
+              if (dist > ideal * 1.15) e.mesh.position.addScaledVector(desiredDir, accel * dt * 0.7);
+              else if (dist < ideal * 0.75) e.mesh.position.addScaledVector(desiredDir, -accel * dt * 0.65);
+              const s8o = perp3(desiredDir);
+              const up8 = new THREE.Vector3().crossVectors(desiredDir, s8o);
+              e.mesh.position.addScaledVector(s8o, e.strafeDir * accel * dt * 1.2);
+              e.mesh.position.addScaledVector(up8, Math.sin(Game.nowSec * 1.7 + i) * accel * dt * 0.45);
+              if (e.phaseT <= 0) {
+                const r8 = Math.random();
+                if (r8 < 0.33) { e.phase = 'dash'; e.phaseT = rand(0.45, 0.9); }
+                else if (r8 < 0.65) { e.phase = 'cloak-strike'; e.phaseT = rand(1.3, 2.8); }
+                else { e.phase = 'orbit'; e.phaseT = rand(1.5, 3.5); e.strafeDir *= -1; }
+              }
+            } else if (e.phase === 'dash') {
+              e.phaseT -= dt;
+              e.mesh.position.addScaledVector(desiredDir, accel * 2.7 * dt);
+              if (e.phaseT <= 0) { e.phase = 'retreat'; e.phaseT = rand(0.8, 1.7); }
+            } else if (e.phase === 'cloak-strike') {
+              e.phaseT -= dt;
+              const s8cs = perp3(desiredDir);
+              e.mesh.position.addScaledVector(s8cs, e.strafeDir * accel * dt * 1.45);
+              e.mesh.position.addScaledVector(desiredDir, -accel * dt * 0.12);
+              if (e.phaseT <= 0) { e.phase = 'dash'; e.phaseT = rand(0.45, 0.85); }
+            } else if (e.phase === 'retreat') {
+              e.phaseT -= dt;
+              e.mesh.position.addScaledVector(desiredDir, -accel * dt * 1.1);
+              if (e.phaseT <= 0) { e.phase = 'approach'; e.phaseT = rand(0.7, 2); }
+            } else { e.phase = 'approach'; e.phaseT = rand(1, 2.5); }
+            if (e.stateT < 0) { e.strafeDir *= -1; e.stateT = rand(1.2, 3); }
+            break;
+          }
+        } // end switch
+      } // end evade-else
 
       // Fire
       e.fireT -= dt;
-      if (e.fireT <= 0 && dist < 90) {
-        fireEnemyVolley(e, e.ai === 'predict');
+      if (e.fireT <= 0 && dist < 95) {
+        fireEnemyVolley(e);
         e.fireT = e.fireRate * rand(0.8, 1.4);
       }
 
@@ -1681,15 +1835,14 @@
         scene.remove(e.mesh);
         spawnExplosion(e.mesh.position, e.bulletColor || 0xff6644, 1.6);
         if (Game.target === e) clearTarget();
-        Game.enemies.splice(i,1);
-        Game.enemiesRemaining -= 1;
+        Game.enemies.splice(i, 1);
+        Game.waveKilled += 1;
         continue;
       }
-      // Despawn if very far
+      // Re-queue if enemy drifted too far rather than decrement counter
       if (dist > 300) {
-        scene.remove(e.mesh); Game.enemies.splice(i,1);
+        scene.remove(e.mesh); Game.enemies.splice(i, 1);
         if (Game.target === e) clearTarget();
-        // Don't decrement enemiesRemaining — let them respawn
         Game.enemiesToSpawn += 1;
       }
     }
@@ -1790,12 +1943,11 @@
       // 30%-70% faster
       Game.enemiesSpawnTimer = rand(0.6, 1.3);
     }
-    // Boss spawn condition: only need most of the wave defeated, then boss spawns and enemies CONTINUE to come.
-    if (!Game.bossSpawned && Game.enemiesRemaining <= 0 && Game.enemies.length <= 2) {
+    // Boss spawns once the full wave quota has been killed
+    if (!Game.bossSpawned && Game.waveKilled >= Game.waveTotal && Game.enemies.length <= 2) {
       spawnBoss();
-      // Reinforcements during boss fight
+      // Keep trickle of reinforcements during boss fight
       Game.enemiesToSpawn = Math.max(6, Math.floor(STAGES[Game.stageIdx].enemyCount * 0.35));
-      Game.enemiesRemaining = Game.enemiesToSpawn;
     }
   }
 
@@ -1808,11 +1960,11 @@
     document.getElementById('sh-text').textContent = Math.ceil(Game.sh) + '/' + Game.shMax;
     document.getElementById('sh-bar').style.width = (100*Math.max(0,Game.sh)/Game.shMax) + '%';
     if (Game.sh < Game.shMax) Game.sh = Math.min(Game.shMax, Game.sh + 4*0.016);
-    const left = Game.enemiesToSpawn + Game.enemies.length;
     if (Game.bossSpawned) {
-      document.getElementById('stage-hud-progress').textContent = 'BOSS · ENEMIES: ' + left;
+      const escorts = Game.enemiesToSpawn + Game.enemies.length;
+      document.getElementById('stage-hud-progress').textContent = 'BOSS · ESCORTS: ' + escorts;
     } else {
-      document.getElementById('stage-hud-progress').textContent = 'Enemies: ' + left + ' / ' + STAGES[Game.stageIdx].enemyCount;
+      document.getElementById('stage-hud-progress').textContent = 'KILLS: ' + Game.waveKilled + ' / ' + Game.waveTotal;
     }
     updateTargetHUD();
   }
@@ -1833,6 +1985,7 @@
     const now = performance.now();
     const dt = Math.min(0.05, (now - _last)/1000);
     _last = now;
+    Game.nowSec += dt;
     if (shipRoot) {
       // Keep dust/asteroids centered around player for "infinite" feel
       if (asteroidField && asteroidField.children.length > 0) {
