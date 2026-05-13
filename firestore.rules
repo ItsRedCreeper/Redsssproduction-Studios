@@ -55,6 +55,20 @@ service cloud.firestore {
       }
     }
 
+    // ── Space Vanguard 3D saves (per-user) ───────────────────────────────────
+    match /sv3d_saves/{uid} {
+      // Only the account owner can read or write their save data
+      allow read, write: if isUser(uid);
+    }
+
+    // ── Space Vanguard 3D public leaderboard ─────────────────────────────────
+    // Each document holds an `entries` array of top-10 entries (scores or times).
+    // Document IDs: "scores"  and  "times_0" … "times_14"
+    match /sv3d_leaderboard/{docId} {
+      allow read: if true;           // anyone can read leaderboard (no auth required)
+      allow write: if isAuth();      // any signed-in user can push their entry
+    }
+
     // ── Games collection ──────────────────────────────────────────────────────
 
     match /games/{gameId} {

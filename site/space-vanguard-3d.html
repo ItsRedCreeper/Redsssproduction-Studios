@@ -97,7 +97,7 @@
     #pause-overlay h1 { font-size:28px; letter-spacing:8px }
     #pause-overlay .panel { background:transparent; border:none; box-shadow:none; padding:0; max-width:340px }
 
-    .stage-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:4px 0 }
+    .stage-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin:4px 0 }
     .stage-card { border:2px solid #0ff; background:#021014; padding:10px 8px; cursor:pointer; text-align:center; transition:.15s; position:relative }
     .stage-card:hover:not(.locked) { background:rgba(0,255,255,.12); box-shadow:0 0 10px #0ff }
     .stage-card.locked { border-color:#333; color:#555; cursor:not-allowed }
@@ -259,7 +259,7 @@
       <h1>SPACE VANGUARD 3D</h1>
       <div class="tagline">PILOT: <span id="pilot-name">GUEST</span></div>
       <div class="stat-row"><span>Top Score</span><b id="hi-score">0</b></div>
-      <div class="stat-row"><span>Stages Cleared</span><span><b id="hi-stage">0</b> / 8</span></div>
+      <div class="stat-row"><span>Stages Cleared</span><span><b id="hi-stage">0</b> / 15</span></div>
       <div class="stat-row"><span>Banked Stardust</span><b id="bank">0</b></div>
       <button class="btn" id="btn-play"><span>▶ STAGE SELECT</span><span>SPACE</span></button>
       <button class="btn" id="btn-hangar"><span>HANGAR / UPGRADES</span><span>H</span></button>
@@ -290,13 +290,17 @@
   </div>
 
   <div id="view-leader" class="view">
-    <div class="panel">
-      <h1 style="font-size:24px">LEADERBOARD</h1>
+    <div class="panel" style="max-width:760px">
+      <h1 style="font-size:22px">LEADERBOARD</h1>
       <h2>TOP SCORES</h2>
       <div class="leaderboard" id="lb-score"><p style="padding:10px;color:#666;text-align:center">Loading…</p></div>
-      <h2 style="margin-top:8px">STAGES CLEARED</h2>
-      <div class="leaderboard" id="lb-stage"><p style="padding:10px;color:#666;text-align:center">Loading…</p></div>
-      <button class="btn ghost" onclick="UI.show('main')"><span>← BACK</span><span></span></button>
+      <h2 style="margin-top:12px">FASTEST STAGE CLEAR</h2>
+      <div style="display:flex;align-items:center;gap:10px;margin:6px 0 4px">
+        <span style="color:#7ff;font-size:12px;letter-spacing:1px">STAGE</span>
+        <select id="lb-stage-select" style="background:#021014;border:1px solid #0ff;color:#0ff;padding:4px 8px;font-family:inherit;font-size:12px;cursor:pointer;letter-spacing:1px"></select>
+      </div>
+      <div class="leaderboard" id="lb-time"><p style="padding:10px;color:#666;text-align:center">Select a stage above</p></div>
+      <button class="btn ghost" onclick="UI.show('main')" style="margin-top:8px"><span>← BACK</span><span></span></button>
     </div>
   </div>
 
@@ -326,6 +330,7 @@
       <div class="stat-row"><span>Score</span><b id="vic-score">0</b></div>
       <div class="stat-row"><span>Kills</span><b id="vic-kills">0</b></div>
       <div class="stat-row"><span>Stardust Banked</span><b id="vic-credits">0</b></div>
+      <div class="stat-row"><span>Clear Time</span><b id="vic-time">0:00</b></div>
       <div id="vic-new-record" style="color:#ff0;text-align:center;display:none;letter-spacing:3px;margin:6px 0">★ NEW RECORD ★</div>
       <button class="btn" id="btn-next"><span>NEXT STAGE</span><span>SPACE</span></button>
       <button class="btn ghost" onclick="UI.show('stages')"><span>STAGE SELECT</span><span></span></button>
@@ -387,7 +392,8 @@
     hiScore: 0,
     stagesCleared: 0,
     totalCredits: 0,
-    upgrades: { hull:0, shield:0, fire:0, dmg:0, speed:0, magnet:0 },
+    stageTimes: {},
+    upgrades: { hull:0, shield:0, fire:0, dmg:0, speed:0, magnet:0, boostCap:0 },
     ship: 0,
     ownedShips: [0]
   };
@@ -447,6 +453,11 @@
           if ((r.hiScore||0) > save.hiScore) save.hiScore = r.hiScore;
           if ((r.stagesCleared||0) > save.stagesCleared) save.stagesCleared = r.stagesCleared;
           if ((r.totalCredits||0) > save.totalCredits) save.totalCredits = r.totalCredits;
+          // Merge stage times — keep personal bests
+          const rt = r.stageTimes || {};
+          Object.keys(rt).forEach(k => {
+            if (!save.stageTimes[k] || rt[k] < save.stageTimes[k]) save.stageTimes[k] = rt[k];
+          });
           UI.refreshMain();
         }
       } catch(_) {}
@@ -463,12 +474,13 @@
     { name:'VOID',        price:250000, color:0xffffff, accent:0xaaaaff }
   ];
   const UPGRADES = [
-    { id:'hull',   name:'HULL ARMOR',       desc:'+25 max hull',     max:8, cost:l=>200*Math.pow(1.7,l) },
-    { id:'shield', name:'SHIELD CAPACITOR', desc:'+15 max shield',   max:8, cost:l=>250*Math.pow(1.8,l) },
-    { id:'fire',   name:'TURRET FIRE RATE', desc:'-7% cooldown',     max:8, cost:l=>180*Math.pow(1.7,l) },
-    { id:'dmg',    name:'CANNON DAMAGE',    desc:'+25% damage',      max:8, cost:l=>240*Math.pow(1.85,l) },
-    { id:'speed',  name:'ENGINE THRUST',    desc:'+8% top speed',    max:6, cost:l=>160*Math.pow(1.7,l) },
-    { id:'magnet', name:'STARDUST MAGNET',  desc:'+20% pickup range',max:6, cost:l=>140*Math.pow(1.6,l) }
+    { id:'hull',     name:'HULL ARMOR',       desc:'+25 max hull',       max:8, cost:l=>200*Math.pow(1.7,l) },
+    { id:'shield',   name:'SHIELD CAPACITOR', desc:'+15 max shield',     max:8, cost:l=>250*Math.pow(1.8,l) },
+    { id:'fire',     name:'TURRET FIRE RATE', desc:'-7% cooldown',       max:8, cost:l=>180*Math.pow(1.7,l) },
+    { id:'dmg',      name:'CANNON DAMAGE',    desc:'+25% damage',        max:8, cost:l=>240*Math.pow(1.85,l) },
+    { id:'speed',    name:'ENGINE THRUST',    desc:'+8% top speed',      max:6, cost:l=>160*Math.pow(1.7,l) },
+    { id:'magnet',   name:'STARDUST MAGNET',  desc:'+20% pickup range',  max:6, cost:l=>140*Math.pow(1.6,l) },
+    { id:'boostCap', name:'BOOST FUEL CELL',  desc:'+12 max boost',      max:8, cost:l=>200*Math.pow(1.75,l) }
   ];
   function statHull(){ return 100 + save.upgrades.hull*25; }
   function statShield(){ return 50 + save.upgrades.shield*15; }
@@ -476,9 +488,11 @@
   function statDmg(){ return 10 * Math.pow(1.25, save.upgrades.dmg); }
   function statSpeed(){ return 28 * Math.pow(1.08, save.upgrades.speed); }
   function statMagnet(){ return 8 * Math.pow(1.2, save.upgrades.magnet); }
+  function statBoostMax(){ return 100 + (save.upgrades.boostCap||0)*12; }
 
   // ── Util ───────────────────────────────────────────────────────
   function fmt(n) { return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  function fmtTime(s){ const m=Math.floor(s/60); return m+':'+String(Math.floor(s%60)).padStart(2,'0'); }
   function clamp(v,a,b) { return Math.max(a, Math.min(b, v)); }
   function rand(a,b) { return a + Math.random()*(b-a); }
   function pick(arr) { return arr[Math.floor(Math.random()*arr.length)]; }
@@ -912,6 +926,7 @@
     hp: 100, hpMax: 100,
     sh: 50,  shMax: 50,
     boost: 100, boostMax: 100,
+    stageStartTime: 0,
     enemies: [], bullets: [], enemyBullets: [], pickups: [], debris: [],
     boss: null,
     enemiesToSpawn: 0, waveTotal: 0, waveKilled: 0, nowSec: 0, playerVel: new THREE.Vector3(),
@@ -1228,7 +1243,8 @@
     shipRoot.quaternion.identity();
     Game.hpMax = statHull(); Game.hp = Game.hpMax;
     Game.shMax = statShield(); Game.sh = Game.shMax;
-    Game.boost = Game.boostMax;
+    Game.boostMax = statBoostMax(); Game.boost = Game.boostMax;
+    Game.stageStartTime = Date.now();
     Game.score = 0; Game.kills = 0; Game.credits = 0;
     Game.enemies.forEach(e=>scene.remove(e.mesh)); Game.enemies = [];
     Game.bullets.forEach(b=>scene.remove(b.mesh)); Game.bullets = [];
@@ -1290,12 +1306,24 @@
       save.totalCredits += Game.credits;
       const cleared = Game.stageIdx + 1;
       if (cleared > save.stagesCleared) save.stagesCleared = cleared;
+      // Record stage completion time
+      const elapsed = (Date.now() - Game.stageStartTime) / 1000;
+      const prevTime = save.stageTimes[Game.stageIdx];
+      const newTimeRecord = !prevTime || elapsed < prevTime;
+      if (newTimeRecord) save.stageTimes[Game.stageIdx] = elapsed;
       Game.state = 'victory';
       document.getElementById('vic-stage').textContent = (Game.stageIdx+1) + ' — ' + STAGES[Game.stageIdx].name;
       document.getElementById('vic-score').textContent = fmt(Game.score);
       document.getElementById('vic-kills').textContent = Game.kills;
       document.getElementById('vic-credits').textContent = fmt(Game.credits);
+      document.getElementById('vic-time').textContent = fmtTime(elapsed) + (newTimeRecord ? ' ★' : '');
       document.getElementById('vic-new-record').style.display = newHi ? 'block' : 'none';
+      // Push to global leaderboard
+      if (currentUser) {
+        const uname = currentUser.displayName || (currentUser.email && currentUser.email.split('@')[0]) || 'Pilot';
+        if (newHi) pushLeaderboard('scores', currentUser.uid, uname, 'score', save.hiScore, false);
+        if (newTimeRecord) pushLeaderboard('times_'+Game.stageIdx, currentUser.uid, uname, 'secs', elapsed, true);
+      }
       UI.show('victory');
     } else {
       // Death: stardust earned this run is forfeit
@@ -1309,6 +1337,23 @@
       UI.show('over');
     }
     persist();
+  }
+
+  // Push one entry into a public leaderboard document.
+  // Firestore rule needed on sv3d_leaderboard:
+  //   allow read: if true;
+  //   allow write: if request.auth != null;
+  async function pushLeaderboard(docId, uid, username, field, value, ascending) {
+    if (typeof db === 'undefined' || !db || !uid) return;
+    try {
+      const ref = db.collection('sv3d_leaderboard').doc(docId);
+      const snap = await ref.get();
+      let entries = snap.exists ? (snap.data().entries || []) : [];
+      entries = entries.filter(e => e.uid !== uid);
+      entries.push({ uid, username, [field]: value });
+      entries.sort((a, b) => ascending ? (a[field]||0)-(b[field]||0) : (b[field]||0)-(a[field]||0));
+      await ref.set({ entries: entries.slice(0, 10) });
+    } catch(e) { console.error('pushLeaderboard', docId, e); }
   }
 
   // ── UI ─────────────────────────────────────────────────────────
@@ -1330,7 +1375,7 @@
       if (id === 'main')    this.refreshMain();
       if (id === 'stages')  this.refreshStages();
       if (id === 'hangar')  this.refreshHangar();
-      if (id === 'leader')  this.refreshLeaderboard();
+      if (id === 'leader')  { this.refreshLeaderboard(); }
     },
     hideAll() {
       document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
@@ -1410,28 +1455,60 @@
     },
     async refreshLeaderboard() {
       const elS = document.getElementById('lb-score');
-      const elW = document.getElementById('lb-stage');
       elS.innerHTML = '<p style="padding:10px;color:#666;text-align:center">Loading…</p>';
-      elW.innerHTML = '<p style="padding:10px;color:#666;text-align:center">Loading…</p>';
-      if (typeof db === 'undefined' || !db) { elS.innerHTML = '<p style="padding:10px;color:#666;text-align:center">Sign in to view leaderboard</p>'; elW.innerHTML=''; return; }
-      try {
-        const s1 = await db.collection('sv3d_saves').orderBy('hiScore','desc').limit(10).get();
-        elS.innerHTML = ''; let r = 1;
-        s1.forEach(d => { const x = d.data(); const div = document.createElement('div'); div.className = 'lb-entry';
-          div.innerHTML = '<span class="lb-rank">'+r+'</span><span class="lb-name">'+(x.username||'Pilot')+'</span><span class="lb-score">'+fmt(x.hiScore||0)+'</span>';
-          elS.appendChild(div); r++;
+      // Populate stage select dropdown
+      const sel = document.getElementById('lb-stage-select');
+      if (!sel.options.length) {
+        STAGES.forEach((s, i) => {
+          const opt = document.createElement('option');
+          opt.value = i;
+          opt.textContent = (i+1) + ' — ' + s.name;
+          sel.appendChild(opt);
         });
-        if (r===1) elS.innerHTML = '<p style="padding:10px;color:#666;text-align:center">No scores yet</p>';
-      } catch(_) { elS.innerHTML = '<p style="padding:10px;color:#666;text-align:center">Failed to load</p>'; }
+        sel.addEventListener('change', () => UI.loadStageTime(parseInt(sel.value)));
+      }
+      if (typeof db === 'undefined' || !db) {
+        elS.innerHTML = '<p style="padding:10px;color:#666;text-align:center">Sign in to view leaderboard</p>';
+        document.getElementById('lb-time').innerHTML = '';
+        return;
+      }
       try {
-        const s2 = await db.collection('sv3d_saves').orderBy('stagesCleared','desc').limit(10).get();
-        elW.innerHTML = ''; let r = 1;
-        s2.forEach(d => { const x = d.data(); const div = document.createElement('div'); div.className = 'lb-entry';
-          div.innerHTML = '<span class="lb-rank">'+r+'</span><span class="lb-name">'+(x.username||'Pilot')+'</span><span class="lb-score">'+(x.stagesCleared||0)+'/8</span>';
-          elW.appendChild(div); r++;
-        });
-        if (r===1) elW.innerHTML = '<p style="padding:10px;color:#666;text-align:center">No data yet</p>';
-      } catch(_) { elW.innerHTML = '<p style="padding:10px;color:#666;text-align:center">Failed to load</p>'; }
+        const snap = await db.collection('sv3d_leaderboard').doc('scores').get();
+        elS.innerHTML = '';
+        const entries = snap.exists ? (snap.data().entries || []) : [];
+        if (!entries.length) {
+          elS.innerHTML = '<p style="padding:10px;color:#666;text-align:center">No scores yet — be the first!</p>';
+        } else {
+          entries.forEach((x, i) => {
+            const div = document.createElement('div'); div.className = 'lb-entry';
+            div.innerHTML = '<span class="lb-rank">'+(i+1)+'</span><span class="lb-name">'+(x.username||'Pilot')+'</span><span class="lb-score">'+fmt(x.score||0)+'</span>';
+            elS.appendChild(div);
+          });
+        }
+      } catch(e) {
+        console.error('LB scores error:', e);
+        elS.innerHTML = '<p style="padding:10px;color:#f88;text-align:center">Failed — set Firestore rule: sv3d_leaderboard allow read:true</p>';
+      }
+      UI.loadStageTime(parseInt(sel.value || 0));
+    },
+    async loadStageTime(idx) {
+      const elT = document.getElementById('lb-time');
+      elT.innerHTML = '<p style="padding:10px;color:#666;text-align:center">Loading…</p>';
+      if (typeof db === 'undefined' || !db) { elT.innerHTML = ''; return; }
+      try {
+        const snap = await db.collection('sv3d_leaderboard').doc('times_'+idx).get();
+        elT.innerHTML = '';
+        const entries = snap.exists ? (snap.data().entries || []) : [];
+        if (!entries.length) {
+          elT.innerHTML = '<p style="padding:10px;color:#666;text-align:center">No times yet — clear this stage to set one!</p>';
+        } else {
+          entries.forEach((x, i) => {
+            const div = document.createElement('div'); div.className = 'lb-entry';
+            div.innerHTML = '<span class="lb-rank">'+(i+1)+'</span><span class="lb-name">'+(x.username||'Pilot')+'</span><span class="lb-score">'+fmtTime(x.secs||0)+'</span>';
+            elT.appendChild(div);
+          });
+        }
+      } catch(e) { elT.innerHTML = '<p style="padding:10px;color:#666;text-align:center">Failed to load</p>'; }
     }
   };
 
