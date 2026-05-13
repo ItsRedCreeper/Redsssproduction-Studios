@@ -129,6 +129,28 @@
     .leaderboard::-webkit-scrollbar-thumb { background:#0ff }
     .leaderboard::-webkit-scrollbar-track { background:#000 }
 
+    /* Music controls overlay */
+    #music-controls {
+      position: absolute; top: 10px; right: 10px;
+      display: none; align-items: center; gap: 6px;
+      background: rgba(0,0,0,0.7); border: 1px solid rgba(0,255,255,0.25);
+      padding: 5px 10px; border-radius: 6px; z-index: 200;
+    }
+    #music-controls label { color: #0ff; font-size: 10px; letter-spacing: 1px; white-space: nowrap; }
+    #music-vol-slider {
+      -webkit-appearance: none; appearance: none;
+      width: 80px; height: 3px; background: rgba(0,255,255,0.3);
+      outline: none; cursor: pointer; border-radius: 2px;
+    }
+    #music-vol-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 12px; height: 12px;
+      background: #0ff; border-radius: 50%; cursor: pointer;
+    }
+    #music-mute-btn {
+      background: none; border: none; color: #0ff;
+      font-size: 16px; cursor: pointer; padding: 0; line-height: 1;
+    }
+
     #game-page { padding-top: 56px; background: #0d0d0d; min-height: 100vh; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif; color: #eee; }
     #game-shell { width: calc(100% - 80px); max-width: 1280px; margin: 0 auto; padding: 20px 0 40px; box-sizing: border-box; }
     #game-area { position: relative; overflow: hidden; width: 100%; aspect-ratio: 16/9; background: #000; border: 1px solid #2a2a2a; box-shadow: 0 4px 24px rgba(0,0,0,0.6); border-radius: 10px; }
@@ -221,6 +243,13 @@
   <canvas id="game"></canvas>
   <div id="crosshair"><div class="dot"></div></div>
 
+  <!-- Music controls — top-right, visible on menu views only -->
+  <div id="music-controls">
+    <label>♪</label>
+    <input id="music-vol-slider" type="range" min="0" max="1" step="0.01" value="0.5">
+    <button id="music-mute-btn" title="Mute / Unmute">🔊</button>
+  </div>
+
   <div id="hud">
     <div class="row"><span class="key">SCORE</span><span class="val" id="score">0</span></div>
     <div class="row"><span class="key">KILLS</span><span class="val" id="kills">0</span> <span class="key">STARDUST</span><span class="val" id="credits">0</span></div>
@@ -265,6 +294,7 @@
       <button class="btn" id="btn-hangar"><span>HANGAR / UPGRADES</span><span>H</span></button>
       <button class="btn" id="btn-leader"><span>LEADERBOARD</span><span>L</span></button>
       <button class="btn ghost" id="btn-controls"><span>CONTROLS</span><span>?</span></button>
+      <button class="btn ghost" id="btn-reset-data" style="border-color:#f55;color:#f55;margin-top:4px"><span>RESET ALL DATA</span><span>⚠</span></button>
     </div>
   </div>
 
@@ -395,7 +425,9 @@
     stageTimes: {},
     upgrades: { hull:0, shield:0, fire:0, dmg:0, speed:0, magnet:0, boostCap:0 },
     ship: 0,
-    ownedShips: [0]
+    ownedShips: [0],
+    musicVolume: 0.5,
+    musicMuted: false
   };
   // localStorage removed — Firebase is the sole data store
   let save = JSON.parse(JSON.stringify(DEFAULT_SAVE));
@@ -415,6 +447,8 @@
           upgrades: save.upgrades || {},
           ship: save.ship || 0,
           ownedShips: save.ownedShips || [0],
+          musicVolume: save.musicVolume != null ? save.musicVolume : 0.5,
+          musicMuted: save.musicMuted || false,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge:true }).catch(()=>{});
       } catch(_) {}
@@ -448,6 +482,9 @@
           if (r.upgrades)   save.upgrades   = Object.assign({}, DEFAULT_SAVE.upgrades, r.upgrades);
           if (r.ship != null) save.ship     = r.ship;
           if (Array.isArray(r.ownedShips)) save.ownedShips = r.ownedShips;
+          if (r.musicVolume != null) save.musicVolume = r.musicVolume;
+          if (r.musicMuted  != null) save.musicMuted  = r.musicMuted;
+          Music.applySettings();
           // Merge stage times — keep personal bests
           const rt = r.stageTimes || {};
           Object.keys(rt).forEach(k => {
@@ -1353,6 +1390,68 @@
     } catch(e) { console.error('pushLeaderboard', docId, e); }
   }
 
+  // ── Music Engine ───────────────────────────────────────────────
+  // Songs live in site/audio/. Add all three filenames here.
+  const MENU_TRACKS = [
+    'audio/menu1.mp3',
+    'audio/menu2.mp3',
+    'audio/menu3.mp3'
+  ];
+  const Music = (() => {
+    let audio = new Audio();
+    audio.preload = 'none';
+    let queue = [];
+    let _playing = false;
+
+    // Fisher-Yates shuffle, never put `exclude` first
+    function _shuffle(arr, exclude) {
+      const list = arr.slice();
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
+      }
+      // If the first track is the same as the last played, rotate it to the end
+      if (list.length > 1 && list[0] === exclude) {
+        list.push(list.shift());
+      }
+      return list;
+    }
+
+    function _playNext() {
+      if (!_playing) return;
+      if (!queue.length) queue = _shuffle(MENU_TRACKS, audio.src.split('/').pop());
+      const track = queue.shift();
+      audio.src = track;
+      audio.volume = save.musicMuted ? 0 : (save.musicVolume != null ? save.musicVolume : 0.5);
+      audio.play().catch(() => {});
+    }
+
+    audio.addEventListener('ended', _playNext);
+
+    return {
+      start() {
+        if (_playing) return;
+        _playing = true;
+        queue = _shuffle(MENU_TRACKS, '');
+        _playNext();
+      },
+      stop() {
+        _playing = false;
+        audio.pause();
+        audio.src = '';
+        queue = [];
+      },
+      applySettings() {
+        audio.volume = save.musicMuted ? 0 : (save.musicVolume != null ? save.musicVolume : 0.5);
+        // Sync UI controls if they exist
+        const slider = document.getElementById('music-vol-slider');
+        const muteBtn = document.getElementById('music-mute-btn');
+        if (slider) slider.value = save.musicVolume != null ? save.musicVolume : 0.5;
+        if (muteBtn) muteBtn.textContent = save.musicMuted ? '🔇' : '🔊';
+      }
+    };
+  })();
+
   // ── UI ─────────────────────────────────────────────────────────
   const UI = {
     cur:'main',
@@ -1369,6 +1468,16 @@
       document.getElementById('target-reticle').style.display = 'none';
       document.getElementById('cam-mode').style.display = 'none';
       document.getElementById('pause-overlay').classList.remove('active');
+      // Music: play on main menu views, stop during gameplay
+      const menuViews = ['main','stages','hangar','leader','controls'];
+      const musicControls = document.getElementById('music-controls');
+      if (menuViews.includes(id)) {
+        Music.start();
+        if (musicControls) musicControls.style.display = 'flex';
+      } else {
+        Music.stop();
+        if (musicControls) musicControls.style.display = 'none';
+      }
       if (id === 'main')    this.refreshMain();
       if (id === 'stages')  this.refreshStages();
       if (id === 'hangar')  this.refreshHangar();
@@ -1379,6 +1488,9 @@
       document.getElementById('hud').style.display = 'block';
       document.getElementById('crosshair').style.display = 'block';
       this.cur = 'none';
+      Music.stop();
+      const musicControls = document.getElementById('music-controls');
+      if (musicControls) musicControls.style.display = 'none';
     },
     refreshMain() {
       document.getElementById('hi-score').textContent = fmt(save.hiScore);
@@ -1520,6 +1632,53 @@
   document.getElementById('btn-leader').onclick = () => UI.show('leader');
   document.getElementById('btn-controls').onclick = () => UI.show('controls');
   document.getElementById('btn-retry').onclick = () => Game.startStage(Game.stageIdx);
+
+  // ── Reset Data ─────────────────────────────────────────────────
+  document.getElementById('btn-reset-data').onclick = () => {
+    if (!confirm('Reset ALL progress? This wipes your scores, upgrades, ships, and credits. This cannot be undone.')) return;
+    const vol  = save.musicVolume;
+    const mute = save.musicMuted;
+    save = JSON.parse(JSON.stringify(DEFAULT_SAVE));
+    save.musicVolume = vol;
+    save.musicMuted  = mute;
+    if (currentUser && typeof db !== 'undefined' && db) {
+      db.collection('sv3d_saves').doc(currentUser.uid).set(
+        Object.assign({}, save, {
+          uid: currentUser.uid,
+          username: currentUserName || 'Pilot',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        })
+      ).catch(()=>{});
+      // Clear leaderboard entries for this user
+      ['scores', ...Array.from({length:15},(_,i)=>'times_'+i)].forEach(async docId => {
+        try {
+          const ref = db.collection('sv3d_leaderboard').doc(docId);
+          const snap = await ref.get();
+          if (!snap.exists) return;
+          const entries = (snap.data().entries||[]).filter(e => e.uid !== currentUser.uid);
+          await ref.set({ entries });
+        } catch(_) {}
+      });
+    }
+    UI.refreshMain();
+    UI.refreshHangar();
+    toast('PROGRESS RESET');
+  };
+
+  // ── Music controls ─────────────────────────────────────────────
+  const _volSlider = document.getElementById('music-vol-slider');
+  const _muteBtn   = document.getElementById('music-mute-btn');
+  _volSlider.addEventListener('input', () => {
+    save.musicVolume = parseFloat(_volSlider.value);
+    save.musicMuted  = false;
+    Music.applySettings();
+    persist();
+  });
+  _muteBtn.addEventListener('click', () => {
+    save.musicMuted = !save.musicMuted;
+    Music.applySettings();
+    persist();
+  });
   document.getElementById('btn-next').onclick = () => {
     const next = Game.stageIdx + 1;
     if (next < STAGES.length) Game.startStage(next);
