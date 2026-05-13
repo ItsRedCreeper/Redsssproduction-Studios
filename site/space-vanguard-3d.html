@@ -397,33 +397,12 @@
     ship: 0,
     ownedShips: [0]
   };
-  let save = loadSave();
+  // localStorage removed — Firebase is the sole data store
+  let save = JSON.parse(JSON.stringify(DEFAULT_SAVE));
   let currentUser = null;
   let currentUserName = '';
   let currentUserPic = '';
-
-  function loadSave(){
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (raw) {
-        const j = JSON.parse(raw);
-        return Object.assign({}, DEFAULT_SAVE, j, { upgrades: Object.assign({}, DEFAULT_SAVE.upgrades, j.upgrades||{}) });
-      }
-      const oldRaw = localStorage.getItem('rps_sv3d_save_v1');
-      if (oldRaw) {
-        const o = JSON.parse(oldRaw);
-        return Object.assign({}, DEFAULT_SAVE, {
-          totalCredits: o.totalCredits || 0,
-          ship: o.ship || 0,
-          ownedShips: o.ownedShips || [0],
-          upgrades: Object.assign({}, DEFAULT_SAVE.upgrades, o.upgrades||{})
-        });
-      }
-    } catch(_) {}
-    return JSON.parse(JSON.stringify(DEFAULT_SAVE));
-  }
   function persist(){
-    try { localStorage.setItem(LS_KEY, JSON.stringify(save)); } catch(_) {}
     if (currentUser && typeof db !== 'undefined' && db) {
       try {
         db.collection('sv3d_saves').doc(currentUser.uid).set({
@@ -432,6 +411,10 @@
           hiScore: save.hiScore,
           stagesCleared: save.stagesCleared,
           totalCredits: save.totalCredits,
+          stageTimes: save.stageTimes || {},
+          upgrades: save.upgrades || {},
+          ship: save.ship || 0,
+          ownedShips: save.ownedShips || [0],
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge:true }).catch(()=>{});
       } catch(_) {}
@@ -458,15 +441,20 @@
         const doc = await db.collection('sv3d_saves').doc(u.uid).get();
         if (doc.exists) {
           const r = doc.data();
-          if ((r.hiScore||0) > save.hiScore) save.hiScore = r.hiScore;
+          if ((r.hiScore||0)       > save.hiScore)       save.hiScore       = r.hiScore;
           if ((r.stagesCleared||0) > save.stagesCleared) save.stagesCleared = r.stagesCleared;
-          if ((r.totalCredits||0) > save.totalCredits) save.totalCredits = r.totalCredits;
+          if ((r.totalCredits||0)  > save.totalCredits)  save.totalCredits  = r.totalCredits;
+          // Restore upgrades, ship, ownedShips
+          if (r.upgrades)   save.upgrades   = Object.assign({}, DEFAULT_SAVE.upgrades, r.upgrades);
+          if (r.ship != null) save.ship     = r.ship;
+          if (Array.isArray(r.ownedShips)) save.ownedShips = r.ownedShips;
           // Merge stage times — keep personal bests
           const rt = r.stageTimes || {};
           Object.keys(rt).forEach(k => {
             if (!save.stageTimes[k] || rt[k] < save.stageTimes[k]) save.stageTimes[k] = rt[k];
           });
           UI.refreshMain();
+          UI.refreshHangar && UI.refreshHangar();
         }
       } catch(_) {}
     });

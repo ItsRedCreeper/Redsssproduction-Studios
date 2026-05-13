@@ -148,12 +148,9 @@
   /* google.script.run shim — replaces the original Google Apps Script backend
      with localStorage (for persistence) and Firestore (for the leaderboard). */
   (function(){
-    const SV_LS_KEY = 'rps_spacevanguard_save_v1';
-    function svLoad(){
-      try { const r = localStorage.getItem(SV_LS_KEY); if(r) return JSON.parse(r); } catch(_){}
-      return null;
-    }
-    function svSave(d){ try { localStorage.setItem(SV_LS_KEY, JSON.stringify(d)); } catch(_){} }
+    // localStorage removed — Firebase is the sole data store
+    function svLoad(){ return null; }
+    function svSave(_d){}
     function svDefaults(){
       return { bank:0, speed:7, fireRate:450, multiplier:1, sCost:20, fCost:30, mCost:50, sLvl:1, fLvl:1, mLvl:1,
                totalHitpointsDealt:0, sCap:5, fCap:5, mCap:5, claimedLevels:[], stagesUnlocked:1, turretDmgLvl:0,
@@ -183,16 +180,27 @@
       async getGameData(){
         // Wait for Firebase auth + Firestore username fetch to complete
         if(window._svAuthPromise) await window._svAuthPromise;
-        let d = svLoad();
-        if(!d){ d = svDefaults(); }
+        let d = svDefaults();
+        if(window._svUser && typeof db !== 'undefined' && db){
+          try {
+            const snap = await db.collection('spacevanguard_saves').doc(window._svUser.uid).get();
+            if(snap.exists){
+              const r = snap.data();
+              Object.assign(d, r);
+              // Ensure arrays are proper arrays
+              if(!Array.isArray(d.claimedLevels)) d.claimedLevels = [];
+              if(!Array.isArray(d.ownedSkins))    d.ownedSkins    = [];
+              if(!Array.isArray(d.ownedBodies))   d.ownedBodies   = [];
+            }
+          } catch(_){}
+        }
         if(window._svUser){
-          if(!d.username) d.username = window._svUserName || '';
-          if(!d.profilePic && window._svUserPic) d.profilePic = window._svUserPic;
+          if(!d.username)   d.username   = window._svUserName || '';
+          if(!d.profilePic) d.profilePic = window._svUserPic  || '';
         }
         return d;
       },
       saveGameData(save){
-        svSave(save);
         if(window._svUser && typeof db !== 'undefined' && db){
           const u = window._svUser;
           const uname = save.username||window._svUserName||'Pilot';
@@ -201,8 +209,18 @@
           const hpVal   = Math.floor(save.totalHitpointsDealt||0);
           try {
             db.collection('spacevanguard_saves').doc(u.uid).set({
-              uid:u.uid, username:uname, bank:bankVal, hitpoints:hpVal,
-              profilePic:pic, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+              uid:u.uid, username:uname, profilePic:pic,
+              bank:bankVal, hitpoints:hpVal,
+              speed:save.speed||7, fireRate:save.fireRate||450, multiplier:save.multiplier||1,
+              sCost:save.sCost||20, fCost:save.fCost||30, mCost:save.mCost||50,
+              sLvl:save.sLvl||1, fLvl:save.fLvl||1, mLvl:save.mLvl||1,
+              sCap:save.sCap||5, fCap:save.fCap||5, mCap:save.mCap||5,
+              claimedLevels:save.claimedLevels||[], stagesUnlocked:save.stagesUnlocked||1,
+              turretDmgLvl:save.turretDmgLvl||0, hullLvl:save.hullLvl||0,
+              ownedSkins:save.ownedSkins||[], equippedSkin:save.equippedSkin!=null?save.equippedSkin:-1,
+              ownedBodies:save.ownedBodies||[], equippedBody:save.equippedBody||0,
+              totalHitpointsDealt:hpVal,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge:true });
           } catch(_){}
           // Push to denormalized leaderboard docs
@@ -211,12 +229,22 @@
         }
       },
       saveUpgradeCaps(save){
-        const d = svLoad() || svDefaults();
-        d.sCap = save.sCap; d.fCap = save.fCap; d.mCap = save.mCap;
-        d.claimedLevels = save.claimedLevels || [];
-        svSave(d);
+        if(window._svUser && typeof db !== 'undefined' && db){
+          try {
+            db.collection('spacevanguard_saves').doc(window._svUser.uid).set({
+              sCap:save.sCap||5, fCap:save.fCap||5, mCap:save.mCap||5,
+              claimedLevels:save.claimedLevels||[]
+            }, { merge:true });
+          } catch(_){}
+        }
       },
-      resetUserData(){ svSave(svDefaults()); },
+      resetUserData(){
+        if(window._svUser && typeof db !== 'undefined' && db){
+          try { db.collection('spacevanguard_saves').doc(window._svUser.uid).set(
+            Object.assign(svDefaults(), { uid:window._svUser.uid, updatedAt:firebase.firestore.FieldValue.serverTimestamp() })
+          ); } catch(_){}
+        }
+      },
       isUsernameTaken(_name, _cur){ return false; },
       uploadProfilePic(dataUrl){ return { url: dataUrl }; },
       async getLeaderboardData(){
