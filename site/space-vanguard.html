@@ -567,7 +567,7 @@
     let invincible = false, invincibleTimer = 0;
     const INVINCIBLE_DURATION = 1500;
     let shipFlyingUp = false;
-    const TURRET_DMG_UNLOCK_LEVELS = [5, 13, 21, 30, 39, 47, 56, 64, 73, 82, 90, 99];
+    const TURRET_DMG_UNLOCK_LEVELS = [3, 8, 14, 21, 29, 38, 48, 59, 71, 83, 91, 99];
     const TURRET_DMG_MAX = TURRET_DMG_UNLOCK_LEVELS.length;
     const BULLET_COLORS = [
       [255,50,50],[255,100,30],[255,165,0],[255,200,0],[255,255,0],[160,255,0],
@@ -708,10 +708,10 @@
       }
       return count;
     }
-    function getTurretDmgCost(currentLvl) { return Math.floor(1000 * Math.pow(3, currentLvl)); }
+    function getTurretDmgCost(currentLvl) { return Math.floor(500 * Math.pow(2.8, currentLvl)); }
     function getTurretDmgMultiplier() { return Math.pow(2, turretDmgLvl); }
     function getHullMaxAvailable() { return Math.min(HULL_MAX, stagesUnlocked - 1); }
-    function getHullCost(lvl) { return Math.floor(5000 * Math.pow(5, lvl)); }
+    function getHullCost(lvl) { return Math.floor(3000 * Math.pow(4, lvl)); }
     function fmtNum(n) { return Math.floor(n).toLocaleString('en-US'); }
     let throttleValue = 75, timeAlive = 0, username = "", profilePic = "";
     let parentUsername = "", parentProfilePic = "";
@@ -735,7 +735,7 @@
       { base: [30,80,230], hard: [160,30,230], boss: [160,30,230] }
     ];
     const BOSS_HP_VALUES = [100, 600, 3000, 15000, 80000, 400000];
-    const BOSS_REWARDS = [500, 2000, 6000, 15000, 40000, 100000];
+    const BOSS_REWARDS = [800, 3000, 8000, 20000, 50000, 120000];
     const SHIP_SKINS = [
       { name: 'RED ZONE', color: [200,50,50], price: 500 },
       { name: 'ORANGE NEBULA', color: [230,130,30], price: 1500 },
@@ -760,7 +760,7 @@
     let bossBullets = [];
     let bossDefeated = false;
     let collectParticles = [];
-    const LEVEL_BASE_REQUIREMENT = 300;
+    const LEVEL_BASE_REQUIREMENT = 200;
     const LEVEL_GROWTH_MULT = 1.1;
     const MAX_UPGRADE_LEVEL = 100;
     const UPGRADE_LIST = ['Engine Speed', 'Turret Fire Rate', 'Star Dust Collector'];
