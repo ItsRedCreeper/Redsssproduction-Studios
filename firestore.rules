@@ -26,8 +26,20 @@ service cloud.firestore {
       // Any signed-in user can read any profile (needed for friend search, presence, leaderboard)
       allow read: if isAuth();
 
-      // Only the account owner can write their own profile
-      allow write: if isUser(uid);
+      // Only the account owner can create or delete their own profile
+      allow create, delete: if isUser(uid);
+
+      // The account owner can update anything on their own profile.
+      // Any signed-in user can also update another user's profile ONLY to add
+      // themselves to that user's friends array (needed when accepting a friend request).
+      allow update: if isUser(uid) ||
+        (isAuth() &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends']) &&
+         request.resource.data.friends is list &&
+         request.resource.data.friends.toSet().hasAll(resource.data.get('friends', []).toSet()) &&
+         request.resource.data.friends.toSet()
+           .difference(resource.data.get('friends', []).toSet())
+           .hasOnly([request.auth.uid]));
 
       // ── Notifications sub-collection ─────────────────────────────────────
       match /notifications/{notifId} {
