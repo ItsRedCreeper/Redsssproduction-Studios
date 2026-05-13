@@ -21,10 +21,11 @@
     .view { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; background: rgba(0,0,0,0.85); box-sizing: border-box; padding: 20px; overflow: hidden; }
     .active-view { display: flex; }
     
-    #view-levels.active-view { overflow-y: auto; display: block; padding-top: 20px; text-align: center; }
-    #view-ship-skins.active-view { overflow-y: auto; display: block; padding-top: 20px; padding-bottom: 80px; text-align: center; }
-    #view-shop.active-view { overflow-y: auto; display: block; padding-top: 20px; padding-bottom: 80px; text-align: center; }
-    #view-level-tree.active-view { overflow-x: auto; overflow-y: hidden; align-items: stretch; justify-content: flex-start; padding-top: 20px; }
+    #user-bar { position: absolute; top: 0; left: 0; width: 100%; height: 65px; background: rgba(0,0,0,0.95); border-bottom: 2px solid #0ff; display: none; align-items: center; justify-content: space-between; padding: 0 30px; z-index: 150; box-sizing: border-box; }
+    #view-levels.active-view { overflow-y: auto; display: block; padding-top: 110px; text-align: center; }
+    #view-ship-skins.active-view { overflow-y: auto; display: block; padding-top: 110px; padding-bottom: 80px; text-align: center; }
+    #view-shop.active-view { overflow-y: auto; display: block; padding-top: 110px; padding-bottom: 80px; text-align: center; }
+    #view-level-tree.active-view { overflow-x: auto; overflow-y: hidden; align-items: stretch; justify-content: flex-start; padding-top: 110px; }
     .menu-box { display: flex; flex-direction: column; gap: 15px; width: 100%; max-width: 500px; border: 1px solid rgba(0,255,255,0.4); padding: 30px; background: rgba(0,10,10,0.95); box-sizing: border-box; }
     
     .btn { background: #111; border: 2px solid #0ff; color: #0ff; padding: 12px 15px; cursor: pointer; text-align: center; font-size: 14px; font-family: inherit; display: flex; justify-content: space-between; align-items: center; outline: none; min-height: 60px; box-sizing: border-box; }
@@ -190,16 +191,21 @@
       },
       saveGameData(save){
         svSave(save);
-        if(window._svUser && window.db){
+        if(window._svUser && typeof db !== 'undefined' && db){
           const u = window._svUser;
+          const uname = save.username||window._svUserName||'Pilot';
+          const pic   = save.profilePic||window._svUserPic||'';
+          const bankVal = Math.floor(save.bank||0);
+          const hpVal   = Math.floor(save.totalHitpointsDealt||0);
           try {
             db.collection('spacevanguard_saves').doc(u.uid).set({
-              uid:u.uid, username:save.username||window._svUserName||'Pilot',
-              bank:Math.floor(save.bank||0), hitpoints:Math.floor(save.totalHitpointsDealt||0),
-              profilePic: save.profilePic||window._svUserPic||'',
-              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+              uid:u.uid, username:uname, bank:bankVal, hitpoints:hpVal,
+              profilePic:pic, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
             }, { merge:true });
           } catch(_){}
+          // Push to denormalized leaderboard docs
+          svPushLeaderboard('stardust', u.uid, uname, pic, 'bank', bankVal, false);
+          svPushLeaderboard('hitpoints', u.uid, uname, pic, 'hitpoints', hpVal, false);
         }
       },
       saveUpgradeCaps(save){
@@ -212,20 +218,39 @@
       isUsernameTaken(_name, _cur){ return false; },
       uploadProfilePic(dataUrl){ return { url: dataUrl }; },
       async getLeaderboardData(){
-        if(!window.db) return [];
+        if(typeof db === 'undefined' || !db) return [];
         try {
-          const snap = await db.collection('spacevanguard_saves').orderBy('bank','desc').limit(50).get();
-          return snap.docs.map(function(d){ const r=d.data(); return { username:r.username||'Pilot', bank:r.bank||0, pic:r.profilePic||'' }; });
+          const snap = await db.collection('sv_leaderboard').doc('stardust').get();
+          if(!snap.exists) return [];
+          return (snap.data().entries||[]).map(function(e){ return { username:e.username||'Pilot', bank:e.bank||0, pic:e.pic||'' }; });
         } catch(_){ return []; }
       },
       async getHitpointsLeaderboardData(){
-        if(!window.db) return [];
+        if(typeof db === 'undefined' || !db) return [];
         try {
-          const snap = await db.collection('spacevanguard_saves').orderBy('hitpoints','desc').limit(50).get();
-          return snap.docs.map(function(d){ const r=d.data(); return { username:r.username||'Pilot', hitpoints:r.hitpoints||0, pic:r.profilePic||'' }; });
+          const snap = await db.collection('sv_leaderboard').doc('hitpoints').get();
+          if(!snap.exists) return [];
+          return (snap.data().entries||[]).map(function(e){ return { username:e.username||'Pilot', hitpoints:e.hitpoints||0, pic:e.pic||'' }; });
         } catch(_){ return []; }
       }
     };
+    // Push one entry into a denormalized leaderboard document.
+    // Requires Firestore rule on sv_leaderboard: allow read:true; allow write: if auth!=null
+    async function svPushLeaderboard(docId, uid, username, pic, field, value, ascending) {
+      if(typeof db === 'undefined' || !db || !uid) return;
+      try {
+        const ref = db.collection('sv_leaderboard').doc(docId);
+        const snap = await ref.get();
+        let entries = snap.exists ? (snap.data().entries||[]) : [];
+        entries = entries.filter(function(e){ return e.uid !== uid; });
+        const entry = { uid, username, pic };
+        entry[field] = value;
+        entries.push(entry);
+        entries.sort(function(a,b){ return ascending ? (a[field]||0)-(b[field]||0) : (b[field]||0)-(a[field]||0); });
+        await ref.set({ entries: entries.slice(0,10) });
+      } catch(_){}
+    }
+
     window.google = window.google || {};
     window.google.script = window.google.script || {};
     window.google.script.run = makeChain(SV_API);
@@ -329,6 +354,17 @@
   <div id="splash-screen" style="display:none"><div id="splash-text"></div></div>
 
   <canvas id="gameCanvas"></canvas>
+
+  <div id="user-bar">
+    <div class="level-indicator" onclick="showView('view-level-tree')">
+      <div id="level-display" class="level-circle">1</div>
+      <div class="level-label">LEVEL</div>
+    </div>
+    <div class="user-info" onclick="showSetup()">
+      <span id="display-username">PILOT</span>
+      <div id="avatar-container" class="avatar-wrapper"></div>
+    </div>
+  </div>
 
   <div id="hud">[ STAR DUST: <span id="score">0</span> ] | [ TOTAL: <span id="bank">0</span> ]<br>[ THROTTLE: <span id="throttle-ui">75</span>% ] <span id="hull-hp-bar" style="display:none;">| [ HULL: <span id="hull-hp-text"></span> ]</span></div>
   <button id="stop-btn" class="btn" onclick="endGame(true)">STOP ROUND</button>
@@ -791,6 +827,8 @@
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
       if(id !== 'NONE') document.getElementById(id).classList.add('active-view');
       const hideBar = (id === 'NONE' || id === 'setup-prompt' || id === 'reset-confirm' || id === 'view-resetting');
+      const uBar = document.getElementById('user-bar');
+      if (uBar) uBar.style.display = hideBar ? 'none' : 'flex';
       document.getElementById('hud').style.display = (id === 'NONE') ? 'block' : 'none';
       document.getElementById('stop-btn').style.display = (id === 'NONE') ? 'block' : 'none';
       if(id === 'view-shop') refreshShop();

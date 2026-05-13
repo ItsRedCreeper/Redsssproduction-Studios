@@ -55,6 +55,18 @@ service cloud.firestore {
       }
     }
 
+    // ── Space Vanguard Classic saves (per-user) ───────────────────────────────
+    match /spacevanguard_saves/{uid} {
+      allow read, write: if isUser(uid);
+    }
+
+    // ── Space Vanguard Classic public leaderboard ─────────────────────────────
+    // Documents: "stardust" and "hitpoints"
+    match /sv_leaderboard/{docId} {
+      allow read: if true;
+      allow write: if isAuth();
+    }
+
     // ── Space Vanguard 3D saves (per-user) ───────────────────────────────────
     match /sv3d_saves/{uid} {
       // Only the account owner can read or write their save data
