@@ -289,14 +289,14 @@
     let _svAuthResolve;
     window._svAuthPromise = new Promise(function(resolve){ _svAuthResolve = resolve; });
     // Wire up Firebase auth → resolve promise so getGameData can await it
-    if(window.auth){
-      window.auth.onAuthStateChanged(async function(u){
+    if(typeof auth !== 'undefined' && auth){
+      auth.onAuthStateChanged(async function(u){
         if(!u){ _svAuthResolve(); return; } // not signed in — resolve immediately
         window._svUser = u;
         let name = u.displayName || (u.email && u.email.split('@')[0]) || '';
         let pic  = u.photoURL || '';
         try {
-          const doc = await window.db.collection('users').doc(u.uid).get();
+          const doc = await db.collection('users').doc(u.uid).get();
           if(doc.exists){
             const r = doc.data();
             if(r.username) name = r.username;

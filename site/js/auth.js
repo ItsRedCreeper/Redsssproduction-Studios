@@ -137,6 +137,9 @@ const Auth = (() => {
       }
 
       const cred = await auth.createUserWithEmailAndPassword(email, password);
+      // Set displayName on the Firebase Auth user so nav.js fallback shows the
+      // correct username even if the Firestore read is slow on first sign-in.
+      await cred.user.updateProfile({ displayName: username }).catch(() => {});
       await createUserProfile(cred.user, username, avatarUrl);
     } catch (err) {
       errorEl.textContent = friendlyError(err.code);
