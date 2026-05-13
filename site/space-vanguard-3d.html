@@ -560,58 +560,65 @@
   scene.add(rim);
 
   // ── Procedural skybox (regenerated per stage) ──────────────────
-  // Cubemap built from canvas faces: deep space + colored nebula clouds
-  function makeSkyboxFace(opts) {
+  // Uses a single inverted sphere with one equirectangular canvas texture.
+  // A single canvas has no face boundaries so there are never visible seams.
+  let _skyMesh = null;
+  function setSkybox(opts) {
+    if (_skyMesh) {
+      if (_skyMesh.material.map) _skyMesh.material.map.dispose();
+      _skyMesh.material.dispose();
+      _skyMesh.geometry.dispose();
+      scene.remove(_skyMesh);
+    }
+    const W = 2048, H = 1024;
     const c = document.createElement('canvas');
-    c.width = 512; c.height = 512;
+    c.width = W; c.height = H;
     const ctx = c.getContext('2d');
-    // base — flat fill so all 6 faces share the same colour with no directional gradient seam
+    // flat base fill — same colour everywhere, no directional gradient
     ctx.fillStyle = '#' + opts.base.toString(16).padStart(6,'0');
-    ctx.fillRect(0,0,512,512);
+    ctx.fillRect(0, 0, W, H);
     // nebula puffs
     const tintR = (opts.tint>>16)&255, tintG=(opts.tint>>8)&255, tintB=opts.tint&255;
-    const nPuffs = Math.floor(8 + opts.density*10);
+    const nPuffs = Math.floor(10 + opts.density*14);
+    ctx.globalCompositeOperation = 'lighter';
     for (let i=0; i<nPuffs; i++) {
-      const x = Math.random()*512, y = Math.random()*512;
-      const r = 60 + Math.random()*220;
-      const g = ctx.createRadialGradient(x,y,5,x,y,r);
-      const alpha = 0.25 + Math.random()*0.55*opts.density;
+      const x = Math.random()*W, y = Math.random()*H;
+      const r = 100 + Math.random()*400;
+      const alpha = 0.22 + Math.random()*0.5*opts.density;
+      const g = ctx.createRadialGradient(x,y,10,x,y,r);
       g.addColorStop(0, 'rgba('+tintR+','+tintG+','+tintB+','+alpha+')');
-      g.addColorStop(0.5, 'rgba('+tintR+','+tintG+','+tintB+','+(alpha*0.3)+')');
+      g.addColorStop(0.5, 'rgba('+tintR+','+tintG+','+tintB+','+(alpha*0.28)+')');
       g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.globalCompositeOperation = 'lighter';
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
     }
     ctx.globalCompositeOperation = 'source-over';
     // stars
-    for (let i=0; i<350; i++) {
-      const x = Math.random()*512, y = Math.random()*512;
+    for (let i=0; i<2200; i++) {
+      const x = Math.random()*W, y = Math.random()*H;
       const sz = Math.random() < 0.94 ? 1 : (Math.random()<0.85 ? 2 : 3);
-      const b = 0.4 + Math.random()*0.6;
-      ctx.fillStyle = 'rgba(255,255,255,'+b+')';
+      ctx.fillStyle = 'rgba(255,255,255,'+(0.4+Math.random()*0.6)+')';
       ctx.fillRect(x, y, sz, sz);
     }
-    // occasional bright "hero" stars
-    for (let i=0; i<6; i++) {
-      const x = Math.random()*512, y = Math.random()*512;
-      const g = ctx.createRadialGradient(x,y,0,x,y,8);
-      g.addColorStop(0, 'rgba(255,255,255,1)');
-      g.addColorStop(0.4, 'rgba(255,255,255,0.4)');
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.fill();
+    // hero stars
+    for (let i=0; i<16; i++) {
+      const x = Math.random()*W, y = Math.random()*H;
+      const glow = ctx.createRadialGradient(x,y,0,x,y,10);
+      glow.addColorStop(0, 'rgba(255,255,255,1)');
+      glow.addColorStop(0.4, 'rgba(255,255,255,0.4)');
+      glow.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fill();
     }
-    return c;
+    const tex = new THREE.CanvasTexture(c);
+    _skyMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(2000, 32, 18),
+      new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, depthWrite: false })
+    );
+    scene.add(_skyMesh);
+    scene.background = null;
   }
-  function makeSkybox(opts) {
-    const faces = [];
-    for (let i=0; i<6; i++) faces.push(makeSkyboxFace(opts));
-    const tex = new THREE.CubeTexture(faces);
-    tex.needsUpdate = true;
-    return tex;
-  }
-  scene.background = makeSkybox({ base:0x05080f, tint:0x6688ff, density:0.8 });
+  setSkybox({ base:0x05080f, tint:0x6688ff, density:0.8 });
 
   // ── Asteroid field (per-stage rebuild) ─────────────────────────
   let asteroidField = new THREE.Group();
@@ -1003,7 +1010,7 @@
     ambient.color.setHex(stage.ambient);
     sun.color.setHex(stage.sun);
     renderer.setClearColor(stage.fog, 1);
-    scene.background = makeSkybox({ base:stage.skyBase, tint:stage.skyTint, density:stage.skyDensity });
+    setSkybox({ base:stage.skyBase, tint:stage.skyTint, density:stage.skyDensity });
     buildAsteroidField(stage.asteroids, stage.dustColor);
     buildDust(stage.dustColor);
   }
@@ -1081,18 +1088,23 @@
   }
 
   // ── Bullets ───────────────────────────────────────────────────
+  // CylinderGeometry is aligned along local Y. To display it pointing along the ship's
+  // -Z (forward) we rotate it -90° around local X, then apply the ship's world rotation.
+  // Using multiplyQuaternions(ship, align) avoids ever touching m.rotation (Euler) and
+  // then overwriting m.quaternion — the bug that was causing lasers to face sideways.
+  const _bulletAlignQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), -Math.PI/2);
   function spawnPlayerBullet() {
     const dmg = statDmg();
     const geo = new THREE.CylinderGeometry(0.08, 0.08, 1.4, 6);
     const mat = new THREE.MeshBasicMaterial({ color: 0x88ffff });
+    const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(shipRoot.quaternion);
     for (let i=0; i<2; i++) {
       const m = new THREE.Mesh(geo, mat);
-      m.rotation.x = Math.PI/2;
+      // Compose: align cylinder to -Z first, then rotate into world space with ship orientation
+      m.quaternion.multiplyQuaternions(shipRoot.quaternion, _bulletAlignQ);
       const off = new THREE.Vector3(i===0 ? -1.6 : 1.6, -0.05, -1.5);
       off.applyQuaternion(shipRoot.quaternion);
       m.position.copy(shipRoot.position).add(off);
-      const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(shipRoot.quaternion);
-      m.quaternion.copy(shipRoot.quaternion);
       scene.add(m);
       Game.bullets.push({ mesh:m, vel:fwd.clone().multiplyScalar(110), life:2.5, dmg });
     }
@@ -1847,6 +1859,8 @@
     }
     updateDebris(dt);
     updateCamera(dt);
+    // Keep the sky sphere centred on the camera so it always fills the view
+    if (_skyMesh) _skyMesh.position.copy(camera.position);
     renderer.render(scene, camera);
     requestAnimationFrame(loop);
   }
