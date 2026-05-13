@@ -631,10 +631,13 @@ const App = (() => {
   /* ── Community stats (games one-time, members live) ── */
   function _loadCommunityStats() {
     const statEl = id => document.getElementById(id);
-    // Games count — one-time
+    // Games count — one-time (Firestore games + 2 built-ins)
+    const BUILTIN_COUNT = 2;
     db.collection('games').get().then(snap => {
-      if (statEl('stat-games')) statEl('stat-games').textContent = snap.size;
-    }).catch(() => {});
+      if (statEl('stat-games')) statEl('stat-games').textContent = snap.size + BUILTIN_COUNT;
+    }).catch(() => {
+      if (statEl('stat-games')) statEl('stat-games').textContent = BUILTIN_COUNT;
+    });
     // Members count — live
     db.collection('users').where('username', '>=', '').onSnapshot(snap => {
       if (statEl('stat-members')) statEl('stat-members').textContent = snap.size;
