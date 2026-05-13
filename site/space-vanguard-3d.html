@@ -30,6 +30,7 @@
     .bar-fill { height:100%; background:#0ff; box-shadow:0 0 6px #0ff; transition:width .15s }
     .bar-fill.shield { background:#5cf }
     .bar-fill.boss { background:#f44; box-shadow:0 0 6px #f44 }
+    .bar-fill.boost  { background:#f90; box-shadow:0 0 6px #f90 }
     #hud .hint { margin-top:8px; font-size:11px; color:#7ff; letter-spacing:1px; opacity:.7 }
 
     #stage-hud { position:absolute; top:14px; right:18px; font-size:12px; z-index:50; text-shadow:0 0 6px #0ff; display:none; text-align:right; line-height:1.6 }
@@ -225,6 +226,7 @@
     <div class="row"><span class="key">KILLS</span><span class="val" id="kills">0</span> <span class="key">STARDUST</span><span class="val" id="credits">0</span></div>
     <div style="margin-top:8px"><span class="key">HULL</span> <span class="val" id="hp-text">100/100</span><div class="bar-wrap"><div class="bar-fill" id="hp-bar" style="width:100%"></div></div></div>
     <div style="margin-top:4px"><span class="key">SHIELD</span> <span class="val" id="sh-text">50/50</span><div class="bar-wrap"><div class="bar-fill shield" id="sh-bar" style="width:100%"></div></div></div>
+    <div style="margin-top:4px"><span class="key">BOOST</span> <span class="val" id="boost-text">100/100</span><div class="bar-wrap"><div class="bar-fill boost" id="boost-bar" style="width:100%"></div></div></div>
     <div class="hint">WASD MOVE · MOUSE AIM · LMB FIRE · SHIFT BOOST · V CAMERA · T TARGET · ESC PAUSE</div>
   </div>
 
@@ -257,7 +259,7 @@
       <h1>SPACE VANGUARD 3D</h1>
       <div class="tagline">PILOT: <span id="pilot-name">GUEST</span></div>
       <div class="stat-row"><span>Top Score</span><b id="hi-score">0</b></div>
-      <div class="stat-row"><span>Stages Cleared</span><b id="hi-stage">0</b> / 8</div>
+      <div class="stat-row"><span>Stages Cleared</span><span><b id="hi-stage">0</b> / 8</span></div>
       <div class="stat-row"><span>Banked Stardust</span><b id="bank">0</b></div>
       <button class="btn" id="btn-play"><span>▶ STAGE SELECT</span><span>SPACE</span></button>
       <button class="btn" id="btn-hangar"><span>HANGAR / UPGRADES</span><span>H</span></button>
@@ -302,12 +304,12 @@
     <div class="panel">
       <h1 style="font-size:22px">CONTROLS</h1>
       <div class="stat-row"><span>Strafe</span><b>W A S D</b></div>
-      <div class="stat-row"><span>Up / Down</span><b>SPACE / C</b></div>
+      <div class="stat-row"><span>Up / Down</span><b>SPACE / Ctrl</b></div>
       <div class="stat-row"><span>Roll</span><b>Q / E</b></div>
       <div class="stat-row"><span>Aim</span><b>Mouse</b></div>
       <div class="stat-row"><span>Fire</span><b>Left Mouse</b></div>
       <div class="stat-row"><span>Boost</span><b>Shift</b></div>
-      <div class="stat-row"><span>Brake</span><b>Ctrl</b></div>
+      <div class="stat-row"><span>Brake</span><b>X</b></div>
       <div class="stat-row"><span>Camera Toggle</span><b>V</b></div>
       <div class="stat-row"><span>Target Nearest / Cycle</span><b>T</b></div>
       <div class="stat-row"><span>Cycle Targets</span><b>Tab / R</b></div>
@@ -414,7 +416,7 @@
   }
   function persist(){
     try { localStorage.setItem(LS_KEY, JSON.stringify(save)); } catch(_) {}
-    if (currentUser && window.db) {
+    if (currentUser && typeof db !== 'undefined' && db) {
       try {
         db.collection('sv3d_saves').doc(currentUser.uid).set({
           uid: currentUser.uid,
@@ -428,7 +430,7 @@
     }
   }
 
-  if (window.auth) {
+  if (typeof auth !== 'undefined' && auth) {
     auth.onAuthStateChanged(async u => {
       if (!u) return;
       currentUser = u;
@@ -892,14 +894,14 @@
   // ── Enemy class table ──────────────────────────────────────────
   const ENEMY_TYPES = [
     null,
-    { name:'SCAVENGER', cls:1, build:buildScavenger, hp:30,  sh:0,   speed:18, fireRate:1.8,  bulletSpeed:32, dmgTouch:18, dmgShot:8,  radius:1.0, reward:35,  ai:'simple',  bullets:1, bulletColor:0xff8855 },
-    { name:'CORSAIR',   cls:2, build:buildCorsair,   hp:55,  sh:0,   speed:22, fireRate:1.4,  bulletSpeed:36, dmgTouch:22, dmgShot:11, radius:1.3, reward:65,  ai:'strafe',  bullets:1, bulletColor:0xffaa44 },
-    { name:'RAIDER',    cls:3, build:buildRaider,    hp:95,  sh:0,   speed:23, fireRate:1.1,  bulletSpeed:38, dmgTouch:28, dmgShot:14, radius:1.5, reward:110, ai:'circle',  bullets:2, bulletColor:0x66ff66 },
-    { name:'BRIGAND',   cls:4, build:buildBrigand,   hp:150, sh:40,  speed:16, fireRate:0.95, bulletSpeed:40, dmgTouch:35, dmgShot:18, radius:1.9, reward:180, ai:'burst',   bullets:2, bulletColor:0xaa66ff },
-    { name:'REAVER',    cls:5, build:buildReaver,    hp:230, sh:80,  speed:24, fireRate:0.85, bulletSpeed:44, dmgTouch:42, dmgShot:22, radius:1.9, reward:280, ai:'flank',   bullets:2, bulletColor:0xff44aa },
-    { name:'MARAUDER',  cls:6, build:buildMarauder,  hp:340, sh:130, speed:17, fireRate:0.7,  bulletSpeed:42, dmgTouch:55, dmgShot:26, radius:2.4, reward:420, ai:'twin',    bullets:3, bulletColor:0xff5533 },
-    { name:'DREADWING', cls:7, build:buildDreadwing, hp:490, sh:200, speed:22, fireRate:0.55, bulletSpeed:46, dmgTouch:70, dmgShot:30, radius:2.6, reward:620, ai:'predict', bullets:3, bulletColor:0xff2266 },
-    { name:'PHANTOM',   cls:8, build:buildPhantom,   hp:680, sh:300, speed:28, fireRate:0.5,  bulletSpeed:50, dmgTouch:90, dmgShot:36, radius:2.4, reward:900, ai:'cloak',   bullets:3, bulletColor:0xffffff }
+    { name:'SCAVENGER', cls:1, build:buildScavenger, hp:50,  sh:0,   speed:22, fireRate:1.4,  bulletSpeed:36, dmgTouch:25, dmgShot:14, radius:1.0, reward:35,  ai:'simple',  bullets:1, bulletColor:0xff8855 },
+    { name:'CORSAIR',   cls:2, build:buildCorsair,   hp:90,  sh:0,   speed:26, fireRate:1.1,  bulletSpeed:40, dmgTouch:30, dmgShot:18, radius:1.3, reward:65,  ai:'strafe',  bullets:1, bulletColor:0xffaa44 },
+    { name:'RAIDER',    cls:3, build:buildRaider,    hp:160, sh:20,  speed:27, fireRate:0.88, bulletSpeed:42, dmgTouch:38, dmgShot:22, radius:1.5, reward:110, ai:'circle',  bullets:2, bulletColor:0x66ff66 },
+    { name:'BRIGAND',   cls:4, build:buildBrigand,   hp:260, sh:70,  speed:20, fireRate:0.75, bulletSpeed:44, dmgTouch:50, dmgShot:28, radius:1.9, reward:180, ai:'burst',   bullets:2, bulletColor:0xaa66ff },
+    { name:'REAVER',    cls:5, build:buildReaver,    hp:400, sh:130, speed:28, fireRate:0.65, bulletSpeed:48, dmgTouch:62, dmgShot:35, radius:1.9, reward:280, ai:'flank',   bullets:2, bulletColor:0xff44aa },
+    { name:'MARAUDER',  cls:6, build:buildMarauder,  hp:580, sh:210, speed:21, fireRate:0.52, bulletSpeed:46, dmgTouch:80, dmgShot:42, radius:2.4, reward:420, ai:'twin',    bullets:3, bulletColor:0xff5533 },
+    { name:'DREADWING', cls:7, build:buildDreadwing, hp:820, sh:320, speed:26, fireRate:0.40, bulletSpeed:50, dmgTouch:100,dmgShot:52, radius:2.6, reward:620, ai:'predict', bullets:3, bulletColor:0xff2266 },
+    { name:'PHANTOM',   cls:8, build:buildPhantom,   hp:1100,sh:480, speed:32, fireRate:0.35, bulletSpeed:56, dmgTouch:130,dmgShot:65, radius:2.4, reward:900, ai:'cloak',   bullets:3, bulletColor:0xffffff }
   ];
 
   // ── Game state ─────────────────────────────────────────────────
@@ -909,6 +911,7 @@
     score: 0, kills: 0, credits: 0,
     hp: 100, hpMax: 100,
     sh: 50,  shMax: 50,
+    boost: 100, boostMax: 100,
     enemies: [], bullets: [], enemyBullets: [], pickups: [], debris: [],
     boss: null,
     enemiesToSpawn: 0, waveTotal: 0, waveKilled: 0, nowSec: 0, playerVel: new THREE.Vector3(),
@@ -1225,6 +1228,7 @@
     shipRoot.quaternion.identity();
     Game.hpMax = statHull(); Game.hp = Game.hpMax;
     Game.shMax = statShield(); Game.sh = Game.shMax;
+    Game.boost = Game.boostMax;
     Game.score = 0; Game.kills = 0; Game.credits = 0;
     Game.enemies.forEach(e=>scene.remove(e.mesh)); Game.enemies = [];
     Game.bullets.forEach(b=>scene.remove(b.mesh)); Game.bullets = [];
@@ -1409,7 +1413,7 @@
       const elW = document.getElementById('lb-stage');
       elS.innerHTML = '<p style="padding:10px;color:#666;text-align:center">Loading…</p>';
       elW.innerHTML = '<p style="padding:10px;color:#666;text-align:center">Loading…</p>';
-      if (!window.db) { elS.innerHTML = '<p style="padding:10px;color:#666;text-align:center">Sign in to view leaderboard</p>'; elW.innerHTML=''; return; }
+      if (typeof db === 'undefined' || !db) { elS.innerHTML = '<p style="padding:10px;color:#666;text-align:center">Sign in to view leaderboard</p>'; elW.innerHTML=''; return; }
       try {
         const s1 = await db.collection('sv3d_saves').orderBy('hiScore','desc').limit(10).get();
         elS.innerHTML = ''; let r = 1;
@@ -1461,8 +1465,10 @@
     shipRoot.quaternion.normalize();
 
     let speed = statSpeed();
-    if (keys['ShiftLeft']||keys['ShiftRight']) speed *= 1.9;
-    if (keys['ControlLeft']||keys['ControlRight']) speed *= 0.35;
+    const isBoosting = (keys['ShiftLeft']||keys['ShiftRight']) && Game.boost > 0;
+    if (isBoosting) { speed *= 1.9; Game.boost = Math.max(0, Game.boost - 45 * dt); }
+    else { Game.boost = Math.min(Game.boostMax, Game.boost + 8 * dt); }
+    if (keys['KeyX']) speed *= 0.35;
     const fwd   = new THREE.Vector3(0,0,-1).applyQuaternion(shipRoot.quaternion);
     const right = new THREE.Vector3(1,0,0).applyQuaternion(shipRoot.quaternion);
     const up    = new THREE.Vector3(0,1,0).applyQuaternion(shipRoot.quaternion);
@@ -1471,8 +1477,8 @@
     if (keys['KeyS']||keys['ArrowDown'])  move.sub(fwd);
     if (keys['KeyD']||keys['ArrowRight']) move.add(right);
     if (keys['KeyA']||keys['ArrowLeft'])  move.sub(right);
-    if (keys['Space'])                    move.add(up);
-    if (keys['KeyC'])                     move.sub(up);
+    if (keys['Space'])                                   move.add(up);
+    if (keys['ControlLeft']||keys['ControlRight'])       move.sub(up);
     if (move.lengthSq() > 0) {
       move.normalize().multiplyScalar(speed*dt);
       shipRoot.position.add(move);
@@ -1483,7 +1489,8 @@
 
     if (shipRoot.userData.engineGlows) {
       const pulse = 0.7 + 0.3*Math.sin(performance.now()*0.012);
-      const boost = (keys['ShiftLeft']||keys['ShiftRight']) ? 1.5 : 1.0;
+      const isBoosting2 = (keys['ShiftLeft']||keys['ShiftRight']) && Game.boost > 0;
+      const boost = isBoosting2 ? 1.5 : 1.0;
       shipRoot.userData.engineGlows.forEach(g => g.scale.setScalar(pulse*boost));
       if (shipRoot.userData.engineLight) shipRoot.userData.engineLight.intensity = 1.2*boost + pulse*0.4;
     }
@@ -1922,12 +1929,19 @@
     }
   }
   function updateAsteroids(dt) {
-    // Spin asteroids slightly
+    // Spin and check collision with player
     asteroidField.children.forEach(c => {
       if (c.userData.spin) {
         c.rotation.x += c.userData.spin.x*dt*0.2;
         c.rotation.y += c.userData.spin.y*dt*0.2;
         c.rotation.z += c.userData.spin.z*dt*0.2;
+      }
+      if (Game.state === 'playing' && shipRoot) {
+        const r = (c.geometry.parameters && c.geometry.parameters.radius) || 2.5;
+        if (c.position.distanceTo(shipRoot.position) < r + 1.2) {
+          spawnExplosion(shipRoot.position, 0xff8844, 3);
+          gameOver(false);
+        }
       }
     });
   }
@@ -1955,6 +1969,8 @@
     document.getElementById('hp-bar').style.width = (100*Math.max(0,Game.hp)/Game.hpMax) + '%';
     document.getElementById('sh-text').textContent = Math.ceil(Game.sh) + '/' + Game.shMax;
     document.getElementById('sh-bar').style.width = (100*Math.max(0,Game.sh)/Game.shMax) + '%';
+    document.getElementById('boost-text').textContent = Math.ceil(Game.boost) + '/' + Game.boostMax;
+    document.getElementById('boost-bar').style.width = (100*Math.max(0,Game.boost)/Game.boostMax) + '%';
     if (Game.sh < Game.shMax) Game.sh = Math.min(Game.shMax, Game.sh + 4*0.016);
     if (Game.bossSpawned) {
       // escorts = everything in the array minus the boss itself
