@@ -88,21 +88,21 @@
     /* ── Game page layout ─────────────────────────────────────────── */
     #game-page { padding-top: 56px; background: #0d0d0d; min-height: 100vh; }
     #game-shell { width: calc(100% - 80px); max-width: 1280px; margin: 0 auto; padding: 20px 0 40px; box-sizing: border-box; }
-    #game-area { position: relative; overflow: hidden; width: 100%; aspect-ratio: 16/9; background: #000; border: 1px solid rgba(0,255,255,0.15); box-shadow: 0 0 40px rgba(0,255,255,0.04); }
-    #game-area:fullscreen { width: 100vw !important; height: 100vh !important; aspect-ratio: unset !important; border: none !important; }
+    #game-area { position: relative; overflow: hidden; width: 100%; aspect-ratio: 16/9; background: #000; border: 1px solid #2a2a2a; box-shadow: 0 4px 24px rgba(0,0,0,0.6); border-radius: 10px; }
+    #game-area:fullscreen { width: 100vw !important; height: 100vh !important; aspect-ratio: unset !important; border: none !important; border-radius: 0 !important; }
     #game-area:-webkit-full-screen { width: 100vw !important; height: 100vh !important; aspect-ratio: unset !important; }
-    #game-controls-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; margin-bottom: 24px; border-bottom: 1px solid rgba(0,255,255,0.1); }
-    .game-name-bar { color: rgba(0,255,255,0.45); font-size: 12px; letter-spacing: 3px; text-transform: uppercase; font-family: 'Courier New', monospace; }
-    #fullscreen-btn { background: transparent; border: 1px solid rgba(0,255,255,0.35); color: #0ff; padding: 7px 14px; cursor: pointer; font-family: 'Courier New', monospace; font-size: 12px; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; transition: background 0.15s, box-shadow 0.15s; }
-    #fullscreen-btn:hover { background: rgba(0,255,255,0.1); box-shadow: 0 0 8px rgba(0,255,255,0.2); }
+    #game-controls-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; margin-bottom: 24px; border-bottom: 1px solid #2a2a2a; }
+    .game-name-bar { color: #666; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; font-family: 'Segoe UI', sans-serif; }
+    #fullscreen-btn { background: transparent; border: 1px solid #3a3a3a; color: #eee; padding: 7px 14px; cursor: pointer; font-family: 'Segoe UI', sans-serif; font-size: 12px; border-radius: 6px; display: flex; align-items: center; gap: 6px; transition: background 0.2s, border-color 0.2s; }
+    #fullscreen-btn:hover { background: rgba(192,57,43,0.15); border-color: #c0392b; color: #fff; }
     #suggested-section { margin-bottom: 20px; }
-    #suggested-section h2 { color: #0ff; font-size: 13px; letter-spacing: 3px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid rgba(0,255,255,0.15); text-transform: uppercase; font-weight: normal; font-family: 'Courier New', monospace; }
+    #suggested-section h2 { color: #eee; font-size: 13px; letter-spacing: 2px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #2a2a2a; text-transform: uppercase; font-weight: 600; font-family: 'Segoe UI', sans-serif; }
     #suggested-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
     .suggested-card { display: flex; flex-direction: column; text-decoration: none; }
-    .suggested-card:hover .suggested-thumb { border-color: #0ff; box-shadow: 0 0 12px rgba(0,255,255,0.25); }
-    .suggested-thumb { width: 100%; aspect-ratio: 16/9; border: 1px solid rgba(0,255,255,0.2); overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; transition: border-color 0.15s, box-shadow 0.15s; }
-    .suggested-title { color: #aaa; font-size: 11px; letter-spacing: 1px; margin-top: 6px; text-align: center; font-family: 'Courier New', monospace; }
-    .suggested-card:hover .suggested-title { color: #0ff; }
+    .suggested-card:hover .suggested-thumb { border-color: #c0392b; box-shadow: 0 0 12px rgba(192,57,43,0.3); }
+    .suggested-thumb { width: 100%; aspect-ratio: 16/9; border: 1px solid #2a2a2a; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #151515; transition: border-color 0.2s, box-shadow 0.2s; }
+    .suggested-title { color: #aaa; font-size: 12px; margin-top: 6px; text-align: center; font-family: 'Segoe UI', sans-serif; }
+    .suggested-card:hover .suggested-title { color: #e74c3c; }
   </style>
 </head>
 <body>
