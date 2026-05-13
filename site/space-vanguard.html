@@ -180,7 +180,9 @@
       return c;
     }
     const SV_API = {
-      getGameData(){
+      async getGameData(){
+        // Wait for Firebase auth + Firestore username fetch to complete
+        if(window._svAuthPromise) await window._svAuthPromise;
         let d = svLoad();
         if(!d){ d = svDefaults(); }
         if(window._svUser){
@@ -255,10 +257,13 @@
     window.google.script = window.google.script || {};
     window.google.script.run = makeChain(SV_API);
 
-    // Wire up Firebase auth → feed identity into the existing PARENT_AUTH path
+    // Resolved once auth state + Firestore username are known
+    let _svAuthResolve;
+    window._svAuthPromise = new Promise(function(resolve){ _svAuthResolve = resolve; });
+    // Wire up Firebase auth → resolve promise so getGameData can await it
     if(window.auth){
       window.auth.onAuthStateChanged(async function(u){
-        if(!u) return;
+        if(!u){ _svAuthResolve(); return; } // not signed in — resolve immediately
         window._svUser = u;
         let name = u.displayName || (u.email && u.email.split('@')[0]) || '';
         let pic  = u.photoURL || '';
@@ -272,9 +277,10 @@
         } catch(_){}
         window._svUserName = name;
         window._svUserPic  = pic;
-        // Trigger existing handler so username auto-fills without setup prompt
-        try { window.dispatchEvent(new MessageEvent('message', { data:{ type:'PARENT_AUTH', username:name, profilePic:pic } })); } catch(_){}
+        _svAuthResolve(); // auth + username now ready
       });
+    } else {
+      _svAuthResolve(); // no auth module — resolve immediately
     }
   })();
   </script>
@@ -1226,15 +1232,17 @@
           updateProfileUI();
           updateLevelUI();
           buildLevelTree();
-          if (!username && parentUsername) {
+          if (!username && window._svUser) {
+            // Signed in but no username resolved — derive from Firebase identity
+            username = window._svUserName || (window._svUser.email && window._svUser.email.split('@')[0]) || 'PILOT';
+            if (!profilePic) profilePic = window._svUserPic || '';
             isNewPlayer = false;
-            username = parentUsername;
-            if (!profilePic) profilePic = parentProfilePic;
             sync(function(){});
             showView('view-main');
             document.getElementById('cancel-setup').style.display = 'block';
           } else if (!username) {
-            isNewPlayer = true; showView('setup-prompt');
+            // Not signed in — just show main (no save/leaderboard until they log in)
+            showView('view-main');
           } else {
             showView('view-main');
             document.getElementById('cancel-setup').style.display = 'block';

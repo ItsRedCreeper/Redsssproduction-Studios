@@ -399,6 +399,8 @@
   };
   let save = loadSave();
   let currentUser = null;
+  let currentUserName = '';
+  let currentUserPic = '';
 
   function loadSave(){
     try {
@@ -426,7 +428,7 @@
       try {
         db.collection('sv3d_saves').doc(currentUser.uid).set({
           uid: currentUser.uid,
-          username: (currentUser.displayName || currentUser.email || 'Pilot'),
+          username: currentUserName || (currentUser.displayName || currentUser.email || 'Pilot'),
           hiScore: save.hiScore,
           stagesCleared: save.stagesCleared,
           totalCredits: save.totalCredits,
@@ -441,10 +443,16 @@
       if (!u) return;
       currentUser = u;
       let name = u.displayName || (u.email && u.email.split('@')[0]) || 'PILOT';
+      let pic = u.photoURL || '';
       try {
         const doc = await db.collection('users').doc(u.uid).get();
-        if (doc.exists && doc.data().username) name = doc.data().username;
+        if (doc.exists) {
+          if (doc.data().username) name = doc.data().username;
+          if (doc.data().avatar)   pic  = doc.data().avatar;
+        }
       } catch(_) {}
+      currentUserName = name;
+      currentUserPic  = pic;
       document.getElementById('pilot-name').textContent = name.toUpperCase();
       try {
         const doc = await db.collection('sv3d_saves').doc(u.uid).get();
@@ -1319,10 +1327,11 @@
       document.getElementById('vic-time').textContent = fmtTime(elapsed) + (newTimeRecord ? ' ★' : '');
       document.getElementById('vic-new-record').style.display = newHi ? 'block' : 'none';
       // Push to global leaderboard
-      if (currentUser) {
-        const uname = currentUser.displayName || (currentUser.email && currentUser.email.split('@')[0]) || 'Pilot';
-        if (newHi) pushLeaderboard('scores', currentUser.uid, uname, 'score', save.hiScore, false);
-        if (newTimeRecord) pushLeaderboard('times_'+Game.stageIdx, currentUser.uid, uname, 'secs', elapsed, true);
+      if (currentUser && newHi) {
+        pushLeaderboard('scores', currentUser.uid, currentUserName || currentUser.displayName || 'Pilot', currentUserPic, 'score', save.hiScore, false);
+      }
+      if (victory && currentUser && newTimeRecord) {
+        pushLeaderboard('times_'+Game.stageIdx, currentUser.uid, currentUserName || currentUser.displayName || 'Pilot', currentUserPic, 'secs', elapsed, true);
       }
       UI.show('victory');
     } else {
@@ -1343,14 +1352,14 @@
   // Firestore rule needed on sv3d_leaderboard:
   //   allow read: if true;
   //   allow write: if request.auth != null;
-  async function pushLeaderboard(docId, uid, username, field, value, ascending) {
+  async function pushLeaderboard(docId, uid, username, pic, field, value, ascending) {
     if (typeof db === 'undefined' || !db || !uid) return;
     try {
       const ref = db.collection('sv3d_leaderboard').doc(docId);
       const snap = await ref.get();
       let entries = snap.exists ? (snap.data().entries || []) : [];
       entries = entries.filter(e => e.uid !== uid);
-      entries.push({ uid, username, [field]: value });
+      entries.push({ uid, username, pic: pic||'', [field]: value });
       entries.sort((a, b) => ascending ? (a[field]||0)-(b[field]||0) : (b[field]||0)-(a[field]||0));
       await ref.set({ entries: entries.slice(0, 10) });
     } catch(e) { console.error('pushLeaderboard', docId, e); }
@@ -1481,7 +1490,10 @@
         } else {
           entries.forEach((x, i) => {
             const div = document.createElement('div'); div.className = 'lb-entry';
-            div.innerHTML = '<span class="lb-rank">'+(i+1)+'</span><span class="lb-name">'+(x.username||'Pilot')+'</span><span class="lb-score">'+fmt(x.score||0)+'</span>';
+            const avatarHtml = x.pic
+              ? `<img src="${x.pic}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+              : `<div style="width:24px;height:24px;border-radius:50%;background:#1a2a3a;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">${(x.username||'?').charAt(0).toUpperCase()}</div>`;
+            div.innerHTML = '<span class="lb-rank">'+(i+1)+'</span>'+avatarHtml+'<span class="lb-name">'+(x.username||'Pilot')+'</span><span class="lb-score">'+fmt(x.score||0)+'</span>';
             elS.appendChild(div);
           });
         }
@@ -1504,7 +1516,10 @@
         } else {
           entries.forEach((x, i) => {
             const div = document.createElement('div'); div.className = 'lb-entry';
-            div.innerHTML = '<span class="lb-rank">'+(i+1)+'</span><span class="lb-name">'+(x.username||'Pilot')+'</span><span class="lb-score">'+fmtTime(x.secs||0)+'</span>';
+            const avatarHtml = x.pic
+              ? `<img src="${x.pic}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;">`
+              : `<div style="width:24px;height:24px;border-radius:50%;background:#1a2a3a;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">${(x.username||'?').charAt(0).toUpperCase()}</div>`;
+            div.innerHTML = '<span class="lb-rank">'+(i+1)+'</span>'+avatarHtml+'<span class="lb-name">'+(x.username||'Pilot')+'</span><span class="lb-score">'+fmtTime(x.secs||0)+'</span>';
             elT.appendChild(div);
           });
         }
