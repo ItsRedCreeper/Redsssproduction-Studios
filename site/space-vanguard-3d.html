@@ -565,11 +565,9 @@
     const c = document.createElement('canvas');
     c.width = 512; c.height = 512;
     const ctx = c.getContext('2d');
-    // base
-    const bg = ctx.createLinearGradient(0,0,0,512);
-    bg.addColorStop(0, '#' + opts.base.toString(16).padStart(6,'0'));
-    bg.addColorStop(1, '#000000');
-    ctx.fillStyle = bg; ctx.fillRect(0,0,512,512);
+    // base — flat fill so all 6 faces share the same colour with no directional gradient seam
+    ctx.fillStyle = '#' + opts.base.toString(16).padStart(6,'0');
+    ctx.fillRect(0,0,512,512);
     // nebula puffs
     const tintR = (opts.tint>>16)&255, tintG=(opts.tint>>8)&255, tintB=opts.tint&255;
     const nPuffs = Math.floor(8 + opts.density*10);
@@ -930,19 +928,20 @@
   const camOffsetChase  = new THREE.Vector3(0, 2.2, 7.5);
   const camOffsetCockpit = new THREE.Vector3(0, 0.45, -0.6);
   const _camTargetPos = new THREE.Vector3();
-  const _camLookPos = new THREE.Vector3();
   function updateCamera(dt) {
     if (!shipRoot) return;
     const offset = (Game.camMode === 'cockpit') ? camOffsetCockpit : camOffsetChase;
     _camTargetPos.copy(offset).applyQuaternion(shipRoot.quaternion).add(shipRoot.position);
+    // Use quaternion slerp so the camera rolls with the ship and has no gimbal lock.
+    // camera.lookAt() is intentionally NOT used — it resets camera roll to world-Y.
+    const lerp = (Game.camMode === 'cockpit') ? 1.0 : Math.min(1, dt * 8);
     if (Game.state === 'playing' || Game.state === 'paused') {
-      const lerp = (Game.camMode === 'cockpit') ? 1.0 : Math.min(1, dt*8);
       camera.position.lerp(_camTargetPos, lerp);
+      camera.quaternion.slerp(shipRoot.quaternion, lerp);
     } else {
       camera.position.copy(_camTargetPos);
+      camera.quaternion.copy(shipRoot.quaternion);
     }
-    _camLookPos.set(0, 0, -12).applyQuaternion(shipRoot.quaternion).add(shipRoot.position);
-    camera.lookAt(_camLookPos);
     shipRoot.visible = (Game.camMode !== 'cockpit');
   }
 
