@@ -406,6 +406,18 @@
         <span class="settings-val" id="set-shake-lbl">50%</span>
       </div>
       <p style="font-size:10px;color:#667;margin-top:4px">Screen shakes when hit (large) and when firing (small). Set to 0 to disable.</p>
+      <div class="stat-row" style="align-items:center;gap:10px;margin-top:8px">
+        <span class="settings-label">Mouse Sensitivity</span>
+        <input type="range" id="set-sens" class="settings-slider" min="0.05" max="1" step="0.01" value="0.5">
+        <span class="settings-val" id="set-sens-lbl">50%</span>
+      </div>
+      <p style="font-size:10px;color:#667;margin-top:4px">Controls how fast the ship turns with the mouse. Lower = slower/smoother (good for trackpads).</p>
+      <div class="stat-row" style="align-items:center;gap:10px;margin-top:8px">
+        <span class="settings-label">Aim Assist</span>
+        <input type="range" id="set-aim" class="settings-slider" min="0" max="1" step="0.01" value="0.4">
+        <span class="settings-val" id="set-aim-lbl">40%</span>
+      </div>
+      <p style="font-size:10px;color:#667;margin-top:4px">Gently pulls your aim toward nearby enemies within ~30°. Raise for trackpad play; set 0 to disable.</p>
       <button class="btn ghost" onclick="UI.show('main')" style="margin-top:6px"><span>← BACK</span><span></span></button>
     </div>
   </div>
@@ -488,6 +500,8 @@
     ingameVolume: 0.5,
     sfxVolume: 1.0,
     shakeIntensity: 0.5,
+    mouseSensitivity: 0.5,
+    aimAssist: 0.4,
     // Lifetime stats (Minecraft-style stat board)
     stats: {
       totalKills: 0,
@@ -541,6 +555,8 @@
           ingameVolume: save.ingameVolume != null ? save.ingameVolume : 0.5,
           sfxVolume: save.sfxVolume != null ? save.sfxVolume : 1.0,
           shakeIntensity: save.shakeIntensity != null ? save.shakeIntensity : 0.5,
+          mouseSensitivity: save.mouseSensitivity != null ? save.mouseSensitivity : 0.5,
+          aimAssist: save.aimAssist != null ? save.aimAssist : 0.4,
           stats: save.stats || {},
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge:true }).catch(()=>{});
@@ -580,6 +596,8 @@
           if (r.ingameVolume != null) save.ingameVolume = r.ingameVolume;
           if (r.sfxVolume != null)   save.sfxVolume    = r.sfxVolume;
           if (r.shakeIntensity != null) save.shakeIntensity = r.shakeIntensity;
+          if (r.mouseSensitivity != null) save.mouseSensitivity = r.mouseSensitivity;
+          if (r.aimAssist != null) save.aimAssist = r.aimAssist;
           // Merge stats — keep max of each
           if (r.stats && typeof r.stats === 'object') {
             save.stats = Object.assign({}, DEFAULT_SAVE.stats, save.stats, r.stats);
@@ -928,93 +946,93 @@
 
     // ── STRUCTURAL SHELL ──
     // Floor (full cockpit footprint)
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.045, 1.65), matWall);
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(1.40, 0.06, 1.75), matWall);
     floor.position.set(0, -0.05, -0.22); interior.add(floor);
-    // Ceiling (full footprint, slightly narrower)
-    const ceil = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.04, 1.5), matWall);
-    ceil.position.set(0, 0.83, -0.18); interior.add(ceil);
-    // Left side wall
-    const wallL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.92, 1.65), matWall);
-    wallL.position.set(-0.45, 0.38, -0.22); interior.add(wallL);
+    // Ceiling (full footprint)
+    const ceil = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.05, 1.65), matWall);
+    ceil.position.set(0, 0.85, -0.18); interior.add(ceil);
+    // Left side wall — thick so it's clearly visible at all look angles
+    const wallL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.95, 1.75), matWall);
+    wallL.position.set(-0.68, 0.37, -0.22); interior.add(wallL);
     // Right side wall
-    const wallR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.92, 1.65), matWall);
-    wallR.position.set(0.45, 0.38, -0.22); interior.add(wallR);
+    const wallR = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.95, 1.75), matWall);
+    wallR.position.set(0.68, 0.37, -0.22); interior.add(wallR);
     // Rear bulkhead
-    const bulkhead = new THREE.Mesh(new THREE.BoxGeometry(0.94, 0.92, 0.05), matWall);
-    bulkhead.position.set(0, 0.38, 0.50); interior.add(bulkhead);
+    const bulkhead = new THREE.Mesh(new THREE.BoxGeometry(1.40, 0.95, 0.07), matWall);
+    bulkhead.position.set(0, 0.37, 0.52); interior.add(bulkhead);
 
     // ── WALL ACCENT STRIPS ──
     // Accent channel running along each side wall
     for (let s of [-1, 1]) {
-      const strip = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.03, 1.5), matAccent);
-      strip.position.set(s*0.43, 0.58, -0.18); interior.add(strip);
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.04, 1.65), matAccent);
+      strip.position.set(s*0.63, 0.60, -0.22); interior.add(strip);
     }
     // Ceiling accent bar (fore-to-aft spine on ceiling)
-    const ceilBar = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.02, 1.4), matAccent);
-    ceilBar.position.set(0, 0.82, -0.18); interior.add(ceilBar);
+    const ceilBar = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.02, 1.55), matAccent);
+    ceilBar.position.set(0, 0.84, -0.18); interior.add(ceilBar);
 
     // ── REAR BULKHEAD DETAILS ──
     // Central equipment box on rear wall (comms/power unit)
-    const rearBox = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.34, 0.07), matPanel);
-    rearBox.position.set(0, 0.42, 0.52); interior.add(rearBox);
+    const rearBox = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.38, 0.07), matPanel);
+    rearBox.position.set(0, 0.42, 0.54); interior.add(rearBox);
     // Glowing status strip on rear box
-    const rearGlow = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.025, 0.04), matAccent);
-    rearGlow.position.set(0, 0.56, 0.53); interior.add(rearGlow);
+    const rearGlow = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.025, 0.04), matAccent);
+    rearGlow.position.set(0, 0.58, 0.55); interior.add(rearGlow);
     // Two indicator lights on rear box
     for (let s of [-1, 1]) {
       const rl = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 4),
         new THREE.MeshBasicMaterial({ color: s<0 ? 0x44ff66 : 0xff4444 }));
-      rl.position.set(s*0.08, 0.45, 0.54); interior.add(rl);
+      rl.position.set(s*0.08, 0.45, 0.56); interior.add(rl);
     }
     // Side rear panels (utility boxes on the walls beside the seat)
     for (let s of [-1, 1]) {
-      const sp = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 0.3), matPanel);
-      sp.position.set(s*0.42, 0.35, 0.25); interior.add(sp);
-      const spStrip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.025, 0.28), matAccent);
-      spStrip.position.set(s*0.40, 0.5, 0.25); interior.add(spStrip);
+      const sp = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.32, 0.36), matPanel);
+      sp.position.set(s*0.60, 0.35, 0.25); interior.add(sp);
+      const spStrip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.025, 0.30), matAccent);
+      spStrip.position.set(s*0.57, 0.52, 0.25); interior.add(spStrip);
     }
     // Ejection handle (red T-bar between seat back and bulkhead)
     const ejBase = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.22, 6), matRed);
-    ejBase.position.set(0, 0.72, 0.36); interior.add(ejBase);
-    const ejBar = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.2, 6), matRed);
-    ejBar.rotation.z = Math.PI/2; ejBar.position.set(0, 0.82, 0.36); interior.add(ejBar);
+    ejBase.position.set(0, 0.72, 0.37); interior.add(ejBase);
+    const ejBar = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.22, 6), matRed);
+    ejBar.rotation.z = Math.PI/2; ejBar.position.set(0, 0.82, 0.37); interior.add(ejBar);
 
     // ── PILOT SEAT ──
     // Seat cushion (bottom)
-    const seatBase = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.08, 0.52), matSeat);
+    const seatBase = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.09, 0.55), matSeat);
     seatBase.position.set(0, 0.07, -0.05); interior.add(seatBase);
     // Seat back (upright)
-    const seatBack = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.52, 0.08), matSeat);
-    seatBack.position.set(0, 0.4, 0.22); interior.add(seatBack);
+    const seatBack = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.54, 0.09), matSeat);
+    seatBack.position.set(0, 0.40, 0.22); interior.add(seatBack);
     // Headrest
-    const headrest = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.17, 0.07), matSeat);
-    headrest.position.set(0, 0.68, 0.20); interior.add(headrest);
+    const headrest = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.18, 0.08), matSeat);
+    headrest.position.set(0, 0.69, 0.20); interior.add(headrest);
     // Seat side bolsters (left and right)
     for (let s of [-1, 1]) {
-      const bolster = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 0.44), matSeat);
-      bolster.position.set(s*0.22, 0.25, 0.00); interior.add(bolster);
+      const bolster = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.30, 0.46), matSeat);
+      bolster.position.set(s*0.24, 0.24, 0.00); interior.add(bolster);
       // Armrest on each bolster
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.045, 0.34), matDark);
-      arm.position.set(s*0.22, 0.36, -0.04); interior.add(arm);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.36), matDark);
+      arm.position.set(s*0.24, 0.37, -0.04); interior.add(arm);
       // Armrest control button cluster
-      const btnCluster = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.025, 0.1), matPanel);
-      btnCluster.position.set(s*0.22, 0.385, -0.08); interior.add(btnCluster);
+      const btnCluster = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.025, 0.12), matPanel);
+      btnCluster.position.set(s*0.24, 0.395, -0.08); interior.add(btnCluster);
     }
     // Seat accent stripe (centre of backrest)
-    const seatStripe = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.44, 0.03), matAccent);
-    seatStripe.position.set(0, 0.40, 0.25); interior.add(seatStripe);
+    const seatStripe = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.46, 0.04), matAccent);
+    seatStripe.position.set(0, 0.40, 0.26); interior.add(seatStripe);
 
     // ── FRONT CANOPY FRAME ──
     // Canopy frame uprights — flanking the forward view at eye-level
     for (let s of [-1, 1]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.7, 0.06), matDark);
-      post.position.set(s*0.36, 0.45, -0.7); interior.add(post);
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.74, 0.07), matDark);
+      post.position.set(s*0.52, 0.45, -0.70); interior.add(post);
     }
     // Canopy top arch (curving over the front view)
-    const arch = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.025, 6, 14, Math.PI), matDark);
-    arch.rotation.x = -Math.PI/2; arch.position.set(0, 0.78, -1.0); interior.add(arch);
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(0.44, 0.028, 6, 14, Math.PI), matDark);
+    arch.rotation.x = -Math.PI/2; arch.position.set(0, 0.80, -1.0); interior.add(arch);
     // Lower canopy frame crossbar
-    const crossbar = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.04, 0.04), matDark);
+    const crossbar = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.04, 0.04), matDark);
     crossbar.position.set(0, 0.12, -0.82); interior.add(crossbar);
 
     // ── DASHBOARD (forward) ──
@@ -1033,10 +1051,10 @@
     }
     // Side console panels (left and right of dashboard)
     for (let s of [-1, 1]) {
-      const con = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 0.38), matPanel);
-      con.position.set(s*0.44, 0.22, -0.96); interior.add(con);
-      const conGlow = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.025, 0.32), matAccent);
-      conGlow.position.set(s*0.42, 0.32, -0.96); interior.add(conGlow);
+      const con = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.30, 0.42), matPanel);
+      con.position.set(s*0.58, 0.22, -0.96); interior.add(con);
+      const conGlow = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.025, 0.36), matAccent);
+      conGlow.position.set(s*0.55, 0.34, -0.96); interior.add(conGlow);
     }
 
     // ── TURRET ARMS (visible inside cabin, show where lasers come from) ──
@@ -1548,7 +1566,7 @@
       Game.bullets.push({ mesh:m, vel:fwd.clone().multiplyScalar(110), life:2.5, dmg });
     }
     SFX.play('laser');
-    ScreenShake.add(0.12);
+    ScreenShake.add(0.05);
     Stats.bump('totalShotsFired', 2);
     // Pulse muzzle flashes for one frame's worth (decayed in updatePlayer6DOF below)
     if (shipRoot && shipRoot.userData.muzzleFlashes) {
@@ -1996,7 +2014,7 @@
       update(dt) {
         if (_trauma <= 0) { _offset.set(0, 0, 0); return; }
         const intensity = save.shakeIntensity != null ? save.shakeIntensity : 0.5;
-        const s = _trauma * _trauma * intensity * 2.2;
+        const s = _trauma * _trauma * intensity * 0.9;
         _offset.set(
           (Math.random() * 2 - 1) * s,
           (Math.random() * 2 - 1) * s,
@@ -2222,6 +2240,10 @@
       const s2 = document.getElementById('set-game-vol');  if (s2) { s2.value = igvol; document.getElementById('set-game-vol-lbl').textContent = pct(igvol); }
       const s3 = document.getElementById('set-sfx-vol');   if (s3) { s3.value = sfx;   document.getElementById('set-sfx-vol-lbl').textContent = pct(sfx); }
       const s4 = document.getElementById('set-shake');     if (s4) { s4.value = shake; document.getElementById('set-shake-lbl').textContent = pct(shake); }
+      const sens = save.mouseSensitivity != null ? save.mouseSensitivity : 0.5;
+      const aa   = save.aimAssist        != null ? save.aimAssist        : 0.4;
+      const s5 = document.getElementById('set-sens'); if (s5) { s5.value = sens; document.getElementById('set-sens-lbl').textContent = pct(sens); }
+      const s6 = document.getElementById('set-aim');  if (s6) { s6.value = aa;   document.getElementById('set-aim-lbl').textContent  = pct(aa);   }
       const mb = document.getElementById('set-menu-mute'); if (mb)   mb.textContent = save.musicMuted ? '🔇' : '🔊';
     }
   };
@@ -2265,17 +2287,29 @@
     document.getElementById('set-shake-lbl').textContent = _pct('set-shake');
     persist();
   });
+  document.getElementById('set-sens').addEventListener('input', () => {
+    save.mouseSensitivity = parseFloat(document.getElementById('set-sens').value);
+    document.getElementById('set-sens-lbl').textContent = _pct('set-sens');
+    persist();
+  });
+  document.getElementById('set-aim').addEventListener('input', () => {
+    save.aimAssist = parseFloat(document.getElementById('set-aim').value);
+    document.getElementById('set-aim-lbl').textContent = _pct('set-aim');
+    persist();
+  });
 
   // ── Reset Data ─────────────────────────────────────────────────
   document.getElementById('btn-reset-data').onclick = () => {
     if (!confirm('Reset ALL progress? This wipes your scores, upgrades, ships, and credits. This cannot be undone.')) return;
-    const _sv = { vol: save.musicVolume, mute: save.musicMuted, igvol: save.ingameVolume, sfxvol: save.sfxVolume, shake: save.shakeIntensity };
+    const _sv = { vol: save.musicVolume, mute: save.musicMuted, igvol: save.ingameVolume, sfxvol: save.sfxVolume, shake: save.shakeIntensity, sens: save.mouseSensitivity, aa: save.aimAssist };
     save = JSON.parse(JSON.stringify(DEFAULT_SAVE));
     save.musicVolume  = _sv.vol;
     save.musicMuted   = _sv.mute;
     save.ingameVolume = _sv.igvol;
     save.sfxVolume    = _sv.sfxvol;
     save.shakeIntensity = _sv.shake;
+    save.mouseSensitivity = _sv.sens;
+    save.aimAssist = _sv.aa;
     if (currentUser && typeof db !== 'undefined' && db) {
       db.collection('sv3d_saves').doc(currentUser.uid).set(
         Object.assign({}, save, {
@@ -2342,7 +2376,7 @@
     }
     if (Game.asteroidImmuneT > 0) Game.asteroidImmuneT -= dt;
 
-    const sens = 0.0028;
+    const sens = (save.mouseSensitivity != null ? save.mouseSensitivity : 0.5) * 0.0056;
     // ── Free-look (hold Z): mouse rotates the camera, NOT the ship ──
     if (keys['KeyZ']) {
       Game.lookYaw   -= Game.mouseDX * sens;
@@ -2371,6 +2405,29 @@
     if (keys['KeyQ']) { _tmpQ.setFromAxisAngle(new THREE.Vector3(0,0,1),  rollSpeed*dt); shipRoot.quaternion.multiply(_tmpQ); }
     if (keys['KeyE']) { _tmpQ.setFromAxisAngle(new THREE.Vector3(0,0,1), -rollSpeed*dt); shipRoot.quaternion.multiply(_tmpQ); }
     shipRoot.quaternion.normalize();
+
+    // ── Aim Assist (soft pull toward nearest enemy in ~30° cone) ──
+    // Great for trackpad users. Scaled by save.aimAssist (0 = off, 1 = strong).
+    const aaStr = save.aimAssist != null ? save.aimAssist : 0.4;
+    if (!keys['KeyZ'] && aaStr > 0 && (Game.enemies.length > 0 || Game.boss)) {
+      const _fwdAA = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRoot.quaternion);
+      const coneCos = Math.cos(Math.PI / 6); // 30° threshold
+      let bestCos = coneCos, bestDir = null;
+      const aaTargets = Game.boss ? [...Game.enemies, Game.boss] : [...Game.enemies];
+      for (const e of aaTargets) {
+        const dir = new THREE.Vector3().subVectors(e.mesh.position, shipRoot.position);
+        if (dir.lengthSq() < 1) continue;
+        dir.normalize();
+        const c = _fwdAA.dot(dir);
+        if (c > bestCos) { bestCos = c; bestDir = dir; }
+      }
+      if (bestDir) {
+        const R = new THREE.Quaternion().setFromUnitVectors(_fwdAA, bestDir);
+        const targetQ = R.clone().multiply(shipRoot.quaternion);
+        shipRoot.quaternion.slerp(targetQ, Math.min(1, aaStr * 1.8 * dt));
+        shipRoot.quaternion.normalize();
+      }
+    }
 
     let speed = statSpeed();
     const isBoosting = (keys['ShiftLeft']||keys['ShiftRight']) && Game.boost > 0;
