@@ -1402,6 +1402,7 @@
     audio.preload = 'none';
     let queue = [];
     let _playing = false;
+    let _lastTrack = '';
 
     // Fisher-Yates shuffle, never put `exclude` first
     function _shuffle(arr, exclude) {
@@ -1419,11 +1420,21 @@
 
     function _playNext() {
       if (!_playing) return;
-      if (!queue.length) queue = _shuffle(MENU_TRACKS, audio.src.split('/').pop());
+      if (!queue.length) queue = _shuffle(MENU_TRACKS, _lastTrack);
       const track = queue.shift();
+      _lastTrack = track;
       audio.src = track;
       audio.volume = save.musicMuted ? 0 : (save.musicVolume != null ? save.musicVolume : 0.5);
-      audio.play().catch(() => {});
+      audio.play().catch(() => {
+        // Autoplay blocked — retry on first user interaction
+        const resume = () => {
+          document.removeEventListener('click', resume);
+          document.removeEventListener('keydown', resume);
+          if (_playing) audio.play().catch(() => {});
+        };
+        document.addEventListener('click', resume, { once: true });
+        document.addEventListener('keydown', resume, { once: true });
+      });
     }
 
     audio.addEventListener('ended', _playNext);
