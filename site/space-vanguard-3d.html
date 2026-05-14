@@ -151,6 +151,19 @@
       font-size: 16px; cursor: pointer; padding: 0; line-height: 1;
     }
 
+    /* Settings sliders */
+    .settings-slider {
+      -webkit-appearance: none; appearance: none;
+      width: 140px; height: 3px; background: rgba(0,255,255,0.3);
+      outline: none; cursor: pointer; border-radius: 2px; vertical-align: middle;
+    }
+    .settings-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 14px; height: 14px;
+      background: #0ff; border-radius: 50%; cursor: pointer;
+    }
+    .settings-label { color: #9cf; font-size: 11px; letter-spacing: 1px; min-width: 160px; }
+    .settings-val { color: #0ff; font-size: 11px; width: 36px; text-align: right; font-family: monospace; }
+
     #game-page { padding-top: 56px; background: #0d0d0d; min-height: 100vh; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif; color: #eee; }
     #game-shell { width: calc(100% - 80px); max-width: 1280px; margin: 0 auto; padding: 20px 0 40px; box-sizing: border-box; }
     #game-area { position: relative; overflow: hidden; width: 100%; aspect-ratio: 16/9; background: #000; border: 1px solid #2a2a2a; box-shadow: 0 4px 24px rgba(0,0,0,0.6); border-radius: 10px; }
@@ -294,6 +307,7 @@
       <button class="btn" id="btn-hangar"><span>HANGAR / UPGRADES</span><span>H</span></button>
       <button class="btn" id="btn-leader"><span>LEADERBOARD</span><span>L</span></button>
       <button class="btn ghost" id="btn-controls"><span>CONTROLS</span><span>?</span></button>
+      <button class="btn ghost" id="btn-settings"><span>⚙ SETTINGS</span><span></span></button>
       <button class="btn ghost" id="btn-reset-data" style="border-color:#f55;color:#f55;margin-top:4px"><span>RESET ALL DATA</span><span>⚠</span></button>
     </div>
   </div>
@@ -350,6 +364,37 @@
       <div class="stat-row"><span>Clear Target</span><b>Y</b></div>
       <div class="stat-row"><span>Pause</span><b>Esc / P</b></div>
       <button class="btn ghost" onclick="UI.show('main')"><span>← BACK</span><span></span></button>
+    </div>
+  </div>
+
+  <div id="view-settings" class="view">
+    <div class="panel" style="max-width:480px">
+      <h1 style="font-size:22px">⚙ SETTINGS</h1>
+      <h2 style="margin-top:4px">AUDIO</h2>
+      <div class="stat-row" style="align-items:center;gap:10px">
+        <span class="settings-label">Menu Music Volume</span>
+        <input type="range" id="set-menu-vol" class="settings-slider" min="0" max="1" step="0.01" value="0.5">
+        <span class="settings-val" id="set-menu-vol-lbl">50%</span>
+        <button id="set-menu-mute" class="btn ghost" style="padding:3px 8px;font-size:14px;min-width:36px">🔊</button>
+      </div>
+      <div class="stat-row" style="align-items:center;gap:10px">
+        <span class="settings-label">In-Game Music Volume</span>
+        <input type="range" id="set-game-vol" class="settings-slider" min="0" max="1" step="0.01" value="0.5">
+        <span class="settings-val" id="set-game-vol-lbl">50%</span>
+      </div>
+      <div class="stat-row" style="align-items:center;gap:10px">
+        <span class="settings-label">Sound Effects Volume</span>
+        <input type="range" id="set-sfx-vol" class="settings-slider" min="0" max="1" step="0.01" value="1">
+        <span class="settings-val" id="set-sfx-vol-lbl">100%</span>
+      </div>
+      <h2 style="margin-top:8px">GAMEPLAY</h2>
+      <div class="stat-row" style="align-items:center;gap:10px">
+        <span class="settings-label">Screen Shake Intensity</span>
+        <input type="range" id="set-shake" class="settings-slider" min="0" max="1" step="0.01" value="0.5">
+        <span class="settings-val" id="set-shake-lbl">50%</span>
+      </div>
+      <p style="font-size:10px;color:#667;margin-top:4px">Screen shakes when hit (large) and when firing (small). Set to 0 to disable.</p>
+      <button class="btn ghost" onclick="UI.show('main')" style="margin-top:6px"><span>← BACK</span><span></span></button>
     </div>
   </div>
 
@@ -427,7 +472,10 @@
     ship: 0,
     ownedShips: [0],
     musicVolume: 0.5,
-    musicMuted: false
+    musicMuted: false,
+    ingameVolume: 0.5,
+    sfxVolume: 1.0,
+    shakeIntensity: 0.5
   };
   // localStorage removed — Firebase is the sole data store
   let save = JSON.parse(JSON.stringify(DEFAULT_SAVE));
@@ -449,6 +497,9 @@
           ownedShips: save.ownedShips || [0],
           musicVolume: save.musicVolume != null ? save.musicVolume : 0.5,
           musicMuted: save.musicMuted || false,
+          ingameVolume: save.ingameVolume != null ? save.ingameVolume : 0.5,
+          sfxVolume: save.sfxVolume != null ? save.sfxVolume : 1.0,
+          shakeIntensity: save.shakeIntensity != null ? save.shakeIntensity : 0.5,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge:true }).catch(()=>{});
       } catch(_) {}
@@ -484,6 +535,9 @@
           if (Array.isArray(r.ownedShips)) save.ownedShips = r.ownedShips;
           if (r.musicVolume != null) save.musicVolume = r.musicVolume;
           if (r.musicMuted  != null) save.musicMuted  = r.musicMuted;
+          if (r.ingameVolume != null) save.ingameVolume = r.ingameVolume;
+          if (r.sfxVolume != null)   save.sfxVolume    = r.sfxVolume;
+          if (r.shakeIntensity != null) save.shakeIntensity = r.shakeIntensity;
           Music.applySettings();
           // Merge stage times — keep personal bests
           const rt = r.stageTimes || {};
@@ -1003,6 +1057,8 @@
       camera.quaternion.copy(shipRoot.quaternion);
     }
     shipRoot.visible = (Game.camMode !== 'cockpit');
+    // Apply screen shake (world-space offset, playing only)
+    if (Game.state === 'playing') camera.position.add(ScreenShake.offset);
   }
 
   // ── Input ──────────────────────────────────────────────────────
@@ -1145,6 +1201,7 @@
     document.getElementById('boss-hud').style.display = 'block';
     document.getElementById('boss-name').textContent = stage.boss;
     banner('BOSS', stage.boss);
+    GameMusic.startBoss();
   }
 
   // ── Bullets ───────────────────────────────────────────────────
@@ -1168,6 +1225,8 @@
       scene.add(m);
       Game.bullets.push({ mesh:m, vel:fwd.clone().multiplyScalar(110), life:2.5, dmg });
     }
+    SFX.play('laser');
+    ScreenShake.add(0.12);
   }
   function spawnEnemyBullet(enemy, aimAt, dirOverride) {
     const color = enemy.bulletColor || 0xff5555;
@@ -1292,6 +1351,8 @@
     Game.bossSpawned = false;
     Game.state = 'playing';
     UI.hideAll();
+    GameMusic.load(idx);
+    GameMusic.startFight();
     document.getElementById('stage-hud').style.display = 'block';
     document.getElementById('stage-hud-title').textContent = 'STAGE ' + (idx+1) + ': ' + stage.name;
     document.getElementById('cam-mode').style.display = 'block';
@@ -1322,6 +1383,7 @@
     document.getElementById('cam-mode').style.display = 'none';
     clearTarget();
     Game.credits = 0; // forfeit
+    GameMusic.stop();
     persist();
     UI.show('main');
   };
@@ -1332,6 +1394,7 @@
     document.getElementById('boss-hud').style.display = 'none';
     document.exitPointerLock && document.exitPointerLock();
     clearTarget();
+    GameMusic.stop();
     const newHi = Game.score > save.hiScore;
     if (newHi) save.hiScore = Game.score;
     if (victory) {
@@ -1351,6 +1414,7 @@
       document.getElementById('vic-credits').textContent = fmt(Game.credits);
       document.getElementById('vic-time').textContent = fmtTime(elapsed) + (newTimeRecord ? ' ★' : '');
       document.getElementById('vic-new-record').style.display = newHi ? 'block' : 'none';
+      SFX.play('victory');
       // Push to global leaderboard
       if (currentUser && newHi) {
         pushLeaderboard('scores', currentUser.uid, currentUserName || currentUser.displayName || 'Pilot', currentUserPic, 'score', save.hiScore, false);
@@ -1463,6 +1527,132 @@
     };
   })();
 
+  // ── Stage music tracks ────────────────────────────────────────
+  // Add an entry per stage as you compose the music.
+  // Any stage without its own entry falls back to stage 1 tracks.
+  const STAGE_TRACKS = [
+    { fight: 'audio/stage1-fight.mp3', boss: 'audio/stage1-boss.mp3' }
+    // { fight: 'audio/stage2-fight.mp3', boss: 'audio/stage2-boss.mp3' },
+  ];
+  function getStageTracks(idx) { return STAGE_TRACKS[idx] || STAGE_TRACKS[0]; }
+
+  // ── Sound Effects ─────────────────────────────────────────────
+  // Files: site/audio/sfx-laser.mp3, sfx-hit.mp3, sfx-explosion.mp3, sfx-pickup.mp3, sfx-victory.mp3
+  const SFX = (() => {
+    const _cache = {};
+    return {
+      play(name) {
+        try {
+          const vol = save.sfxVolume != null ? save.sfxVolume : 1.0;
+          if (vol <= 0) return;
+          if (!_cache[name]) {
+            const a = new Audio('audio/sfx-' + name + '.mp3');
+            a.preload = 'none';
+            _cache[name] = a;
+          }
+          const clone = _cache[name].cloneNode();
+          clone.volume = Math.min(1, vol);
+          clone.play().catch(() => {});
+        } catch(_) {}
+      }
+    };
+  })();
+
+  // ── In-Game Music ─────────────────────────────────────────────
+  // fight track loops during wave; boss track loops during boss fight.
+  // Crossfade: fade out in 0.5s then fade in over 1.0s.
+  const GameMusic = (() => {
+    let _fight = new Audio(); _fight.loop = true;
+    let _boss  = new Audio(); _boss.loop  = true;
+    let _mode  = 'none'; // 'fight' | 'boss' | 'none'
+    function _vol() { return save.ingameVolume != null ? save.ingameVolume : 0.5; }
+    function _fadeTo(audio, target, durSec, onDone) {
+      const start = audio.volume;
+      const t0 = performance.now();
+      function tick() {
+        const frac = Math.min(1, (performance.now() - t0) / (durSec * 1000));
+        audio.volume = Math.max(0, Math.min(1, start + (target - start) * frac));
+        if (frac < 1) requestAnimationFrame(tick);
+        else { audio.volume = Math.max(0, target); if (onDone) onDone(); }
+      }
+      requestAnimationFrame(tick);
+    }
+    function _tryPlay(audio) {
+      audio.play().catch(() => {
+        const resume = () => { if (_mode !== 'none') audio.play().catch(() => {}); };
+        document.addEventListener('click',   resume, { once: true });
+        document.addEventListener('keydown', resume, { once: true });
+      });
+    }
+    return {
+      load(idx) {
+        const t = getStageTracks(idx);
+        _fight.src = t.fight; _fight.currentTime = 0;
+        _boss.src  = t.boss;  _boss.currentTime  = 0;
+        _mode = 'none';
+      },
+      startFight() {
+        if (_mode === 'fight') return;
+        if (_mode === 'boss') {
+          _fadeTo(_boss, 0, 0.5, () => { _boss.pause(); _boss.currentTime = 0; });
+          _fight.currentTime = 0; _fight.volume = 0;
+          _tryPlay(_fight);
+          _fadeTo(_fight, _vol(), 1.0);
+        } else {
+          _fight.volume = _vol();
+          _tryPlay(_fight);
+        }
+        _mode = 'fight';
+      },
+      startBoss() {
+        if (_mode === 'boss') return;
+        if (_mode === 'fight') {
+          _fadeTo(_fight, 0, 0.5, () => { _fight.pause(); _fight.currentTime = 0; });
+          _boss.currentTime = 0; _boss.volume = 0;
+          _tryPlay(_boss);
+          _fadeTo(_boss, _vol(), 1.0);
+        } else {
+          _boss.volume = _vol();
+          _tryPlay(_boss);
+        }
+        _mode = 'boss';
+      },
+      stop() {
+        _fight.pause(); _fight.currentTime = 0; _fight.volume = 0;
+        _boss.pause();  _boss.currentTime  = 0; _boss.volume  = 0;
+        _mode = 'none';
+      },
+      applySettings() {
+        const v = _vol();
+        if (_mode === 'fight' && !_fight.paused) _fight.volume = v;
+        if (_mode === 'boss'  && !_boss.paused)  _boss.volume  = v;
+      }
+    };
+  })();
+
+  // ── Screen Shake ──────────────────────────────────────────────
+  // add(amount): 0–1 trauma. Decays over ~0.3s.
+  // Fire adds 0.12 (tiny jolt), hit adds 0.85 (heavy shake).
+  const ScreenShake = (() => {
+    let _trauma = 0;
+    const _offset = new THREE.Vector3();
+    return {
+      add(amount) { _trauma = Math.min(1, _trauma + amount); },
+      update(dt) {
+        if (_trauma <= 0) { _offset.set(0, 0, 0); return; }
+        const intensity = save.shakeIntensity != null ? save.shakeIntensity : 0.5;
+        const s = _trauma * _trauma * intensity * 2.2;
+        _offset.set(
+          (Math.random() * 2 - 1) * s,
+          (Math.random() * 2 - 1) * s,
+          0
+        );
+        _trauma = Math.max(0, _trauma - dt * 3.5);
+      },
+      get offset() { return _offset; }
+    };
+  })();
+
   // ── UI ─────────────────────────────────────────────────────────
   const UI = {
     cur:'main',
@@ -1480,7 +1670,7 @@
       document.getElementById('cam-mode').style.display = 'none';
       document.getElementById('pause-overlay').classList.remove('active');
       // Music: play on main menu views, stop during gameplay
-      const menuViews = ['main','stages','hangar','leader','controls'];
+      const menuViews = ['main','stages','hangar','leader','controls','settings'];
       const musicControls = document.getElementById('music-controls');
       if (menuViews.includes(id)) {
         Music.start();
@@ -1489,10 +1679,11 @@
         Music.stop();
         if (musicControls) musicControls.style.display = 'none';
       }
-      if (id === 'main')    this.refreshMain();
-      if (id === 'stages')  this.refreshStages();
-      if (id === 'hangar')  this.refreshHangar();
-      if (id === 'leader')  { this.refreshLeaderboard(); }
+      if (id === 'main')     this.refreshMain();
+      if (id === 'stages')   this.refreshStages();
+      if (id === 'hangar')   this.refreshHangar();
+      if (id === 'leader')   { this.refreshLeaderboard(); }
+      if (id === 'settings') this.refreshSettings();
     },
     hideAll() {
       document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
@@ -1635,23 +1826,70 @@
           });
         }
       } catch(e) { elT.innerHTML = '<p style="padding:10px;color:#666;text-align:center">Failed to load</p>'; }
+    },
+    refreshSettings() {
+      const pct = v => Math.round(v * 100) + '%';
+      const vol   = save.musicVolume   != null ? save.musicVolume   : 0.5;
+      const igvol = save.ingameVolume  != null ? save.ingameVolume  : 0.5;
+      const sfx   = save.sfxVolume     != null ? save.sfxVolume     : 1.0;
+      const shake = save.shakeIntensity!= null ? save.shakeIntensity: 0.5;
+      const s1 = document.getElementById('set-menu-vol');  if (s1) { s1.value = vol;   document.getElementById('set-menu-vol-lbl').textContent = pct(vol); }
+      const s2 = document.getElementById('set-game-vol');  if (s2) { s2.value = igvol; document.getElementById('set-game-vol-lbl').textContent = pct(igvol); }
+      const s3 = document.getElementById('set-sfx-vol');   if (s3) { s3.value = sfx;   document.getElementById('set-sfx-vol-lbl').textContent = pct(sfx); }
+      const s4 = document.getElementById('set-shake');     if (s4) { s4.value = shake; document.getElementById('set-shake-lbl').textContent = pct(shake); }
+      const mb = document.getElementById('set-menu-mute'); if (mb)   mb.textContent = save.musicMuted ? '🔇' : '🔊';
     }
   };
 
-  document.getElementById('btn-play').onclick = () => UI.show('stages');
-  document.getElementById('btn-hangar').onclick = () => UI.show('hangar');
-  document.getElementById('btn-leader').onclick = () => UI.show('leader');
+  document.getElementById('btn-play').onclick     = () => UI.show('stages');
+  document.getElementById('btn-hangar').onclick   = () => UI.show('hangar');
+  document.getElementById('btn-leader').onclick   = () => UI.show('leader');
   document.getElementById('btn-controls').onclick = () => UI.show('controls');
-  document.getElementById('btn-retry').onclick = () => Game.startStage(Game.stageIdx);
+  document.getElementById('btn-settings').onclick = () => UI.show('settings');
+  document.getElementById('btn-retry').onclick    = () => Game.startStage(Game.stageIdx);
+
+  // ── Settings sliders ───────────────────────────────────────────
+  function _pct(id) { return Math.round(parseFloat(document.getElementById(id).value) * 100) + '%'; }
+  document.getElementById('set-menu-vol').addEventListener('input', () => {
+    save.musicVolume = parseFloat(document.getElementById('set-menu-vol').value);
+    save.musicMuted  = false;
+    document.getElementById('set-menu-vol-lbl').textContent = _pct('set-menu-vol');
+    document.getElementById('set-menu-mute').textContent = '🔊';
+    const ov = document.getElementById('music-vol-slider'); if (ov) ov.value = save.musicVolume;
+    Music.applySettings(); persist();
+  });
+  document.getElementById('set-menu-mute').addEventListener('click', () => {
+    save.musicMuted = !save.musicMuted;
+    Music.applySettings();
+    document.getElementById('set-menu-mute').textContent = save.musicMuted ? '🔇' : '🔊';
+    persist();
+  });
+  document.getElementById('set-game-vol').addEventListener('input', () => {
+    save.ingameVolume = parseFloat(document.getElementById('set-game-vol').value);
+    document.getElementById('set-game-vol-lbl').textContent = _pct('set-game-vol');
+    GameMusic.applySettings(); persist();
+  });
+  document.getElementById('set-sfx-vol').addEventListener('input', () => {
+    save.sfxVolume = parseFloat(document.getElementById('set-sfx-vol').value);
+    document.getElementById('set-sfx-vol-lbl').textContent = _pct('set-sfx-vol');
+    persist();
+  });
+  document.getElementById('set-shake').addEventListener('input', () => {
+    save.shakeIntensity = parseFloat(document.getElementById('set-shake').value);
+    document.getElementById('set-shake-lbl').textContent = _pct('set-shake');
+    persist();
+  });
 
   // ── Reset Data ─────────────────────────────────────────────────
   document.getElementById('btn-reset-data').onclick = () => {
     if (!confirm('Reset ALL progress? This wipes your scores, upgrades, ships, and credits. This cannot be undone.')) return;
-    const vol  = save.musicVolume;
-    const mute = save.musicMuted;
+    const _sv = { vol: save.musicVolume, mute: save.musicMuted, igvol: save.ingameVolume, sfxvol: save.sfxVolume, shake: save.shakeIntensity };
     save = JSON.parse(JSON.stringify(DEFAULT_SAVE));
-    save.musicVolume = vol;
-    save.musicMuted  = mute;
+    save.musicVolume  = _sv.vol;
+    save.musicMuted   = _sv.mute;
+    save.ingameVolume = _sv.igvol;
+    save.sfxVolume    = _sv.sfxvol;
+    save.shakeIntensity = _sv.shake;
     if (currentUser && typeof db !== 'undefined' && db) {
       db.collection('sv3d_saves').doc(currentUser.uid).set(
         Object.assign({}, save, {
@@ -1788,6 +2026,7 @@
           if (e.hp <= 0) {
             scene.remove(e.mesh);
             spawnExplosion(e.mesh.position, e.bulletColor || 0xff8844, 1.5);
+            SFX.play('explosion');
             const reward = Math.floor(e.reward);
             Game.score += reward * 4;
             Game.kills += 1;
@@ -1808,6 +2047,7 @@
             const bp = Game.boss.mesh.position.clone();
             scene.remove(Game.boss.mesh);
             spawnExplosion(bp, 0xff66ff, 3.5);
+            SFX.play('explosion');
             Game.score += Game.boss.reward * 5;
             Game.credits += Game.boss.reward;
             Game.kills += 1;
@@ -1837,6 +2077,8 @@
   }
 
   function damagePlayer(amount) {
+    SFX.play('hit');
+    ScreenShake.add(0.85);
     if (Game.sh > 0) { Game.sh -= amount; if (Game.sh<0) { Game.hp += Game.sh; Game.sh = 0; } }
     else Game.hp -= amount;
     if (Game.hp <= 0) {
@@ -2162,6 +2404,7 @@
       if (dist < 1.8) {
         Game.credits += p.value;
         Game.score += p.value;
+        SFX.play('pickup');
         scene.remove(p.mesh); Game.pickups.splice(i,1);
         continue;
       }
@@ -2272,6 +2515,7 @@
       updateAsteroids(dt);
       updateSpawning(dt);
       updateHUD();
+      ScreenShake.update(dt);
     }
     updateDebris(dt);
     updateCamera(dt);
