@@ -1531,8 +1531,12 @@
   // Add an entry per stage as you compose the music.
   // Any stage without its own entry falls back to stage 1 tracks.
   const STAGE_TRACKS = [
-    { fight: 'audio/stage1-fight.mp3', boss: 'audio/stage1-boss.mp3' }
-    // { fight: 'audio/stage2-fight.mp3', boss: 'audio/stage2-boss.mp3' },
+    { fight: 'audio/stage1-fight.mp3', boss: 'audio/stage1-boss.mp3' },
+    { fight: 'audio/stage2-fight.mp3', boss: 'audio/stage2-boss.mp3' },
+    { fight: 'audio/stage3-fight.mp3', boss: 'audio/stage3-boss.mp3' },
+    { fight: 'audio/stage4-fight.mp3', boss: 'audio/stage4-boss.mp3' },
+    { fight: 'audio/stage5-fight.mp3', boss: 'audio/stage5-boss.mp3' },
+    // stages 6-15 fall back to stage 1 until tracks are added
   ];
   function getStageTracks(idx) { return STAGE_TRACKS[idx] || STAGE_TRACKS[0]; }
 
