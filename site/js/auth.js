@@ -164,6 +164,15 @@ const Auth = (() => {
       if (isNew) {
         const baseName = result.user.displayName || 'User';
         const uniqueName = await _findUniqueUsername(baseName);
+        // Push the chosen username AND Google photo onto the Firebase Auth user
+        // BEFORE writing the Firestore profile, so nav.js / app.js see the right
+        // values even if their initial Firestore read loses the race with this
+        // first-time sign-up. Otherwise the navbar shows "User" + the default
+        // avatar until the page is refreshed.
+        await result.user.updateProfile({
+          displayName: uniqueName,
+          photoURL: result.user.photoURL || ''
+        }).catch(() => {});
         await createUserProfile(result.user, uniqueName, result.user.photoURL || '');
       } else {
         // Returning Google user — sync their Google photo if no avatar is stored yet

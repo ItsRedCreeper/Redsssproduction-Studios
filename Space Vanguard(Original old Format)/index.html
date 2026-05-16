@@ -1589,7 +1589,13 @@
       } else { bodiesContainer.style.display = 'none'; }
     }
 
-    window.addEventListener('keydown', e => { keys[e.code] = true; });
+    window.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      // Stop game keys from scrolling the surrounding page.
+      if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) {
+        e.preventDefault();
+      }
+    }, { passive: false });
     window.addEventListener('keyup', e => { keys[e.code] = false; });
     // Reset keys when window loses focus to prevent stuck keys
     window.addEventListener('blur', () => { keys = {}; });

@@ -61,6 +61,17 @@ const Nav = (() => {
           }).catch(() => {});
         }
 
+        // Live-sync the navbar to the user doc.  If the document didn't exist
+        // at sign-in time (race with createUserProfile on first Google sign-in)
+        // this snapshot listener will pick it up the moment it's written and
+        // refresh the avatar + username, so the navbar never gets stuck on the
+        // fallback "User" + default-pfp combo.
+        db.collection('users').doc(user.uid).onSnapshot(snap => {
+          if (!snap.exists) return;
+          _currentProfile = snap.data();
+          _renderUserUI(user, _currentProfile);
+        }, () => {});
+
         // Show app
         document.getElementById('loading-screen').style.display = 'none';
         document.getElementById('app').style.display = '';
@@ -1581,15 +1592,15 @@ const Nav = (() => {
       try { fetch(_rtdbRestUrl + (_cachedToken ? '?auth=' + _cachedToken : ''), { method: 'PATCH', body: rtdbPayload, headers: { 'Content-Type': 'application/json' }, keepalive: true }); } catch(e) {}
       // RTDB SDK write
       if (presenceRef) presenceRef.update({ online: false, effectiveStatus: 'offline', statusMode: profile.status || 'auto' }).catch(() => {});
-      // Firestore — auto users: write offline. Manual users: only update lastSeen so their
-      // chosen status persists even after the browser is fully closed.
-      if (isAuto) {
-        const fsPayload = JSON.stringify({ fields: { online: { booleanValue: false }, effectiveStatus: { stringValue: 'offline' } } });
-        try { fetch(_fsRestUrl, { method: 'PATCH', body: fsPayload, headers: hdrs, keepalive: true }); } catch(e) {}
-        ref.update({ online: false, effectiveStatus: 'offline', lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
-      } else {
-        ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
-      }
+      // Firestore — only update lastSeen on pagehide. We deliberately do NOT
+      // write `online: false` here because programmatic same-site navigation
+      // (e.g. game pages that set location.href, history.pushState, or any
+      // route change that doesn't go through our <a> click handler) would
+      // otherwise briefly flag the user offline for friends until the next
+      // page boots and re-asserts online. RTDB's onDisconnect (set in
+      // _setupPresence) is the authoritative offline signal for hard closes
+      // — friends.js already treats RTDB-offline as overriding Firestore.
+      ref.update({ lastSeen: firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
     }
 
     window.addEventListener('pagehide', _goOffline);

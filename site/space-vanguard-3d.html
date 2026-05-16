@@ -81,13 +81,13 @@
     p { font-size:13px; color:#9cf; line-height:1.5 }
     .tagline { text-align:center; font-size:12px; color:#9cf; letter-spacing:2px }
 
-    .btn { background:#021014; border:2px solid #0ff; color:#0ff; padding:12px 16px; cursor:pointer; font-family:inherit; font-size:14px; letter-spacing:2px; display:flex; justify-content:space-between; align-items:center; gap:14px; transition:.15s }
-    .btn:hover:not(:disabled) { background:#0ff; color:#000; box-shadow:0 0 14px #0ff }
-    .btn:disabled { border-color:#333; color:#555; cursor:not-allowed }
-    .btn.ghost { border-color:#555; color:#bbb }
-    .btn.ghost:hover:not(:disabled) { background:#222; color:#fff; box-shadow:none }
-    .btn.danger { border-color:#f44; color:#f44 }
-    .btn.danger:hover:not(:disabled) { background:#f44; color:#000; box-shadow:0 0 14px #f44 }
+    #game-area .btn { background:#021014; border:2px solid #0ff; color:#0ff; padding:12px 16px; cursor:pointer; font-family:inherit; font-size:14px; letter-spacing:2px; display:flex; justify-content:space-between; align-items:center; gap:14px; transition:.15s }
+    #game-area .btn:hover:not(:disabled) { background:#0ff; color:#000; box-shadow:0 0 14px #0ff }
+    #game-area .btn:disabled { border-color:#333; color:#555; cursor:not-allowed }
+    #game-area .btn.ghost { border-color:#555; color:#bbb }
+    #game-area .btn.ghost:hover:not(:disabled) { background:#222; color:#fff; box-shadow:none }
+    #game-area .btn.danger { border-color:#f44; color:#f44 }
+    #game-area .btn.danger:hover:not(:disabled) { background:#f44; color:#000; box-shadow:0 0 14px #f44 }
 
     .stat-row { display:flex; justify-content:space-between; font-size:12px; color:#7ff; border-bottom:1px dashed rgba(0,255,255,.2); padding:5px 0 }
     .stat-row b { color:#fff }
@@ -101,7 +101,7 @@
     .stage-card { border:2px solid #0ff; background:#021014; padding:10px 8px; cursor:pointer; text-align:center; transition:.15s; position:relative }
     .stage-card:hover:not(.locked) { background:rgba(0,255,255,.12); box-shadow:0 0 10px #0ff }
     .stage-card.locked { border-color:#333; color:#555; cursor:not-allowed }
-    .stage-card.cleared::after { content:"★"; position:absolute; top:4px; right:6px; color:#ff0; text-shadow:0 0 6px #ff0; font-size:14px }
+    .stage-card.cleared::after { content:"CLEAR"; position:absolute; top:4px; right:6px; color:#0f0; text-shadow:0 0 6px #0f0; font-size:9px; letter-spacing:1px; font-weight:bold }
     .stage-num { font-size:10px; color:#7ff; letter-spacing:2px }
     .stage-name { font-size:13px; color:#0ff; margin-top:4px; letter-spacing:1px }
     .stage-card.locked .stage-name { color:#555 }
@@ -128,28 +128,6 @@
     .leaderboard::-webkit-scrollbar { width:6px }
     .leaderboard::-webkit-scrollbar-thumb { background:#0ff }
     .leaderboard::-webkit-scrollbar-track { background:#000 }
-
-    /* Music controls overlay */
-    #music-controls {
-      position: absolute; top: 10px; right: 10px;
-      display: none; align-items: center; gap: 6px;
-      background: rgba(0,0,0,0.7); border: 1px solid rgba(0,255,255,0.25);
-      padding: 5px 10px; border-radius: 6px; z-index: 200;
-    }
-    #music-controls label { color: #0ff; font-size: 10px; letter-spacing: 1px; white-space: nowrap; }
-    #music-vol-slider {
-      -webkit-appearance: none; appearance: none;
-      width: 80px; height: 3px; background: rgba(0,255,255,0.3);
-      outline: none; cursor: pointer; border-radius: 2px;
-    }
-    #music-vol-slider::-webkit-slider-thumb {
-      -webkit-appearance: none; width: 12px; height: 12px;
-      background: #0ff; border-radius: 50%; cursor: pointer;
-    }
-    #music-mute-btn {
-      background: none; border: none; color: #0ff;
-      font-size: 16px; cursor: pointer; padding: 0; line-height: 1;
-    }
 
     /* Settings sliders */
     .settings-slider {
@@ -256,13 +234,6 @@
   <canvas id="game"></canvas>
   <div id="crosshair"><div class="dot"></div></div>
 
-  <!-- Music controls — top-right, visible on menu views only -->
-  <div id="music-controls">
-    <label>♪</label>
-    <input id="music-vol-slider" type="range" min="0" max="1" step="0.01" value="0.5">
-    <button id="music-mute-btn" title="Mute / Unmute">🔊</button>
-  </div>
-
   <div id="hud">
     <div class="row"><span class="key">SCORE</span><span class="val" id="score">0</span></div>
     <div class="row"><span class="key">KILLS</span><span class="val" id="kills">0</span> <span class="key">STARDUST</span><span class="val" id="credits">0</span></div>
@@ -303,13 +274,13 @@
       <div class="stat-row"><span>Top Score</span><b id="hi-score">0</b></div>
       <div class="stat-row"><span>Stages Cleared</span><span><b id="hi-stage">0</b> / 15</span></div>
       <div class="stat-row"><span>Banked Stardust</span><b id="bank">0</b></div>
-      <button class="btn" id="btn-play"><span>▶ STAGE SELECT</span><span>SPACE</span></button>
+      <button class="btn" id="btn-play"><span>STAGE SELECT</span><span>SPACE</span></button>
       <button class="btn" id="btn-hangar"><span>HANGAR / UPGRADES</span><span>H</span></button>
       <button class="btn" id="btn-leader"><span>LEADERBOARD</span><span>L</span></button>
-      <button class="btn ghost" id="btn-stats"><span>📊 STATS</span><span></span></button>
-      <button class="btn ghost" id="btn-controls"><span>CONTROLS</span><span>?</span></button>
-      <button class="btn ghost" id="btn-settings"><span>⚙ SETTINGS</span><span></span></button>
-      <button class="btn ghost" id="btn-reset-data" style="border-color:#f55;color:#f55;margin-top:4px"><span>RESET ALL DATA</span><span>⚠</span></button>
+      <button class="btn ghost" id="btn-stats"><span>STATS</span><span>T</span></button>
+      <button class="btn ghost" id="btn-controls"><span>CONTROLS</span><span>C</span></button>
+      <button class="btn ghost" id="btn-settings"><span>SETTINGS</span><span>G</span></button>
+      <button class="btn ghost" id="btn-reset-data" style="border-color:#f55;color:#f55;margin-top:4px"><span>RESET ALL DATA</span><span></span></button>
     </div>
   </div>
 
@@ -318,7 +289,7 @@
       <h1 style="font-size:24px">SELECT STAGE</h1>
       <p style="text-align:center">Clear each stage to unlock the next. <b style="color:#ff0">Stardust earned during a run is forfeit if you die — only banked on stage clear.</b></p>
       <div class="stage-grid" id="stage-grid"></div>
-      <button class="btn ghost" onclick="UI.show('main')"><span>← BACK</span><span></span></button>
+      <button class="btn ghost" onclick="UI.show('main')"><span>BACK</span><span>B</span></button>
     </div>
   </div>
 
@@ -330,7 +301,7 @@
       <div class="ship-picker" id="ship-picker"></div>
       <h2 style="margin-top:8px">UPGRADES</h2>
       <div id="upgrade-list" style="display:flex;flex-direction:column;gap:8px"></div>
-      <button class="btn ghost" onclick="UI.show('main')" style="margin-top:10px"><span>← BACK</span><span></span></button>
+      <button class="btn ghost" onclick="UI.show('main')" style="margin-top:10px"><span>BACK</span><span>B</span></button>
     </div>
   </div>
 
@@ -345,16 +316,16 @@
         <select id="lb-stage-select" style="background:#021014;border:1px solid #0ff;color:#0ff;padding:4px 8px;font-family:inherit;font-size:12px;cursor:pointer;letter-spacing:1px"></select>
       </div>
       <div class="leaderboard" id="lb-time"><p style="padding:10px;color:#666;text-align:center">Select a stage above</p></div>
-      <button class="btn ghost" onclick="UI.show('main')" style="margin-top:8px"><span>← BACK</span><span></span></button>
+      <button class="btn ghost" onclick="UI.show('main')" style="margin-top:8px"><span>BACK</span><span>B</span></button>
     </div>
   </div>
 
   <div id="view-stats" class="view">
     <div class="panel" style="max-width:560px">
-      <h1 style="font-size:22px">📊 PILOT STATS</h1>
+      <h1 style="font-size:22px">PILOT STATS</h1>
       <p style="text-align:center;color:#9af">Lifetime achievements across every run.</p>
       <div id="stats-list" style="display:flex;flex-direction:column;gap:3px;margin-top:6px"></div>
-      <button class="btn ghost" onclick="UI.show('main')" style="margin-top:10px"><span>← BACK</span><span></span></button>
+      <button class="btn ghost" onclick="UI.show('main')" style="margin-top:10px"><span>BACK</span><span>B</span></button>
     </div>
   </div>
 
@@ -375,19 +346,19 @@
       <div class="stat-row"><span>Cycle Targets</span><b>Tab / R</b></div>
       <div class="stat-row"><span>Clear Target</span><b>Y</b></div>
       <div class="stat-row"><span>Pause</span><b>Esc / P</b></div>
-      <button class="btn ghost" onclick="UI.show('main')"><span>← BACK</span><span></span></button>
+      <button class="btn ghost" onclick="UI.show('main')"><span>BACK</span><span>B</span></button>
     </div>
   </div>
 
   <div id="view-settings" class="view">
     <div class="panel" style="max-width:480px">
-      <h1 style="font-size:22px">⚙ SETTINGS</h1>
+      <h1 style="font-size:22px">SETTINGS</h1>
       <h2 style="margin-top:4px">AUDIO</h2>
       <div class="stat-row" style="align-items:center;gap:10px">
         <span class="settings-label">Menu Music Volume</span>
         <input type="range" id="set-menu-vol" class="settings-slider" min="0" max="1" step="0.01" value="0.5">
         <span class="settings-val" id="set-menu-vol-lbl">50%</span>
-        <button id="set-menu-mute" class="btn ghost" style="padding:3px 8px;font-size:14px;min-width:36px">🔊</button>
+        <button id="set-menu-mute" class="btn ghost" style="padding:3px 8px;font-size:11px;min-width:54px;letter-spacing:1px">MUTE</button>
       </div>
       <div class="stat-row" style="align-items:center;gap:10px">
         <span class="settings-label">In-Game Music Volume</span>
@@ -396,8 +367,8 @@
       </div>
       <div class="stat-row" style="align-items:center;gap:10px">
         <span class="settings-label">Sound Effects Volume</span>
-        <input type="range" id="set-sfx-vol" class="settings-slider" min="0" max="1" step="0.01" value="1">
-        <span class="settings-val" id="set-sfx-vol-lbl">100%</span>
+        <input type="range" id="set-sfx-vol" class="settings-slider" min="0" max="1" step="0.01" value="0.5">
+        <span class="settings-val" id="set-sfx-vol-lbl">50%</span>
       </div>
       <h2 style="margin-top:8px">GAMEPLAY</h2>
       <div class="stat-row" style="align-items:center;gap:10px">
@@ -418,7 +389,7 @@
         <span class="settings-val" id="set-aim-lbl">40%</span>
       </div>
       <p style="font-size:10px;color:#667;margin-top:4px">Gently pulls your aim toward nearby enemies within ~30°. Raise for trackpad play; set 0 to disable.</p>
-      <button class="btn ghost" onclick="UI.show('main')" style="margin-top:6px"><span>← BACK</span><span></span></button>
+      <button class="btn ghost" onclick="UI.show('main')" style="margin-top:6px"><span>BACK</span><span>B</span></button>
     </div>
   </div>
 
@@ -430,9 +401,9 @@
       <div class="stat-row"><span>Kills</span><b id="vic-kills">0</b></div>
       <div class="stat-row"><span>Stardust Banked</span><b id="vic-credits">0</b></div>
       <div class="stat-row"><span>Clear Time</span><b id="vic-time">0:00</b></div>
-      <div id="vic-new-record" style="color:#ff0;text-align:center;display:none;letter-spacing:3px;margin:6px 0">★ NEW RECORD ★</div>
+      <div id="vic-new-record" style="color:#ff0;text-align:center;display:none;letter-spacing:3px;margin:6px 0">NEW RECORD</div>
       <button class="btn" id="btn-next"><span>NEXT STAGE</span><span>SPACE</span></button>
-      <button class="btn ghost" onclick="UI.show('stages')"><span>STAGE SELECT</span><span></span></button>
+      <button class="btn ghost" onclick="UI.show('stages')"><span>STAGE SELECT</span><span>S</span></button>
     </div>
   </div>
 
@@ -444,10 +415,10 @@
       <div class="stat-row"><span>Score</span><b id="over-score">0</b></div>
       <div class="stat-row"><span>Kills</span><b id="over-kills">0</b></div>
       <div class="stat-row"><span>Stardust Lost</span><b id="over-credits" style="color:#f88">0</b></div>
-      <div id="over-new-record" style="color:#ff0;text-align:center;display:none;letter-spacing:3px;margin:6px 0">★ NEW RECORD ★</div>
+      <div id="over-new-record" style="color:#ff0;text-align:center;display:none;letter-spacing:3px;margin:6px 0">NEW RECORD</div>
       <button class="btn" id="btn-retry"><span>RETRY</span><span>SPACE</span></button>
-      <button class="btn ghost" onclick="UI.show('stages')"><span>STAGE SELECT</span><span></span></button>
-      <button class="btn ghost" onclick="UI.show('main')"><span>MAIN MENU</span><span></span></button>
+      <button class="btn ghost" onclick="UI.show('stages')"><span>STAGE SELECT</span><span>S</span></button>
+      <button class="btn ghost" onclick="UI.show('main')"><span>MAIN MENU</span><span>M</span></button>
     </div>
   </div>
 
@@ -455,7 +426,17 @@
     <div class="panel">
       <h1>PAUSED</h1>
       <button class="btn" onclick="Game.resume()"><span>RESUME</span><span>ESC</span></button>
-      <button class="btn ghost" onclick="Game.quitToMenu()"><span>END RUN</span><span></span></button>
+      <button class="btn ghost" onclick="Game.quitToMenu()"><span>END RUN</span><span>Q</span></button>
+    </div>
+  </div>
+
+  <!-- In-site confirmation modal (replaces native browser confirm()). -->
+  <div id="confirm-overlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.78);z-index:500;align-items:center;justify-content:center;">
+    <div class="panel" style="max-width:440px;width:90%;border-color:#f55;box-shadow:0 0 32px rgba(255,80,80,0.3)">
+      <h1 id="confirm-title" style="font-size:22px;color:#f55">CONFIRM</h1>
+      <p id="confirm-body" style="text-align:center"></p>
+      <button class="btn" id="confirm-ok" style="border-color:#f55;color:#f55"><span id="confirm-ok-label">CONFIRM</span><span>ENTER</span></button>
+      <button class="btn ghost" id="confirm-cancel"><span>CANCEL</span><span>ESC</span></button>
     </div>
   </div>
   </div><!-- /#game-area -->
@@ -498,7 +479,7 @@
     musicVolume: 0.5,
     musicMuted: false,
     ingameVolume: 0.5,
-    sfxVolume: 1.0,
+    sfxVolume: 0.5,
     shakeIntensity: 0.5,
     mouseSensitivity: 0.5,
     aimAssist: 0.4,
@@ -553,7 +534,7 @@
           musicVolume: save.musicVolume != null ? save.musicVolume : 0.5,
           musicMuted: save.musicMuted || false,
           ingameVolume: save.ingameVolume != null ? save.ingameVolume : 0.5,
-          sfxVolume: save.sfxVolume != null ? save.sfxVolume : 1.0,
+          sfxVolume: save.sfxVolume != null ? save.sfxVolume : 0.5,
           shakeIntensity: save.shakeIntensity != null ? save.shakeIntensity : 0.5,
           mouseSensitivity: save.mouseSensitivity != null ? save.mouseSensitivity : 0.5,
           aimAssist: save.aimAssist != null ? save.aimAssist : 0.4,
@@ -668,7 +649,7 @@
     banner._t = setTimeout(()=>el.classList.remove('show'), 2200);
   }
 
-  // ── Stages (8) ─────────────────────────────────────────────────
+  // ── Stages (15) ────────────────────────────────────────────────
   // shipPool entries = enemy class IDs (1..8)
   const STAGES = [
     { name:'ASTEROID BELT',  desc:'Scouts hunt among the rocks.',
@@ -710,7 +691,42 @@
       fog:0x000010, ambient:0x223366, sun:0xaaccff,
       skyBase:0x000008, skyTint:0xffffff, skyDensity:1.5, dustColor:0xaaccff,
       asteroids:80, enemyCount:46, shipPool:[1,2,3,4,5,6,7,8],
-      boss:'VANGUARD CORE',    bossClass:8, bossHp:5000, bossReward:7500 }
+      boss:'VANGUARD CORE',    bossClass:8, bossHp:5000, bossReward:7500 },
+    { name:'VOID GAUNTLET',  desc:'No cover. No mercy. Just the dark.',
+      fog:0x000004, ambient:0x111122, sun:0x6677aa,
+      skyBase:0x000004, skyTint:0x445577, skyDensity:0.3, dustColor:0x334455,
+      asteroids:25, enemyCount:50, shipPool:[4,5,6,7,8],
+      boss:'GAUNTLET PRIME',   bossClass:8, bossHp:5800, bossReward:8500 },
+    { name:'SOLAR FURNACE',  desc:'Storms of plasma. Hulls run hot.',
+      fog:0x401000, ambient:0x663300, sun:0xffcc66,
+      skyBase:0x281400, skyTint:0xffaa44, skyDensity:1.6, dustColor:0xff7722,
+      asteroids:60, enemyCount:55, shipPool:[4,5,6,7,8],
+      boss:'CORONA TYRANT',    bossClass:7, bossHp:6800, bossReward:9800 },
+    { name:'NEUTRON GRAVE',  desc:'A dead star\u2019s gravity warps every shot.',
+      fog:0x080820, ambient:0x223355, sun:0x99aacc,
+      skyBase:0x040818, skyTint:0xccddff, skyDensity:1.1, dustColor:0x6677aa,
+      asteroids:90, enemyCount:60, shipPool:[5,6,7,8],
+      boss:'GRAVITAR',         bossClass:7, bossHp:7800, bossReward:11200 },
+    { name:'ANTIMATTER REEF',desc:'Each rock here can vaporize a fleet.',
+      fog:0x100030, ambient:0x331166, sun:0xaa66ff,
+      skyBase:0x080018, skyTint:0xaa66ff, skyDensity:1.3, dustColor:0x9944ee,
+      asteroids:110, enemyCount:65, shipPool:[5,6,7,8],
+      boss:'REEF LEVIATHAN',   bossClass:8, bossHp:8800, bossReward:12800 },
+    { name:'EVENT HORIZON',  desc:'Cross the edge. Nothing escapes.',
+      fog:0x000000, ambient:0x110022, sun:0x442288,
+      skyBase:0x000002, skyTint:0x331166, skyDensity:1.8, dustColor:0x220044,
+      asteroids:35, enemyCount:70, shipPool:[6,7,8],
+      boss:'HORIZON WALKER',   bossClass:8, bossHp:9800, bossReward:14400 },
+    { name:'SHATTERED MOON', desc:'A broken world. A broken sky.',
+      fog:0x181020, ambient:0x332244, sun:0xbbaadd,
+      skyBase:0x0a0612, skyTint:0xccaaff, skyDensity:1.0, dustColor:0x886699,
+      asteroids:160, enemyCount:75, shipPool:[6,7,8],
+      boss:'MOONFALL',         bossClass:8, bossHp:11000, bossReward:16000 },
+    { name:'EMPYREAN GATE',  desc:'The end of the line. Hold it.',
+      fog:0x100020, ambient:0x224477, sun:0xffffff,
+      skyBase:0x000010, skyTint:0xffffff, skyDensity:1.5, dustColor:0xddeeff,
+      asteroids:100, enemyCount:80, shipPool:[1,2,3,4,5,6,7,8],
+      boss:'EMPYREAN SOVEREIGN',bossClass:8, bossHp:13000, bossReward:20000 }
   ];
 
   // ── Three.js setup ─────────────────────────────────────────────
@@ -923,21 +939,26 @@
     const tipR = new THREE.Mesh(tipGeo, matAccent); tipR.rotation.z = -Math.PI/2; tipR.position.set(1.6,-0.05,0.7); exterior.add(tipR);
 
     // ── Forward turrets (where your lasers actually spawn) ──
-    // Player bullets emit from local [-1.6, -0.05, -1.5] and [1.6, -0.05, -1.5].
+    // Player bullets emit from local [-1.5, -0.05, -2.0] and [1.5, -0.05, -2.0]
+    // — matching the cap/muzzle position so visuals line up in cockpit view.
     const muzzleFlashes = [];
     for (let s of [-1, 1]) {
+      // Pylon strut connecting the wing leading edge back to the turret mount
+      // so the turret no longer appears to float in front of the ship.
+      const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, 1.30), matDark);
+      pylon.position.set(s*1.5, -0.05, -0.40); exterior.add(pylon);
       const mount = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.18, 0.5, 8), matDark);
-      mount.rotation.x = Math.PI/2; mount.position.set(s*1.6, -0.05, -1.05); exterior.add(mount);
+      mount.rotation.x = Math.PI/2; mount.position.set(s*1.5, -0.05, -1.05); exterior.add(mount);
       const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.9, 8), matPanel);
-      barrel.rotation.x = Math.PI/2; barrel.position.set(s*1.6, -0.05, -1.55); exterior.add(barrel);
+      barrel.rotation.x = Math.PI/2; barrel.position.set(s*1.5, -0.05, -1.55); exterior.add(barrel);
       const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.06, 8), matAccent);
-      cap.rotation.x = Math.PI/2; cap.position.set(s*1.6, -0.05, -2.02); exterior.add(cap);
+      cap.rotation.x = Math.PI/2; cap.position.set(s*1.5, -0.05, -2.02); exterior.add(cap);
       // hidden muzzle flash that pulses when firing
       const flash = new THREE.Mesh(
         new THREE.SphereGeometry(0.18, 8, 6),
         new THREE.MeshBasicMaterial({ color: accentHex, transparent:true, opacity:0, blending:THREE.AdditiveBlending })
       );
-      flash.position.set(s*1.6, -0.05, -2.1); exterior.add(flash); muzzleFlashes.push(flash);
+      flash.position.set(s*1.5, -0.05, -2.10); exterior.add(flash); muzzleFlashes.push(flash);
     }
     ship.userData.muzzleFlashes = muzzleFlashes;
 
@@ -1462,6 +1483,30 @@
           else UI.show('stages');
         }
       }
+      // Menu hotkeys (only fire when no input/textarea is focused and no modal is open).
+      const tag = (document.activeElement && document.activeElement.tagName) || '';
+      const inField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      const modalOpen = document.getElementById('confirm-overlay').style.display === 'flex';
+      if (!inField && !modalOpen) {
+        if (UI.cur === 'main') {
+          if (e.code === 'KeyH') { e.preventDefault(); UI.show('hangar'); }
+          else if (e.code === 'KeyL') { e.preventDefault(); UI.show('leader'); }
+          else if (e.code === 'KeyT') { e.preventDefault(); UI.show('stats'); }
+          else if (e.code === 'KeyC') { e.preventDefault(); UI.show('controls'); }
+          else if (e.code === 'KeyG') { e.preventDefault(); UI.show('settings'); }
+        } else if (['stages','hangar','leader','stats','controls','settings'].includes(UI.cur)) {
+          if (e.code === 'KeyB') { e.preventDefault(); UI.show('main'); }
+        }
+        if (UI.cur === 'victory' && e.code === 'KeyS') { e.preventDefault(); UI.show('stages'); }
+        if (UI.cur === 'over') {
+          if (e.code === 'KeyS') { e.preventDefault(); UI.show('stages'); }
+          else if (e.code === 'KeyM') { e.preventDefault(); UI.show('main'); }
+        }
+      }
+    }
+    if (Game.state === 'paused' && e.code === 'KeyQ') {
+      e.preventDefault();
+      Game.quitToMenu();
     }
   });
   window.addEventListener('keyup', e => {
@@ -1605,7 +1650,7 @@
       const m = new THREE.Mesh(geo, mat);
       // Compose: align cylinder to -Z first, then rotate into world space with ship orientation
       m.quaternion.multiplyQuaternions(shipRoot.quaternion, _bulletAlignQ);
-      const off = new THREE.Vector3(i===0 ? -1.6 : 1.6, -0.05, -1.5);
+      const off = new THREE.Vector3(i===0 ? -1.5 : 1.5, -0.05, -2.0);
       off.applyQuaternion(shipRoot.quaternion);
       m.position.copy(shipRoot.position).add(off);
       scene.add(m);
@@ -1826,7 +1871,7 @@
       document.getElementById('vic-score').textContent = fmt(Game.score);
       document.getElementById('vic-kills').textContent = Game.kills;
       document.getElementById('vic-credits').textContent = fmt(Game.credits);
-      document.getElementById('vic-time').textContent = fmtTime(elapsed) + (newTimeRecord ? ' ★' : '');
+      document.getElementById('vic-time').textContent = fmtTime(elapsed) + (newTimeRecord ? ' (BEST)' : '');
       document.getElementById('vic-new-record').style.display = newHi ? 'block' : 'none';
       SFX.play('victory');
       // Push to global leaderboard
@@ -1918,9 +1963,24 @@
 
     audio.addEventListener('ended', _playNext);
 
+    // If the tab is backgrounded for a long time, some browsers will pause/error
+    // the audio element silently. When the tab becomes visible again, resume.
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && _playing && audio.paused) {
+        audio.play().catch(() => {});
+      }
+    });
+    // Recover from transient audio errors by advancing to the next track instead
+    // of getting stuck on a broken element.
+    audio.addEventListener('error', () => { if (_playing) _playNext(); });
+
     return {
       start() {
-        if (_playing) return;
+        if (_playing) {
+          // Defensive: if flagged playing but element has stalled, kick it.
+          if (audio.paused) audio.play().catch(() => {});
+          return;
+        }
         _playing = true;
         queue = _shuffle(MENU_TRACKS, '');
         _playNext();
@@ -1930,14 +1990,10 @@
         audio.pause();
         audio.src = '';
         queue = [];
+        _lastTrack = '';
       },
       applySettings() {
         audio.volume = save.musicMuted ? 0 : (save.musicVolume != null ? save.musicVolume : 0.5);
-        // Sync UI controls if they exist
-        const slider = document.getElementById('music-vol-slider');
-        const muteBtn = document.getElementById('music-mute-btn');
-        if (slider) slider.value = save.musicVolume != null ? save.musicVolume : 0.5;
-        if (muteBtn) muteBtn.textContent = save.musicMuted ? '🔇' : '🔊';
       }
     };
   })();
@@ -1959,19 +2015,40 @@
   // Files: site/audio/sfx-laser.mp3, sfx-hit.mp3, sfx-explosion.mp3, sfx-pickup.mp3, sfx-victory.mp3
   const SFX = (() => {
     const _cache = {};
+    // Hard cap concurrent clones per sound to prevent the browser's
+    // per-tab Audio-element limit (~50-100) from silently breaking SFX
+    // after extended play. Cleanup released clones on 'ended'.
+    const _live = {};
+    const _MAX_PER_SOUND = 6;
     return {
       play(name) {
         try {
-          const vol = save.sfxVolume != null ? save.sfxVolume : 1.0;
+          const vol = save.sfxVolume != null ? save.sfxVolume : 0.5;
           if (vol <= 0) return;
           if (!_cache[name]) {
             const a = new Audio('audio/sfx-' + name + '.mp3');
             a.preload = 'none';
             _cache[name] = a;
           }
+          _live[name] = _live[name] || [];
+          // Drop the oldest clone if we're at the cap.
+          if (_live[name].length >= _MAX_PER_SOUND) {
+            const old = _live[name].shift();
+            try { old.pause(); old.src = ''; } catch(_) {}
+          }
           const clone = _cache[name].cloneNode();
           clone.volume = Math.min(1, vol);
-          clone.play().catch(() => {});
+          _live[name].push(clone);
+          const cleanup = () => {
+            const arr = _live[name];
+            if (!arr) return;
+            const idx = arr.indexOf(clone);
+            if (idx >= 0) arr.splice(idx, 1);
+            try { clone.src = ''; } catch(_) {}
+          };
+          clone.addEventListener('ended', cleanup, { once: true });
+          clone.addEventListener('error', cleanup, { once: true });
+          clone.play().catch(cleanup);
         } catch(_) {}
       }
     };
@@ -2090,13 +2167,10 @@
       document.getElementById('pause-overlay').classList.remove('active');
       // Music: play on main menu views, stop during gameplay
       const menuViews = ['main','stages','hangar','leader','controls','settings'];
-      const musicControls = document.getElementById('music-controls');
       if (menuViews.includes(id)) {
         Music.start();
-        if (musicControls) musicControls.style.display = 'flex';
       } else {
         Music.stop();
-        if (musicControls) musicControls.style.display = 'none';
       }
       if (id === 'main')     this.refreshMain();
       if (id === 'stages')   this.refreshStages();
@@ -2111,8 +2185,34 @@
       document.getElementById('crosshair').style.display = 'block';
       this.cur = 'none';
       Music.stop();
-      const musicControls = document.getElementById('music-controls');
-      if (musicControls) musicControls.style.display = 'none';
+    },
+    // In-site confirmation modal. Returns Promise<boolean>.
+    confirm(title, body, okLabel) {
+      return new Promise(resolve => {
+        const ov = document.getElementById('confirm-overlay');
+        document.getElementById('confirm-title').textContent = title || 'CONFIRM';
+        document.getElementById('confirm-body').textContent  = body  || '';
+        document.getElementById('confirm-ok-label').textContent = okLabel || 'CONFIRM';
+        ov.style.display = 'flex';
+        const ok     = document.getElementById('confirm-ok');
+        const cancel = document.getElementById('confirm-cancel');
+        const close = (val) => {
+          ov.style.display = 'none';
+          ok.removeEventListener('click', onOk);
+          cancel.removeEventListener('click', onCancel);
+          document.removeEventListener('keydown', onKey, true);
+          resolve(val);
+        };
+        const onOk     = () => close(true);
+        const onCancel = () => close(false);
+        const onKey = (e) => {
+          if (e.key === 'Enter')  { e.preventDefault(); e.stopPropagation(); close(true); }
+          else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); }
+        };
+        ok.addEventListener('click', onOk);
+        cancel.addEventListener('click', onCancel);
+        document.addEventListener('keydown', onKey, true);
+      });
     },
     refreshMain() {
       document.getElementById('hi-score').textContent = fmt(save.hiScore);
@@ -2280,7 +2380,7 @@
       const pct = v => Math.round(v * 100) + '%';
       const vol   = save.musicVolume   != null ? save.musicVolume   : 0.5;
       const igvol = save.ingameVolume  != null ? save.ingameVolume  : 0.5;
-      const sfx   = save.sfxVolume     != null ? save.sfxVolume     : 1.0;
+      const sfx   = save.sfxVolume     != null ? save.sfxVolume     : 0.5;
       const shake = save.shakeIntensity!= null ? save.shakeIntensity: 0.5;
       const s1 = document.getElementById('set-menu-vol');  if (s1) { s1.value = vol;   document.getElementById('set-menu-vol-lbl').textContent = pct(vol); }
       const s2 = document.getElementById('set-game-vol');  if (s2) { s2.value = igvol; document.getElementById('set-game-vol-lbl').textContent = pct(igvol); }
@@ -2290,7 +2390,7 @@
       const aa   = save.aimAssist        != null ? save.aimAssist        : 0.4;
       const s5 = document.getElementById('set-sens'); if (s5) { s5.value = sens; document.getElementById('set-sens-lbl').textContent = pct(sens); }
       const s6 = document.getElementById('set-aim');  if (s6) { s6.value = aa;   document.getElementById('set-aim-lbl').textContent  = pct(aa);   }
-      const mb = document.getElementById('set-menu-mute'); if (mb)   mb.textContent = save.musicMuted ? '🔇' : '🔊';
+      const mb = document.getElementById('set-menu-mute'); if (mb)   mb.textContent = save.musicMuted ? 'UNMUTE' : 'MUTE';
     }
   };
 
@@ -2308,14 +2408,13 @@
     save.musicVolume = parseFloat(document.getElementById('set-menu-vol').value);
     save.musicMuted  = false;
     document.getElementById('set-menu-vol-lbl').textContent = _pct('set-menu-vol');
-    document.getElementById('set-menu-mute').textContent = '🔊';
-    const ov = document.getElementById('music-vol-slider'); if (ov) ov.value = save.musicVolume;
+    document.getElementById('set-menu-mute').textContent = 'MUTE';
     Music.applySettings(); persist();
   });
   document.getElementById('set-menu-mute').addEventListener('click', () => {
     save.musicMuted = !save.musicMuted;
     Music.applySettings();
-    document.getElementById('set-menu-mute').textContent = save.musicMuted ? '🔇' : '🔊';
+    document.getElementById('set-menu-mute').textContent = save.musicMuted ? 'UNMUTE' : 'MUTE';
     persist();
   });
   document.getElementById('set-game-vol').addEventListener('input', () => {
@@ -2345,8 +2444,8 @@
   });
 
   // ── Reset Data ─────────────────────────────────────────────────
-  document.getElementById('btn-reset-data').onclick = () => {
-    if (!confirm('Reset ALL progress? This wipes your scores, upgrades, ships, and credits. This cannot be undone.')) return;
+  document.getElementById('btn-reset-data').onclick = async () => {
+    if (!(await UI.confirm('Reset ALL progress?', 'This wipes your scores, upgrades, ships, and credits. This cannot be undone.', 'RESET'))) return;
     const _sv = { vol: save.musicVolume, mute: save.musicMuted, igvol: save.ingameVolume, sfxvol: save.sfxVolume, shake: save.shakeIntensity, sens: save.mouseSensitivity, aa: save.aimAssist };
     save = JSON.parse(JSON.stringify(DEFAULT_SAVE));
     save.musicVolume  = _sv.vol;
@@ -2381,19 +2480,7 @@
   };
 
   // ── Music controls ─────────────────────────────────────────────
-  const _volSlider = document.getElementById('music-vol-slider');
-  const _muteBtn   = document.getElementById('music-mute-btn');
-  _volSlider.addEventListener('input', () => {
-    save.musicVolume = parseFloat(_volSlider.value);
-    save.musicMuted  = false;
-    Music.applySettings();
-    persist();
-  });
-  _muteBtn.addEventListener('click', () => {
-    save.musicMuted = !save.musicMuted;
-    Music.applySettings();
-    persist();
-  });
+  // Top-right volume/mute widget has been removed — controls live in Settings only.
   document.getElementById('btn-next').onclick = () => {
     const next = Game.stageIdx + 1;
     if (next < STAGES.length) Game.startStage(next);

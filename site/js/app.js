@@ -142,20 +142,16 @@ const App = (() => {
       const docP = db.collection('users').doc(currentUser.uid).get();
       const doc  = await Promise.race([docP, timeoutP]);
       userProfile = doc.exists ? doc.data() : fallback();
-      // If we timed out and used the fallback, patch in the real data once it arrives.
-      docP.then(late => {
-        if (!late.exists) return;
-        userProfile = late.data();
-        _renderUserUI();
-      }).catch(() => {});
     } catch {
       userProfile = fallback();
-      db.collection('users').doc(currentUser.uid).get().then(late => {
-        if (!late.exists) return;
-        userProfile = late.data();
-        _renderUserUI();
-      }).catch(() => {});
     }
+    // Live-subscribe so any later write (first-time Google sign-in race,
+    // username change from another tab, avatar update, etc.) refreshes the UI.
+    db.collection('users').doc(currentUser.uid).onSnapshot(snap => {
+      if (!snap.exists) return;
+      userProfile = snap.data();
+      _renderUserUI();
+    }, () => {});
   }
 
   /* ── Render avatar, username, profile dropdown ── */
